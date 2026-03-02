@@ -17,6 +17,7 @@ extern "C" {
 
 #include "esphome_uart_adapter.h"
 #include "esphome_mqtt_client_adapter.h"
+#include "gea2_to_gea3_erd_client_adapter.h"
 
 // Forward declaration of the generated function
 std::string appliance_type_to_string(uint8_t appliance_type);
@@ -30,14 +31,6 @@ enum BridgeMode {
   BRIDGE_MODE_POLL = 0,       // Always use polling mode
   BRIDGE_MODE_SUBSCRIBE = 1,  // Always use subscription mode
   BRIDGE_MODE_AUTO = 2        // Auto: try subscription, fallback to polling
-};
-
-// GEA protocol mode for autodiscovery and device ID generation
-// Note: These enum values must match GEA_MODE_*_VALUE constants in __init__.py
-enum GEAMode {
-  GEA_MODE_AUTO = 0,  // Try GEA3 first, then GEA2
-  GEA_MODE_GEA3 = 1,  // Use GEA3 only
-  GEA_MODE_GEA2 = 2   // Use GEA2 only
 };
 
 class GeappliancesBridge : public Component {
@@ -55,19 +48,17 @@ class GeappliancesBridge : public Component {
   void set_mode(uint8_t mode) { this->mode_ = static_cast<BridgeMode>(mode); }
   void set_polling_interval(uint32_t polling_interval) { this->polling_interval_ms_ = polling_interval; }
   void set_polling_only_publish_on_change(bool only_publish_on_change) { this->polling_only_publish_on_change_ = only_publish_on_change; }
-  void set_gea3_address(uint8_t address) { this->gea3_address_preference_ = address; }
-  void set_gea2_address(uint8_t address) { this->gea2_address_preference_ = address; }
-  void set_gea_mode(uint8_t mode) { this->gea_mode_ = static_cast<GEAMode>(mode); }
 
  protected:
   void on_mqtt_connected_();
   void notify_mqtt_disconnected_();
   void handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args);
-  void handle_gea2_erd_client_activity_(const tiny_gea2_erd_client_on_activity_args_t* args);
   void initialize_mqtt_bridge_();
   void check_subscription_activity_();
   void run_autodiscovery_();
   void start_device_id_generation_();
+  void process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size);
+  void handle_device_id_read_failure_(tiny_erd_t erd);
   std::string bytes_to_string_(const uint8_t* data, size_t size);
   std::string sanitize_for_mqtt_topic_(const std::string& input);
   bool try_read_erd_with_retry_(tiny_erd_t erd, const char* erd_name);
@@ -108,11 +99,8 @@ class GeappliancesBridge : public Component {
   bool mqtt_was_connected_{false};
   bool mqtt_bridge_initialized_{false};
   BridgeMode mode_{BRIDGE_MODE_AUTO};
-  GEAMode gea_mode_{GEA_MODE_AUTO};
   uint32_t polling_interval_ms_{10000};
   bool polling_only_publish_on_change_{false};
-  uint8_t gea3_address_preference_{0xC0}; // Preferred GEA3 board address for device ID generation
-  uint8_t gea2_address_preference_{0xA0}; // Preferred GEA2 board address for device ID generation
   
   // Auto mode fallback tracking
   bool subscription_mode_active_{false};
@@ -127,18 +115,11 @@ class GeappliancesBridge : public Component {
   AutodiscoveryState autodiscovery_state_{AUTODISCOVERY_WAITING_FOR_MQTT};
   uint32_t autodiscovery_timer_start_{0};
   bool gea3_board_discovered_{false};
-  bool gea3_preferred_found_{false};
-  uint8_t gea3_first_address_{0x00};       // First GEA3 board that responded (fallback)
-  bool gea3_first_address_set_{false};     // Whether gea3_first_address_ has been recorded
   bool gea2_board_discovered_{false};
-  bool gea2_preferred_found_{false};
-  uint8_t gea2_first_address_{0x00};       // First GEA2 board that responded (fallback)
-  bool gea2_first_address_set_{false};     // Whether gea2_first_address_ has been recorded
   static constexpr uint32_t STARTUP_DELAY_MS = 20000;              // 20s after MQTT connects
   static constexpr uint32_t AUTODISCOVERY_BROADCAST_WINDOW_MS = 10000; // 10s window per broadcast
 
   tiny_gea3_erd_client_request_id_t pending_request_id_;
-  tiny_gea2_erd_client_request_id_t gea2_pending_request_id_;
   uint8_t appliance_type_{0};
   std::string model_number_;
   std::string serial_number_;
@@ -170,6 +151,9 @@ class GeappliancesBridge : public Component {
 
   tiny_gea2_erd_client_t gea2_erd_client_;
   uint8_t gea2_client_queue_buffer_[1024];
+  gea2_to_gea3_erd_client_adapter_t gea2_erd_client_adapter_; // wraps GEA2 as GEA3
+
+  i_tiny_gea3_erd_client_t* active_erd_client_{nullptr}; // set during initialize_mqtt_bridge_()
 
   mqtt_bridge_t mqtt_bridge_;
   mqtt_bridge_polling_t mqtt_bridge_polling_;

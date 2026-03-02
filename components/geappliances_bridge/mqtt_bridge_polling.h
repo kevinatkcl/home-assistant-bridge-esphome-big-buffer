@@ -26,6 +26,7 @@ typedef struct {
   tiny_event_subscription_t mqtt_disconnect_subscription;
   tiny_event_subscription_t erd_client_activity_subscription;
   tiny_hsm_t hsm;
+  tiny_hsm_state_t next_discovery_state;
   void* erd_set;
   void* erd_cache;
   tiny_gea3_erd_client_request_id_t request_id;

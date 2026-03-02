@@ -58,9 +58,6 @@ geappliances_bridge:
   # device_id: "YourDeviceId"     # Optional: Uncomment to use a custom device ID
   # mode: auto                    # Default: auto   Options: auto, subscribe, poll
   # polling_interval: 10000       # Default: 10000 ms (10 seconds), used when in polling mode
-  # gea_mode: auto                # Default: auto   Options: auto, gea3, gea2
-  # gea3_address: 0xC0            # Default: 0xC0   Preferred GEA3 board address
-  # gea2_address: 0xA0            # Default: 0xA0   Preferred GEA2 board address
 ```
 
 ## Configurable Parameters
@@ -75,31 +72,14 @@ The `mode` parameter is **optional**.
 
 3. **Poll Mode** - The adapter actively polls the appliance for ERD values at a configurable interval `polling_interval`
 
-### GEA Mode
-
-The `gea_mode` parameter is **optional** and controls which protocol(s) are used during autodiscovery.
-
-- **`auto` (Default)** - Tries GEA3 first, then GEA2.
-- **`gea3`** - GEA3 only.
-- **`gea2`** - GEA2 only. In development
-
-### Board Address Preferences
-
-`gea3_address` and `gea2_address` are **optional**. If the board at the preferred address responds during autodiscovery, it is used for device ID generation. If it does not respond, the first responder is used as a fallback.
-
-- **`gea3_address`** - Default: `0xC0`
-- **`gea2_address`** - Default: `0xA0`
-
 ### Autodiscovery
 
-After connecting to the MQTT server, the component waits 20 seconds and then performs a protocol autodiscovery to find the appliance on the bus before generating a device ID:
+After connecting to the MQTT server, the component waits 20 seconds and then performs a protocol autodiscovery to find the appliance on the bus before generating a device ID.
 
-1. Sends a GEA3 broadcast (→ `0xFF`) for ERD `0x0008` (Appliance Type); collects responses for 10 seconds.
-2. Sends a GEA2 broadcast (→ `0xFF`) for ERD `0x0008` (Appliance Type); collects responses for 10 seconds.
-3. If no boards respond, repeats steps 1–2 until at least one board is found.
-4. Proceeds with device ID generation using the discovered board's address and protocol.
-
-Each responding board is logged at DEBUG level with its address and appliance type.
+- If `gea3_uart_id` is configured, a GEA3 broadcast is sent first; if a board responds its address is used.
+- If no GEA3 board responds and `gea2_uart_id` is configured, a GEA2 broadcast is sent next.
+- Discovery repeats until at least one board is found.
+- The first-responding board's address and protocol are used for all subsequent ERD communication.
 
 ### Auto-Generated Device ID
 
