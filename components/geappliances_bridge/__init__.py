@@ -23,11 +23,6 @@ AUTO_LOAD = []
 CONF_GEA3_UART_ID = "gea3_uart_id"
 CONF_GEA2_UART_ID = "gea2_uart_id"
 
-# GEA protocol configuration keys
-CONF_GEA_MODE = "gea_mode"
-CONF_GEA3_ADDRESS = "gea3_address"
-CONF_GEA2_ADDRESS = "gea2_address"
-
 # Bridge (MQTT) configuration keys
 CONF_DEVICE_ID = "device_id"
 CONF_MODE = "mode"
@@ -43,18 +38,6 @@ MODE_AUTO = "auto"
 MODE_POLL_VALUE = 0
 MODE_SUBSCRIBE_VALUE = 1
 MODE_AUTO_VALUE = 2
-
-# GEA protocol mode options
-GEA_MODE_AUTO = "auto"
-GEA_MODE_GEA3 = "gea3"
-GEA_MODE_GEA2 = "gea2"
-
-# GEA mode enum values (must match GEAMode enum in C++)
-GEA_MODE_AUTO_VALUE = 0
-GEA_MODE_GEA3_VALUE = 1
-GEA_MODE_GEA2_VALUE = 2
-
-geappliances_bridge_ns = cg.esphome_ns.namespace("geappliances_bridge")
 GeappliancesBridge = geappliances_bridge_ns.class_(
     "GeappliancesBridge", cg.Component
 )

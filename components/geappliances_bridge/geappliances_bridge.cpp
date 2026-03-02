@@ -36,41 +36,40 @@ void GeappliancesBridge::setup() {
   // Initialize timer group
   tiny_timer_group_init(&this->timer_group_, esphome_time_source_init());
 
-  // Initialize GEA3 UART adapter
-  esphome_uart_adapter_init(&this->uart_adapter_, &this->timer_group_, this->uart_);
+  // Initialize GEA3 components if GEA3 UART is configured
+  if (this->uart_ != nullptr) {
+    esphome_uart_adapter_init(&this->uart_adapter_, &this->timer_group_, this->uart_);
 
-  // Initialize GEA3 interface
-  tiny_gea3_interface_init(
-    &this->gea3_interface_,
-    &this->uart_adapter_.interface,
-    this->client_address_,
-    this->send_queue_buffer_,
-    sizeof(this->send_queue_buffer_),
-    this->receive_buffer_,
-    sizeof(this->receive_buffer_),
-    false);
+    tiny_gea3_interface_init(
+      &this->gea3_interface_,
+      &this->uart_adapter_.interface,
+      this->client_address_,
+      this->send_queue_buffer_,
+      sizeof(this->send_queue_buffer_),
+      this->receive_buffer_,
+      sizeof(this->receive_buffer_),
+      false);
 
-  // Initialize GEA3 ERD client
-  tiny_gea3_erd_client_init(
-    &this->erd_client_,
-    &this->timer_group_,
-    &this->gea3_interface_.interface,
-    this->client_queue_buffer_,
-    sizeof(this->client_queue_buffer_),
-    &client_configuration);
+    tiny_gea3_erd_client_init(
+      &this->erd_client_,
+      &this->timer_group_,
+      &this->gea3_interface_.interface,
+      this->client_queue_buffer_,
+      sizeof(this->client_queue_buffer_),
+      &client_configuration);
 
-  // Subscribe to GEA3 ERD client activity
-  tiny_event_subscription_init(
-    &this->erd_client_activity_subscription_, 
-    this, 
-    +[](void* context, const void* args) {
-      auto self = reinterpret_cast<GeappliancesBridge*>(context);
-      auto activity_args = reinterpret_cast<const tiny_gea3_erd_client_on_activity_args_t*>(args);
-      self->handle_erd_client_activity_(activity_args);
-    });
-  tiny_event_subscribe(
-    tiny_gea3_erd_client_on_activity(&this->erd_client_.interface), 
-    &this->erd_client_activity_subscription_);
+    tiny_event_subscription_init(
+      &this->erd_client_activity_subscription_,
+      this,
+      +[](void* context, const void* args) {
+        auto self = reinterpret_cast<GeappliancesBridge*>(context);
+        auto activity_args = reinterpret_cast<const tiny_gea3_erd_client_on_activity_args_t*>(args);
+        self->handle_erd_client_activity_(activity_args);
+      });
+    tiny_event_subscribe(
+      tiny_gea3_erd_client_on_activity(&this->erd_client_.interface),
+      &this->erd_client_activity_subscription_);
+  }
 
   // Initialize GEA2 components if a second UART is configured
   if (this->gea2_uart_ != nullptr) {
@@ -111,17 +110,18 @@ void GeappliancesBridge::setup() {
       sizeof(this->gea2_client_queue_buffer_),
       &gea2_client_configuration);
 
-    // Subscribe to GEA2 ERD client activity
+    // Initialize adapter and subscribe to its unified event (same handler as GEA3)
+    gea2_to_gea3_erd_client_adapter_init(&this->gea2_erd_client_adapter_, &this->gea2_erd_client_.interface);
     tiny_event_subscription_init(
       &this->gea2_erd_client_activity_subscription_,
       this,
       +[](void* context, const void* args) {
         auto self = reinterpret_cast<GeappliancesBridge*>(context);
-        auto activity_args = reinterpret_cast<const tiny_gea2_erd_client_on_activity_args_t*>(args);
-        self->handle_gea2_erd_client_activity_(activity_args);
+        auto activity_args = reinterpret_cast<const tiny_gea3_erd_client_on_activity_args_t*>(args);
+        self->handle_erd_client_activity_(activity_args);
       });
     tiny_event_subscribe(
-      tiny_gea2_erd_client_on_activity(&this->gea2_erd_client_.interface),
+      tiny_gea3_erd_client_on_activity(&this->gea2_erd_client_adapter_.interface),
       &this->gea2_erd_client_activity_subscription_);
   }
 
@@ -164,8 +164,10 @@ void GeappliancesBridge::loop() {
   // Run timer group (always, non-blocking)
   tiny_timer_group_run(&this->timer_group_);
   
-  // Run GEA3 interface (always)
-  tiny_gea3_interface_run(&this->gea3_interface_);
+  // Run GEA3 interface (if configured)
+  if (this->uart_ != nullptr) {
+    tiny_gea3_interface_run(&this->gea3_interface_);
+  }
 
   // Run GEA2 interface (if configured)
   if (this->gea2_uart_ != nullptr) {
@@ -188,40 +190,8 @@ void GeappliancesBridge::loop() {
     this->check_subscription_activity_();
   }
 
-  // Handle device ID generation state machine
-  // Note: If state reaches DEVICE_ID_STATE_FAILED, device requires reboot to retry
-  if (this->use_gea2_for_device_id_) {
-    // GEA2 path: read all device ID ERDs via GEA2 client
-    tiny_erd_t erd = 0;
-    const char* erd_name = nullptr;
-    if (this->device_id_state_ == DEVICE_ID_STATE_READING_APPLIANCE_TYPE) {
-      erd = ERD_APPLIANCE_TYPE;
-      erd_name = "appliance type";
-    } else if (this->device_id_state_ == DEVICE_ID_STATE_READING_MODEL_NUMBER) {
-      erd = ERD_MODEL_NUMBER;
-      erd_name = "model number";
-    } else if (this->device_id_state_ == DEVICE_ID_STATE_READING_SERIAL_NUMBER) {
-      erd = ERD_SERIAL_NUMBER;
-      erd_name = "serial number";
-    }
-    if (erd_name != nullptr) {
-      if (tiny_gea2_erd_client_read(&this->gea2_erd_client_.interface, &this->gea2_pending_request_id_,
-                                     this->host_address_, erd)) {
-        ESP_LOGD(TAG, "Reading %s ERD 0x%04X via GEA2", erd_name, erd);
-        this->device_id_state_ = DEVICE_ID_STATE_IDLE;
-        this->read_retry_count_ = 0;
-      } else {
-        this->read_retry_count_++;
-        if (this->read_retry_count_ >= MAX_READ_RETRIES) {
-          ESP_LOGE(TAG, "Failed to read %s via GEA2 after %u retries, giving up", erd_name, MAX_READ_RETRIES);
-          this->device_id_state_ = DEVICE_ID_STATE_FAILED;
-        } else if (this->read_retry_count_ % LOG_EVERY_N_RETRIES == 0) {
-          ESP_LOGW(TAG, "Failed to queue %s read via GEA2, retrying... (attempt %u)", erd_name, this->read_retry_count_);
-        }
-      }
-    }
-  } else {
-    // GEA3 path
+  // Device ID generation: use active_erd_client_ regardless of protocol
+  if (this->active_erd_client_ != nullptr) {
     if (this->device_id_state_ == DEVICE_ID_STATE_READING_APPLIANCE_TYPE) {
       this->try_read_erd_with_retry_(ERD_APPLIANCE_TYPE, "appliance type");
     } else if (this->device_id_state_ == DEVICE_ID_STATE_READING_MODEL_NUMBER) {
@@ -241,21 +211,17 @@ void GeappliancesBridge::run_autodiscovery_() {
     case AUTODISCOVERY_WAITING_20S:
       // Note: Unsigned subtraction wraps correctly even when millis() overflows after ~49 days
       if (millis() - this->autodiscovery_timer_start_ >= STARTUP_DELAY_MS) {
-        ESP_LOGI(TAG, "20s delay complete, starting GEA2/3 autodiscovery");
-        if (this->gea_mode_ == GEA_MODE_GEA2) {
-          this->autodiscovery_state_ = AUTODISCOVERY_GEA2_BROADCAST_PENDING;
-        } else {
+        ESP_LOGI(TAG, "20s delay complete, starting autodiscovery");
+        if (this->uart_ != nullptr) {
           this->autodiscovery_state_ = AUTODISCOVERY_GEA3_BROADCAST_PENDING;
+        } else {
+          this->autodiscovery_state_ = AUTODISCOVERY_GEA2_BROADCAST_PENDING;
         }
       }
       break;
 
     case AUTODISCOVERY_GEA3_BROADCAST_PENDING: {
-      // Reset GEA3 discovery tracking for this broadcast cycle
       this->gea3_board_discovered_ = false;
-      this->gea3_preferred_found_ = false;
-      this->gea3_first_address_ = 0x00;
-      this->gea3_first_address_set_ = false;
       tiny_gea3_erd_client_request_id_t req_id;
       if (tiny_gea3_erd_client_read(&this->erd_client_.interface, &req_id,
                                      GEA_BROADCAST_ADDRESS, ERD_APPLIANCE_TYPE)) {
@@ -271,17 +237,12 @@ void GeappliancesBridge::run_autodiscovery_() {
     case AUTODISCOVERY_GEA3_BROADCAST_WAITING:
       if (millis() - this->autodiscovery_timer_start_ >= AUTODISCOVERY_BROADCAST_WINDOW_MS) {
         if (this->gea3_board_discovered_) {
-          // Use preferred address if found; otherwise use first responder
-          if (!this->gea3_preferred_found_) {
-            this->host_address_ = this->gea3_first_address_;
-          }
-          this->use_gea2_for_device_id_ = false;
+          // host_address_ and use_gea2_for_device_id_ already set by first responder in handler
           ESP_LOGI(TAG, "GEA3 board discovered at 0x%02X, autodiscovery complete", this->host_address_);
           this->autodiscovery_state_ = AUTODISCOVERY_COMPLETE;
           this->start_device_id_generation_();
         } else {
-          if (this->gea_mode_ == GEA_MODE_GEA3 ||
-              (this->gea_mode_ == GEA_MODE_AUTO && this->gea2_uart_ == nullptr)) {
+          if (this->gea2_uart_ == nullptr) {
             ESP_LOGW(TAG, "No GEA3 boards found, retrying GEA3...");
             this->autodiscovery_state_ = AUTODISCOVERY_GEA3_BROADCAST_PENDING;
           } else {
@@ -292,41 +253,29 @@ void GeappliancesBridge::run_autodiscovery_() {
       }
       break;
 
-    case AUTODISCOVERY_GEA2_BROADCAST_PENDING:
-      if (this->gea2_uart_ == nullptr) {
-        ESP_LOGE(TAG, "GEA2 mode selected but no gea2_uart_id configured; falling back to GEA3 autodiscovery");
-        this->autodiscovery_state_ = AUTODISCOVERY_GEA3_BROADCAST_PENDING;
-      } else {
-        // Reset GEA2 discovery tracking for this broadcast cycle
-        this->gea2_board_discovered_ = false;
-        this->gea2_preferred_found_ = false;
-        this->gea2_first_address_ = 0x00;
-        this->gea2_first_address_set_ = false;
-        tiny_gea2_erd_client_request_id_t req_id;
-        if (tiny_gea2_erd_client_read(&this->gea2_erd_client_.interface, &req_id,
-                                       GEA_BROADCAST_ADDRESS, ERD_APPLIANCE_TYPE)) {
-          ESP_LOGI(TAG, "Sent GEA2 broadcast (ERD 0x%04X) to address 0x%02X",
-                   ERD_APPLIANCE_TYPE, GEA_BROADCAST_ADDRESS);
-          this->autodiscovery_timer_start_ = millis();
-          this->autodiscovery_state_ = AUTODISCOVERY_GEA2_BROADCAST_WAITING;
-        }
-        // else: retry next loop iteration
+    case AUTODISCOVERY_GEA2_BROADCAST_PENDING: {
+      this->gea2_board_discovered_ = false;
+      tiny_gea2_erd_client_request_id_t req_id;
+      if (tiny_gea2_erd_client_read(&this->gea2_erd_client_.interface, &req_id,
+                                     GEA_BROADCAST_ADDRESS, ERD_APPLIANCE_TYPE)) {
+        ESP_LOGI(TAG, "Sent GEA2 broadcast (ERD 0x%04X) to address 0x%02X",
+                 ERD_APPLIANCE_TYPE, GEA_BROADCAST_ADDRESS);
+        this->autodiscovery_timer_start_ = millis();
+        this->autodiscovery_state_ = AUTODISCOVERY_GEA2_BROADCAST_WAITING;
       }
+      // else: retry next loop iteration
       break;
+    }
 
     case AUTODISCOVERY_GEA2_BROADCAST_WAITING:
       if (millis() - this->autodiscovery_timer_start_ >= AUTODISCOVERY_BROADCAST_WINDOW_MS) {
         if (this->gea2_board_discovered_) {
-          // Use preferred address if found; otherwise use first responder
-          if (!this->gea2_preferred_found_) {
-            this->host_address_ = this->gea2_first_address_;
-          }
-          this->use_gea2_for_device_id_ = true;
+          // host_address_ and use_gea2_for_device_id_ already set by first responder in handler
           ESP_LOGI(TAG, "GEA2 board discovered at 0x%02X, autodiscovery complete", this->host_address_);
           this->autodiscovery_state_ = AUTODISCOVERY_COMPLETE;
           this->start_device_id_generation_();
         } else {
-          if (this->gea_mode_ == GEA_MODE_GEA2) {
+          if (this->uart_ == nullptr) {
             ESP_LOGW(TAG, "No GEA2 boards found, retrying GEA2...");
             this->autodiscovery_state_ = AUTODISCOVERY_GEA2_BROADCAST_PENDING;
           } else {
@@ -388,43 +337,40 @@ void GeappliancesBridge::notify_mqtt_disconnected_() {
 }
 
 void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args) {
-  // Track subscription activity for auto mode
-  if (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_) {
-    // Check if this is a subscription publication (ERD data received from subscription)
-    if (this->mqtt_bridge_initialized_ && 
-        args->address == this->host_address_ &&
-        args->type == tiny_gea3_erd_client_activity_type_subscription_publication_received) {
-      if (!this->subscription_activity_detected_) {
-        ESP_LOGI(TAG, "Subscription activity detected - subscription mode is working");
-        this->subscription_activity_detected_ = true;
-      }
+  // Track subscription activity for auto mode (GEA3 only)
+  if (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_ &&
+      this->mqtt_bridge_initialized_ &&
+      args->address == this->host_address_ &&
+      args->type == tiny_gea3_erd_client_activity_type_subscription_publication_received) {
+    if (!this->subscription_activity_detected_) {
+      ESP_LOGI(TAG, "Subscription activity detected - subscription mode is working");
+      this->subscription_activity_detected_ = true;
     }
   }
 
-  // Handle autodiscovery responses (GEA3 broadcast window)
-  if (this->autodiscovery_state_ == AUTODISCOVERY_GEA3_BROADCAST_WAITING) {
+  // Handle autodiscovery: first responder on whichever protocol is broadcasting
+  bool in_gea3_discovery = (this->autodiscovery_state_ == AUTODISCOVERY_GEA3_BROADCAST_WAITING);
+  bool in_gea2_discovery = (this->autodiscovery_state_ == AUTODISCOVERY_GEA2_BROADCAST_WAITING);
+  if (in_gea3_discovery || in_gea2_discovery) {
+    bool& discovered = in_gea2_discovery ? this->gea2_board_discovered_ : this->gea3_board_discovered_;
     if (args->type == tiny_gea3_erd_client_activity_type_read_completed &&
-        args->read_completed.erd == ERD_APPLIANCE_TYPE) {
+        args->read_completed.erd == ERD_APPLIANCE_TYPE &&
+        !discovered && args->read_completed.data_size >= 1) {
       uint8_t app_type = reinterpret_cast<const uint8_t*>(args->read_completed.data)[0];
-      std::string app_type_name = appliance_type_to_string(app_type);
-      ESP_LOGD(TAG, "GEA3 board discovered: address=0x%02X appliance_type=%u (%s)",
-               args->address, app_type, app_type_name.c_str());
-      this->gea3_board_discovered_ = true;
-      if (args->address == this->gea3_address_preference_) {
-        // Preferred address responded - use it for device ID generation
-        this->gea3_preferred_found_ = true;
-        this->host_address_ = args->address;
-        this->use_gea2_for_device_id_ = false;
-      } else if (!this->gea3_first_address_set_) {
-        // Track first non-preferred responder as fallback
-        this->gea3_first_address_ = args->address;
-        this->gea3_first_address_set_ = true;
-      }
+      ESP_LOGD(TAG, "%s board discovered: address=0x%02X appliance_type=%u (%s)",
+               in_gea2_discovery ? "GEA2" : "GEA3",
+               args->address, app_type, appliance_type_to_string(app_type).c_str());
+      discovered = true;
+      this->host_address_ = args->address;
+      this->use_gea2_for_device_id_ = in_gea2_discovery;
+      this->active_erd_client_ = in_gea2_discovery
+        ? &this->gea2_erd_client_adapter_.interface
+        : &this->erd_client_.interface;
     }
-    return; // Don't process as device ID during autodiscovery window
+    return;
   }
 
-  // Only process read responses for device ID ERDs before MQTT bridge is initialized
+  // Device ID reads (after discovery, before bridge init)
   if (!this->mqtt_bridge_initialized_ && args->address == this->host_address_) {
     if (args->type == tiny_gea3_erd_client_activity_type_read_completed) {
       this->process_device_id_erd_response_(
@@ -439,7 +385,7 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
   }
 }
 
-void GeappliancesBridge::process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size) {
+void GeappliancesBridge::process_device_id_erd_response_
   if (erd == ERD_APPLIANCE_TYPE) {
     if (size < 1) return;
     this->appliance_type_ = data[0];
@@ -475,60 +421,27 @@ void GeappliancesBridge::handle_device_id_read_failure_(tiny_erd_t erd) {
   }
 }
 
-void GeappliancesBridge::handle_gea2_erd_client_activity_(const tiny_gea2_erd_client_on_activity_args_t* args) {
-  // Handle autodiscovery responses (GEA2 broadcast window)
-  if (this->autodiscovery_state_ == AUTODISCOVERY_GEA2_BROADCAST_WAITING) {
-    if (args->type == tiny_gea2_erd_client_activity_type_read_completed &&
-        args->read_completed.erd == ERD_APPLIANCE_TYPE) {
-      uint8_t app_type = reinterpret_cast<const uint8_t*>(args->read_completed.data)[0];
-      std::string app_type_name = appliance_type_to_string(app_type);
-      ESP_LOGD(TAG, "GEA2 board discovered: address=0x%02X appliance_type=%u (%s)",
-               args->address, app_type, app_type_name.c_str());
-      this->gea2_board_discovered_ = true;
-      if (args->address == this->gea2_address_preference_) {
-        // Preferred address responded - use it for device ID generation
-        this->gea2_preferred_found_ = true;
-        this->host_address_ = args->address;
-        this->use_gea2_for_device_id_ = true;
-      } else if (!this->gea2_first_address_set_) {
-        // Track first non-preferred responder as fallback
-        this->gea2_first_address_ = args->address;
-        this->gea2_first_address_set_ = true;
-      }
-    }
-    return; // Don't process as device ID during autodiscovery window
-  }
-
-  // Handle device ID reads via GEA2 (when use_gea2_for_device_id_ is true)
-  if (this->use_gea2_for_device_id_ && !this->mqtt_bridge_initialized_ &&
-      args->address == this->host_address_) {
-    if (args->type == tiny_gea2_erd_client_activity_type_read_completed) {
-      this->process_device_id_erd_response_(
-        args->read_completed.erd,
-        reinterpret_cast<const uint8_t*>(args->read_completed.data),
-        args->read_completed.data_size);
-    } else if (args->type == tiny_gea2_erd_client_activity_type_read_failed) {
-      ESP_LOGW(TAG, "Failed to read ERD 0x%04X via GEA2 (reason: %u), will retry",
-               args->read_failed.erd, args->read_failed.reason);
-      this->handle_device_id_read_failure_(args->read_failed.erd);
-    }
-  }
-}
-
 void GeappliancesBridge::initialize_mqtt_bridge_() {
   if (this->mqtt_bridge_initialized_) {
     return;
   }
 
   ESP_LOGI(TAG, "Initializing MQTT bridge with device ID: %s", this->final_device_id_.c_str());
-  
-  // Determine the actual mode to use for initialization
+
+  // active_erd_client_ is set during autodiscovery. For manual device_id configs
+  // where autodiscovery is skipped, fall back to GEA3 if available, else GEA2.
+  if (this->active_erd_client_ == nullptr) {
+    this->active_erd_client_ = (this->uart_ != nullptr)
+      ? &this->erd_client_.interface
+      : &this->gea2_erd_client_adapter_.interface;
+  }
+
   bool use_polling = false;
   const char* mode_name = "unknown";
-  
-  if (this->mode_ == BRIDGE_MODE_POLL) {
+
+  if (this->mode_ == BRIDGE_MODE_POLL || this->use_gea2_for_device_id_) {
     use_polling = true;
-    mode_name = "polling";
+    mode_name = this->use_gea2_for_device_id_ ? "polling (GEA2)" : "polling";
   } else if (this->mode_ == BRIDGE_MODE_SUBSCRIBE) {
     use_polling = false;
     mode_name = "subscription";
@@ -550,7 +463,7 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
     mqtt_bridge_polling_init(
       &this->mqtt_bridge_polling_,
       &this->timer_group_,
-      &this->erd_client_.interface,
+      this->active_erd_client_,
       &this->mqtt_client_adapter_.interface,
       this->polling_interval_ms_,
       this->polling_only_publish_on_change_);
@@ -558,7 +471,7 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
     mqtt_bridge_init(
       &this->mqtt_bridge_,
       &this->timer_group_,
-      &this->erd_client_.interface,
+      this->active_erd_client_,
       &this->mqtt_client_adapter_.interface,
       this->host_address_);
   }
@@ -606,7 +519,7 @@ std::string GeappliancesBridge::sanitize_for_mqtt_topic_(const std::string& inpu
 }
 
 bool GeappliancesBridge::try_read_erd_with_retry_(tiny_erd_t erd, const char* erd_name) {
-  if (tiny_gea3_erd_client_read(&this->erd_client_.interface, &this->pending_request_id_, 
+  if (tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
                                  this->host_address_, erd)) {
     ESP_LOGD(TAG, "Reading %s ERD 0x%04X", erd_name, erd);
     this->device_id_state_ = DEVICE_ID_STATE_IDLE; // Wait for response
@@ -648,7 +561,7 @@ void GeappliancesBridge::check_subscription_activity_() {
     mqtt_bridge_polling_init(
       &this->mqtt_bridge_polling_,
       &this->timer_group_,
-      &this->erd_client_.interface,
+      this->active_erd_client_,
       &this->mqtt_client_adapter_.interface,
       this->polling_interval_ms_,
       this->polling_only_publish_on_change_);
@@ -679,23 +592,15 @@ void GeappliancesBridge::dump_config() {
   }
   ESP_LOGCONFIG(TAG, "  Client Address: 0x%02X", this->client_address_);
   ESP_LOGCONFIG(TAG, "  Host Address: 0x%02X", this->host_address_);
-  ESP_LOGCONFIG(TAG, "  GEA3 UART Baud Rate: %lu", baud);
-  ESP_LOGCONFIG(TAG, "  GEA3 Preferred Address: 0x%02X", this->gea3_address_preference_);
+  if (this->uart_ != nullptr) {
+    ESP_LOGCONFIG(TAG, "  GEA3 UART: configured (baud %lu)", baud);
+  }
   if (this->gea2_uart_ != nullptr) {
     ESP_LOGCONFIG(TAG, "  GEA2 UART: configured");
-    ESP_LOGCONFIG(TAG, "  GEA2 Preferred Address: 0x%02X", this->gea2_address_preference_);
   }
-
-  // Display GEA protocol mode
-  const char* gea_mode_str = "Unknown";
-  if (this->gea_mode_ == GEA_MODE_AUTO) {
-    gea_mode_str = "Auto (GEA3 first, then GEA2)";
-  } else if (this->gea_mode_ == GEA_MODE_GEA3) {
-    gea_mode_str = "GEA3 only";
-  } else if (this->gea_mode_ == GEA_MODE_GEA2) {
-    gea_mode_str = "GEA2 only";
+  if (this->autodiscovery_state_ == AUTODISCOVERY_COMPLETE) {
+    ESP_LOGCONFIG(TAG, "  Active Protocol: %s", this->use_gea2_for_device_id_ ? "GEA2" : "GEA3");
   }
-  ESP_LOGCONFIG(TAG, "  GEA Mode: %s", gea_mode_str);
 
   // Display bridge mode
   const char* mode_str = "Unknown";
