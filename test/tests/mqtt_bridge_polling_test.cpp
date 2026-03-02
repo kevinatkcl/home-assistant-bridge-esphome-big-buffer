@@ -22,10 +22,10 @@ TEST_GROUP(mqtt_bridge_polling)
     polling_interval = 1000,
 
     // Number of timer expirations needed to skip discovery states.
-    // common_erds in mqtt_bridge_polling.cpp has 30 entries; after the first
-    // read_completed, 29 more timer expirations are needed to exit that state.
-    // energyErdCount and waterHeaterErdCount come from erd_lists.h.
-    common_erds_remaining = 29,
+    // After the first read_completed, commonErdCount-1 more timer expirations are
+    // needed to exit state_add_common_erds. energyErdCount and waterHeaterErdCount
+    // come from erd_lists.h.
+    common_erds_remaining = commonErdCount - 1,
     discovery_timer_expirations = common_erds_remaining + energyErdCount + waterHeaterErdCount,
 
     polled_erd = 0x0001

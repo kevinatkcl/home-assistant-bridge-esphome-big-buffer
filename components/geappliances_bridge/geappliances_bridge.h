@@ -68,6 +68,8 @@ class GeappliancesBridge : public Component {
   void check_subscription_activity_();
   void run_autodiscovery_();
   void start_device_id_generation_();
+  void process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size);
+  void handle_device_id_read_failure_(tiny_erd_t erd);
   std::string bytes_to_string_(const uint8_t* data, size_t size);
   std::string sanitize_for_mqtt_topic_(const std::string& input);
   bool try_read_erd_with_retry_(tiny_erd_t erd, const char* erd_name);

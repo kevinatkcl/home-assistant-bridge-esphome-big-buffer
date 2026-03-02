@@ -17,12 +17,10 @@ static const tiny_gea2_erd_client_configuration_t gea2_client_configuration = {
   .request_retries = 3
 };
 
-// ERD identifiers for device ID generation
+// ERD identifiers for device ID generation and discovery broadcasts
 static constexpr tiny_erd_t ERD_MODEL_NUMBER = 0x0001;
 static constexpr tiny_erd_t ERD_SERIAL_NUMBER = 0x0002;
 static constexpr tiny_erd_t ERD_APPLIANCE_TYPE = 0x0008;
-// ERD used for discovery broadcasts (appliance type)
-static constexpr tiny_erd_t ERD_DISCOVERY = 0x0008;
 static constexpr uint8_t GEA_BROADCAST_ADDRESS = 0xFF;
 static constexpr uint8_t GEA2_INTERFACE_RETRIES = 3;
 
@@ -260,9 +258,9 @@ void GeappliancesBridge::run_autodiscovery_() {
       this->gea3_first_address_set_ = false;
       tiny_gea3_erd_client_request_id_t req_id;
       if (tiny_gea3_erd_client_read(&this->erd_client_.interface, &req_id,
-                                     GEA_BROADCAST_ADDRESS, ERD_DISCOVERY)) {
+                                     GEA_BROADCAST_ADDRESS, ERD_APPLIANCE_TYPE)) {
         ESP_LOGI(TAG, "Sent GEA3 broadcast (ERD 0x%04X) to address 0x%02X",
-                 ERD_DISCOVERY, GEA_BROADCAST_ADDRESS);
+                 ERD_APPLIANCE_TYPE, GEA_BROADCAST_ADDRESS);
         this->autodiscovery_timer_start_ = millis();
         this->autodiscovery_state_ = AUTODISCOVERY_GEA3_BROADCAST_WAITING;
       }
@@ -306,9 +304,9 @@ void GeappliancesBridge::run_autodiscovery_() {
         this->gea2_first_address_set_ = false;
         tiny_gea2_erd_client_request_id_t req_id;
         if (tiny_gea2_erd_client_read(&this->gea2_erd_client_.interface, &req_id,
-                                       GEA_BROADCAST_ADDRESS, ERD_DISCOVERY)) {
+                                       GEA_BROADCAST_ADDRESS, ERD_APPLIANCE_TYPE)) {
           ESP_LOGI(TAG, "Sent GEA2 broadcast (ERD 0x%04X) to address 0x%02X",
-                   ERD_DISCOVERY, GEA_BROADCAST_ADDRESS);
+                   ERD_APPLIANCE_TYPE, GEA_BROADCAST_ADDRESS);
           this->autodiscovery_timer_start_ = millis();
           this->autodiscovery_state_ = AUTODISCOVERY_GEA2_BROADCAST_WAITING;
         }
@@ -406,7 +404,7 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
   // Handle autodiscovery responses (GEA3 broadcast window)
   if (this->autodiscovery_state_ == AUTODISCOVERY_GEA3_BROADCAST_WAITING) {
     if (args->type == tiny_gea3_erd_client_activity_type_read_completed &&
-        args->read_completed.erd == ERD_DISCOVERY) {
+        args->read_completed.erd == ERD_APPLIANCE_TYPE) {
       uint8_t app_type = reinterpret_cast<const uint8_t*>(args->read_completed.data)[0];
       std::string app_type_name = appliance_type_to_string(app_type);
       ESP_LOGD(TAG, "GEA3 board discovered: address=0x%02X appliance_type=%u (%s)",
@@ -429,58 +427,50 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
   // Only process read responses for device ID ERDs before MQTT bridge is initialized
   if (!this->mqtt_bridge_initialized_ && args->address == this->host_address_) {
     if (args->type == tiny_gea3_erd_client_activity_type_read_completed) {
-      if (args->read_completed.erd == ERD_APPLIANCE_TYPE) {
-        // Appliance type is a single byte enum
-        this->appliance_type_ = reinterpret_cast<const uint8_t*>(args->read_completed.data)[0];
-        ESP_LOGI(TAG, "Read appliance type: %u", this->appliance_type_);
-        this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
-      } else if (args->read_completed.erd == ERD_MODEL_NUMBER) {
-        // Model number is a 32-byte string
-        this->model_number_ = this->bytes_to_string_(
-          reinterpret_cast<const uint8_t*>(args->read_completed.data), 
-          args->read_completed.data_size);
-        ESP_LOGI(TAG, "Read model number: %s", this->model_number_.c_str());
-        this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
-      } else if (args->read_completed.erd == ERD_SERIAL_NUMBER) {
-        // Serial number is a 32-byte string
-        this->serial_number_ = this->bytes_to_string_(
-          reinterpret_cast<const uint8_t*>(args->read_completed.data), 
-          args->read_completed.data_size);
-        ESP_LOGI(TAG, "Read serial number: %s", this->serial_number_.c_str());
-        
-        // Sanitize strings for MQTT topic use
-        std::string sanitized_model = this->sanitize_for_mqtt_topic_(this->model_number_);
-        std::string sanitized_serial = this->sanitize_for_mqtt_topic_(this->serial_number_);
-        
-        // Convert appliance type to string name using generated function
-        std::string appliance_type_name = appliance_type_to_string(this->appliance_type_);
-        
-        // Generate device ID with appliance type name
-        this->generated_device_id_ = appliance_type_name + "_" + 
-                                     sanitized_model + "_" + 
-                                     sanitized_serial;
-        this->final_device_id_ = this->generated_device_id_;
-        
-        ESP_LOGI(TAG, "Generated device ID: %s", this->final_device_id_.c_str());
-        
-        this->device_id_state_ = DEVICE_ID_STATE_COMPLETE;
-        // Don't initialize MQTT bridge yet - wait for MQTT connection
-        this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
-      }
+      this->process_device_id_erd_response_(
+        args->read_completed.erd,
+        reinterpret_cast<const uint8_t*>(args->read_completed.data),
+        args->read_completed.data_size);
     } else if (args->type == tiny_gea3_erd_client_activity_type_read_failed) {
-      // Log the failure and retry by transitioning back to the appropriate reading state
-      ESP_LOGW(TAG, "Failed to read ERD 0x%04X for device ID generation (reason: %u), will retry", 
+      ESP_LOGW(TAG, "Failed to read ERD 0x%04X for device ID generation (reason: %u), will retry",
                args->read_failed.erd, args->read_failed.reason);
-      
-      // Transition back to the reading state to retry
-      if (args->read_failed.erd == ERD_APPLIANCE_TYPE) {
-        this->device_id_state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
-      } else if (args->read_failed.erd == ERD_MODEL_NUMBER) {
-        this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
-      } else if (args->read_failed.erd == ERD_SERIAL_NUMBER) {
-        this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
-      }
+      this->handle_device_id_read_failure_(args->read_failed.erd);
     }
+  }
+}
+
+void GeappliancesBridge::process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size) {
+  if (erd == ERD_APPLIANCE_TYPE) {
+    this->appliance_type_ = data[0];
+    ESP_LOGI(TAG, "Read appliance type: %u", this->appliance_type_);
+    this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
+  } else if (erd == ERD_MODEL_NUMBER) {
+    this->model_number_ = this->bytes_to_string_(data, size);
+    ESP_LOGI(TAG, "Read model number: %s", this->model_number_.c_str());
+    this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
+  } else if (erd == ERD_SERIAL_NUMBER) {
+    this->serial_number_ = this->bytes_to_string_(data, size);
+    ESP_LOGI(TAG, "Read serial number: %s", this->serial_number_.c_str());
+
+    std::string appliance_type_name = appliance_type_to_string(this->appliance_type_);
+    this->generated_device_id_ = appliance_type_name + "_" +
+                                 this->sanitize_for_mqtt_topic_(this->model_number_) + "_" +
+                                 this->sanitize_for_mqtt_topic_(this->serial_number_);
+    this->final_device_id_ = this->generated_device_id_;
+    ESP_LOGI(TAG, "Generated device ID: %s", this->final_device_id_.c_str());
+
+    this->device_id_state_ = DEVICE_ID_STATE_COMPLETE;
+    this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
+  }
+}
+
+void GeappliancesBridge::handle_device_id_read_failure_(tiny_erd_t erd) {
+  if (erd == ERD_APPLIANCE_TYPE) {
+    this->device_id_state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
+  } else if (erd == ERD_MODEL_NUMBER) {
+    this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
+  } else if (erd == ERD_SERIAL_NUMBER) {
+    this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
   }
 }
 
@@ -488,7 +478,7 @@ void GeappliancesBridge::handle_gea2_erd_client_activity_(const tiny_gea2_erd_cl
   // Handle autodiscovery responses (GEA2 broadcast window)
   if (this->autodiscovery_state_ == AUTODISCOVERY_GEA2_BROADCAST_WAITING) {
     if (args->type == tiny_gea2_erd_client_activity_type_read_completed &&
-        args->read_completed.erd == ERD_DISCOVERY) {
+        args->read_completed.erd == ERD_APPLIANCE_TYPE) {
       uint8_t app_type = reinterpret_cast<const uint8_t*>(args->read_completed.data)[0];
       std::string app_type_name = appliance_type_to_string(app_type);
       ESP_LOGD(TAG, "GEA2 board discovered: address=0x%02X appliance_type=%u (%s)",
@@ -512,45 +502,14 @@ void GeappliancesBridge::handle_gea2_erd_client_activity_(const tiny_gea2_erd_cl
   if (this->use_gea2_for_device_id_ && !this->mqtt_bridge_initialized_ &&
       args->address == this->host_address_) {
     if (args->type == tiny_gea2_erd_client_activity_type_read_completed) {
-      if (args->read_completed.erd == ERD_APPLIANCE_TYPE) {
-        this->appliance_type_ = reinterpret_cast<const uint8_t*>(args->read_completed.data)[0];
-        ESP_LOGI(TAG, "Read appliance type via GEA2: %u", this->appliance_type_);
-        this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
-      } else if (args->read_completed.erd == ERD_MODEL_NUMBER) {
-        this->model_number_ = this->bytes_to_string_(
-          reinterpret_cast<const uint8_t*>(args->read_completed.data),
-          args->read_completed.data_size);
-        ESP_LOGI(TAG, "Read model number via GEA2: %s", this->model_number_.c_str());
-        this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
-      } else if (args->read_completed.erd == ERD_SERIAL_NUMBER) {
-        this->serial_number_ = this->bytes_to_string_(
-          reinterpret_cast<const uint8_t*>(args->read_completed.data),
-          args->read_completed.data_size);
-        ESP_LOGI(TAG, "Read serial number via GEA2: %s", this->serial_number_.c_str());
-
-        std::string sanitized_model = this->sanitize_for_mqtt_topic_(this->model_number_);
-        std::string sanitized_serial = this->sanitize_for_mqtt_topic_(this->serial_number_);
-        std::string appliance_type_name = appliance_type_to_string(this->appliance_type_);
-
-        this->generated_device_id_ = appliance_type_name + "_" +
-                                     sanitized_model + "_" +
-                                     sanitized_serial;
-        this->final_device_id_ = this->generated_device_id_;
-        ESP_LOGI(TAG, "Generated device ID (via GEA2): %s", this->final_device_id_.c_str());
-
-        this->device_id_state_ = DEVICE_ID_STATE_COMPLETE;
-        this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
-      }
+      this->process_device_id_erd_response_(
+        args->read_completed.erd,
+        reinterpret_cast<const uint8_t*>(args->read_completed.data),
+        args->read_completed.data_size);
     } else if (args->type == tiny_gea2_erd_client_activity_type_read_failed) {
       ESP_LOGW(TAG, "Failed to read ERD 0x%04X via GEA2 (reason: %u), will retry",
                args->read_failed.erd, args->read_failed.reason);
-      if (args->read_failed.erd == ERD_APPLIANCE_TYPE) {
-        this->device_id_state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
-      } else if (args->read_failed.erd == ERD_MODEL_NUMBER) {
-        this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
-      } else if (args->read_failed.erd == ERD_SERIAL_NUMBER) {
-        this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
-      }
+      this->handle_device_id_read_failure_(args->read_failed.erd);
     }
   }
 }

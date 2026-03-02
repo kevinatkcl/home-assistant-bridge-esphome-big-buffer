@@ -7,7 +7,6 @@ library and generates a C header file with ERD lists organized by appliance type
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Set
@@ -204,17 +203,6 @@ const uint16_t maximumApplianceType = sizeof(applianceTypeToErdGroupTranslation)
     return header
 
 
-def read_common_erds_count(repo_root: Path) -> int:
-    """Read the number of entries in common_erds[] from mqtt_bridge_polling.cpp."""
-    polling_cpp = repo_root / 'components' / 'geappliances_bridge' / 'mqtt_bridge_polling.cpp'
-    content = polling_cpp.read_text()
-    match = re.search(r'common_erds\[\]\s*=\s*\{([^}]*)\}', content, re.DOTALL)
-    if not match:
-        print("Error: could not find common_erds[] in mqtt_bridge_polling.cpp", file=sys.stderr)
-        sys.exit(1)
-    # Strip line comments before counting hex values to avoid matching values in comments
-    body = re.sub(r'//[^\n]*', '', match.group(1))
-    return len(re.findall(r'0x[0-9a-fA-F]+', body))
 
 
 def main():
@@ -255,7 +243,7 @@ def main():
         'range', 'dishWasher', 'airConditioning', 'waterFilter'
     ]
     max_appliance_erds = max(len(categories[cat]) for cat in appliance_specific_categories)
-    common_erds_count = read_common_erds_count(repo_root)
+    common_erds_count = len(categories['common'])
     energy_erds_count = len(categories['energy'])
     polling_list_max_size = common_erds_count + energy_erds_count + max_appliance_erds
     print(f"\nPolling list size check:")

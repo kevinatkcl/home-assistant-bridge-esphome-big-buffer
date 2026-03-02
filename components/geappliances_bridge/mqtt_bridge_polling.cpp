@@ -36,14 +36,6 @@ enum {
   signal_write_requested
 };
 
-// Common ERDs that most appliances support
-static const tiny_erd_t common_erds[] = {
-  0x0001, 0x0002, 0x0004, 0x0005, 0x0006, 0x0007, 0x0008, 0x0009,
-  0x000a, 0x000e, 0x0030, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036,
-  0x0037, 0x0038, 0x0039, 0x003a, 0x003b, 0x003c, 0x003d, 0x003e,
-  0x003f, 0x004e, 0x004f, 0x0050, 0x0051, 0x0052
-};
-static const uint16_t common_erd_count = sizeof(common_erds) / sizeof(common_erds[0]);
 
 static void arm_timer(mqtt_bridge_polling_t* self, tiny_timer_ticks_t ticks)
 {
@@ -182,24 +174,15 @@ static void add_erd_to_polling_list(mqtt_bridge_polling_t* self, tiny_erd_t erd)
   }
 }
 
-static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
+static tiny_hsm_result_t handle_discovery_list_signals(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
 {
   mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
   auto args = reinterpret_cast<const tiny_gea3_erd_client_on_activity_args_t*>(data);
 
   switch(signal) {
-    case tiny_hsm_signal_entry:
-      self->appliance_erd_list = common_erds;
-      self->appliance_erd_list_count = common_erd_count;
-      self->erd_index = 0;
-      self->polling_list_count = 0;
-      tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
-      arm_timer(self, retry_delay);
-      break;
-
     case signal_timer_expired:
       if(!send_next_read_request(self)) {
-        tiny_hsm_transition(hsm, state_add_energy_erds);
+        tiny_hsm_transition(hsm, self->next_discovery_state);
       }
       break;
 
@@ -213,7 +196,7 @@ static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_
         args->read_completed.data_size);
 
       if(!send_next_read_request(self)) {
-        tiny_hsm_transition(hsm, state_add_energy_erds);
+        tiny_hsm_transition(hsm, self->next_discovery_state);
       }
       break;
 
@@ -222,95 +205,61 @@ static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_
   }
 
   return tiny_hsm_result_signal_consumed;
+}
+
+static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
+{
+  mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
+
+  if(signal == tiny_hsm_signal_entry) {
+    self->next_discovery_state = state_add_energy_erds;
+    self->appliance_erd_list = commonErds;
+    self->appliance_erd_list_count = commonErdCount;
+    self->erd_index = 0;
+    self->polling_list_count = 0;
+    tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
+    arm_timer(self, retry_delay);
+    return tiny_hsm_result_signal_consumed;
+  }
+
+  return handle_discovery_list_signals(hsm, signal, data);
 }
 
 static tiny_hsm_result_t state_add_energy_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
 {
   mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
-  auto args = reinterpret_cast<const tiny_gea3_erd_client_on_activity_args_t*>(data);
 
-  switch(signal) {
-    case tiny_hsm_signal_entry:
-      self->appliance_erd_list = energyErds;
-      self->appliance_erd_list_count = energyErdCount;
-      self->erd_index = 0;
-
-      tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
-      arm_timer(self, retry_delay);
-      break;
-
-    case signal_timer_expired:
-      if(!send_next_read_request(self)) {
-        tiny_hsm_transition(hsm, state_add_appliance_erds);
-      }
-      break;
-
-    case signal_read_completed:
-      disarm_timer(self);
-      add_erd_to_polling_list(self, args->read_completed.erd);
-      mqtt_client_update_erd(
-        self->mqtt_client,
-        args->read_completed.erd,
-        args->read_completed.data,
-        args->read_completed.data_size);
-
-      if(!send_next_read_request(self)) {
-        tiny_hsm_transition(hsm, state_add_appliance_erds);
-      }
-      break;
-
-    default:
-      return tiny_hsm_result_signal_deferred;
+  if(signal == tiny_hsm_signal_entry) {
+    self->next_discovery_state = state_add_appliance_erds;
+    self->appliance_erd_list = energyErds;
+    self->appliance_erd_list_count = energyErdCount;
+    self->erd_index = 0;
+    tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
+    arm_timer(self, retry_delay);
+    return tiny_hsm_result_signal_consumed;
   }
 
-  return tiny_hsm_result_signal_consumed;
+  return handle_discovery_list_signals(hsm, signal, data);
 }
 
 static tiny_hsm_result_t state_add_appliance_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
 {
   mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
-  auto args = reinterpret_cast<const tiny_gea3_erd_client_on_activity_args_t*>(data);
 
-  switch(signal) {
-    case tiny_hsm_signal_entry:
-      // Validate appliance type and select appropriate ERD list
-      if (self->appliance_type >= maximumApplianceType) {
-        self->appliance_type = 0;  // Default to first entry if out of range
-      }
-      
-      self->appliance_erd_list = applianceTypeToErdGroupTranslation[self->appliance_type].erdList;
-      self->appliance_erd_list_count = applianceTypeToErdGroupTranslation[self->appliance_type].erdCount;
-      self->erd_index = 0;
-
-      tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
-      arm_timer(self, retry_delay);
-      break;
-
-    case signal_timer_expired:
-      if(!send_next_read_request(self)) {
-        tiny_hsm_transition(hsm, state_polling);
-      }
-      break;
-
-    case signal_read_completed:
-      disarm_timer(self);
-      add_erd_to_polling_list(self, args->read_completed.erd);
-      mqtt_client_update_erd(
-        self->mqtt_client,
-        args->read_completed.erd,
-        args->read_completed.data,
-        args->read_completed.data_size);
-
-      if(!send_next_read_request(self)) {
-        tiny_hsm_transition(hsm, state_polling);
-      }
-      break;
-
-    default:
-      return tiny_hsm_result_signal_deferred;
+  if(signal == tiny_hsm_signal_entry) {
+    if(self->appliance_type >= maximumApplianceType) {
+      self->appliance_type = 0;
+    }
+    self->next_discovery_state = state_polling;
+    self->appliance_erd_list = applianceTypeToErdGroupTranslation[self->appliance_type].erdList;
+    self->appliance_erd_list_count = applianceTypeToErdGroupTranslation[self->appliance_type].erdCount;
+    self->erd_index = 0;
+    tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
+    arm_timer(self, retry_delay);
+    return tiny_hsm_result_signal_consumed;
   }
 
-  return tiny_hsm_result_signal_consumed;
+  return handle_discovery_list_signals(hsm, signal, data);
 }
 
 static void send_next_poll_read_request(mqtt_bridge_polling_t* self)
