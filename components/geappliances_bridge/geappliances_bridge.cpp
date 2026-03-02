@@ -441,6 +441,7 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
 
 void GeappliancesBridge::process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size) {
   if (erd == ERD_APPLIANCE_TYPE) {
+    if (size < 1) return;
     this->appliance_type_ = data[0];
     ESP_LOGI(TAG, "Read appliance type: %u", this->appliance_type_);
     this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
