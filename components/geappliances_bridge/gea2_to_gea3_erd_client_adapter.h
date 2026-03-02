@@ -13,10 +13,18 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "i_tiny_gea2_erd_client.h"
 #include "i_tiny_gea3_erd_client.h"
 #include "tiny_event.h"
 #include "tiny_event_subscription.h"
+
+#ifdef __cplusplus
+}
+#endif
 
 typedef struct {
   i_tiny_gea3_erd_client_t interface;
