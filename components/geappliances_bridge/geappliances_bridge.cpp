@@ -194,8 +194,12 @@ void GeappliancesBridge::loop() {
   // Run autodiscovery state machine
   this->run_autodiscovery_();
 
-  // Initialize MQTT bridge when device ID is ready and MQTT is connected
+  // Initialize MQTT bridge only after autodiscovery completes, device ID is ready,
+  // and MQTT is connected. Autodiscovery must finish first so active_erd_client_
+  // and host_address_ are set to the correct appliance — without this guard the
+  // bridge can start polling/subscribing before the appliance is found.
   if (this->bridge_init_state_ == BRIDGE_INIT_STATE_WAITING_FOR_MQTT && 
+      this->autodiscovery_state_ == AUTODISCOVERY_COMPLETE &&
       mqtt_client != nullptr && mqtt_client->is_connected()) {
     ESP_LOGI(TAG, "Device ID ready and MQTT connected, initializing MQTT bridge");
     this->initialize_mqtt_bridge_();
