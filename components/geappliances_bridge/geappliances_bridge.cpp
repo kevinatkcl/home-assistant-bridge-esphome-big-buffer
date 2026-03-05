@@ -416,11 +416,31 @@ void GeappliancesBridge::process_device_id_erd_response_(tiny_erd_t erd, const u
     if (size < 1) return;
     this->appliance_type_ = data[0];
     ESP_LOGI(TAG, "Read appliance type: %u", this->appliance_type_);
-    this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
+    // Queue the model-number read immediately, while still inside the GEA2
+    // tight-loop callback chain.  This mirrors what the polling bridge does in
+    // state_add_common_erds and ensures the request is sent within the same
+    // 200 ms tight-loop window so the large (32-byte) response can be received
+    // before the window expires.  Deferring to the next loop() call crosses the
+    // ~50 ms ESPHome overhead gap which can cause timing issues for large ERDs.
+    if (this->active_erd_client_ != nullptr &&
+        tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
+                                   this->host_address_, ERD_MODEL_NUMBER)) {
+      this->device_id_state_ = DEVICE_ID_STATE_IDLE;  // waiting for model-number response
+    } else {
+      // Fallback: loop() will retry on the next call
+      this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
+    }
   } else if (erd == ERD_MODEL_NUMBER) {
     this->model_number_ = this->bytes_to_string_(data, size);
     ESP_LOGI(TAG, "Read model number: %s", this->model_number_.c_str());
-    this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
+    // Queue the serial-number read immediately (same reasoning as above).
+    if (this->active_erd_client_ != nullptr &&
+        tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
+                                   this->host_address_, ERD_SERIAL_NUMBER)) {
+      this->device_id_state_ = DEVICE_ID_STATE_IDLE;  // waiting for serial-number response
+    } else {
+      this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
+    }
   } else if (erd == ERD_SERIAL_NUMBER) {
     this->serial_number_ = this->bytes_to_string_(data, size);
     ESP_LOGI(TAG, "Read serial number: %s", this->serial_number_.c_str());
