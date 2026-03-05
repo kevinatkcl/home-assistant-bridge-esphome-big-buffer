@@ -13,7 +13,6 @@ extern "C" {
 #include "tiny_gea2_erd_client.h"
 #include "tiny_gea2_interface.h"
 #include "tiny_timer.h"
-#include "i_tiny_time_source.h"
 }
 
 #include "gea2_erd_client_adapter.h"
@@ -113,10 +112,6 @@ class GeappliancesBridge : public Component {
   // (see PORTING_NOTES.md section 13 for detailed explanation)
   static constexpr uint32_t GEA2_LOOP_DURATION_MS = 200;
   bool gea2_protocol_active_{false}; // true once a GEA2 appliance is discovered
-  // gea2_tick_count_ is incremented in the timer callback and read from gea2_tick_ticks().
-  // Both calls happen within the same ESPHome loop() execution context (single-threaded),
-  // so no synchronization is required.
-  static tiny_time_source_ticks_t gea2_tick_count_; // incremented once per msec for GEA2
   
   DeviceIdState device_id_state_{DEVICE_ID_STATE_IDLE};
   BridgeInitState bridge_init_state_{BRIDGE_INIT_STATE_WAITING_FOR_DEVICE_ID};

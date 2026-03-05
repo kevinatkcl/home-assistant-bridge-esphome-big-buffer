@@ -18,17 +18,17 @@ static const tiny_gea2_erd_client_configuration_t gea2_client_configuration = {
 };
 
 // Tick-counter time source for the GEA2 interface's internal timer group.
-// Defined here as a static so the static class member declaration in the header
-// has its definition in exactly one translation unit.
 // The counter is incremented once per real millisecond inside the tight loop so
 // that tiny_gea2_interface's internal timers advance by at most 1 ms per event
 // regardless of the ~50 ms ESPHome framework gap between loop() calls
 // (see PORTING_NOTES.md §13 for the full explanation).
-tiny_time_source_ticks_t GeappliancesBridge::gea2_tick_count_ = 0;
+// Kept as a file-scope static so the timer callback lambda and the tick function
+// below can both access it without exposing it as a class member.
+static tiny_time_source_ticks_t s_gea2_tick_count = 0;
 
 static tiny_time_source_ticks_t gea2_tick_ticks(i_tiny_time_source_t *)
 {
-  return GeappliancesBridge::gea2_tick_count_;
+  return s_gea2_tick_count;
 }
 static const i_tiny_time_source_api_t kGea2TickApi = { gea2_tick_ticks };
 static i_tiny_time_source_t g_gea2_tick_source = { &kGea2TickApi };
@@ -92,7 +92,7 @@ void GeappliancesBridge::setup() {
     tiny_timer_start_periodic(
       &this->timer_group_, &this->gea2_msec_timer_, 1, &this->gea2_msec_interrupt_,
       +[](void* context) {
-        GeappliancesBridge::gea2_tick_count_++;
+        s_gea2_tick_count++;
         tiny_event_publish(reinterpret_cast<tiny_event_t*>(context), nullptr);
       });
 
