@@ -12,15 +12,23 @@ static const tiny_gea3_erd_client_configuration_t client_configuration = {
   .request_retries = 10
 };
 
-// GEA2 uses a longer per-attempt timeout than GEA3. Some appliances (e.g.
-// refrigerators) take >250 ms to respond to ERD 0x0001 on their first read
-// (the model number may be fetched from slower storage), while ERD 0x0002
-// and others respond quickly.  A 1-second window covers the slow first read
-// without requiring hundreds of bridge-level retries; total maximum wait
-// (request_timeout * request_retries) is 10 s, matching the GEA3 budget.
+// GEA2 ERD client: one attempt per bridge-level retry cycle.
+// request_retries = 0 means the ERD client sends exactly one copy of each
+// request and fails cleanly after request_timeout ms, rather than queueing
+// up to 11 copies in the GEA2 interface's send queue.  Multiple queued copies
+// cause half-duplex collisions: the GEA2 interface starts sending a retry at
+// the same time the appliance's response to the previous request arrives on
+// the bus; the response bytes are treated as unexpected reflections in
+// state_send, handle_send_failure() fires, and state_collision_cooldown
+// silently discards the response — so no ACK is ever sent.  With retries=0,
+// only one packet is ever in-flight at a time, eliminating the collision.
+// Bridge-level retries (try_read_erd_with_retry_) are spaced ~500 ms apart
+// (200 ms tight loop + 50 ms ESPHome gap + processing), giving appliances
+// with slow first-access NVRAM lookups time to cache the value before the
+// next attempt.
 static const tiny_gea2_erd_client_configuration_t gea2_client_configuration = {
-  .request_timeout = 1000,
-  .request_retries = 10
+  .request_timeout = 250,
+  .request_retries = 0
 };
 
 // Tick-counter time source for the GEA2 interface's internal timer group.
