@@ -12,8 +12,14 @@ static const tiny_gea3_erd_client_configuration_t client_configuration = {
   .request_retries = 10
 };
 
+// GEA2 uses a longer per-attempt timeout than GEA3. Some appliances (e.g.
+// refrigerators) take >250 ms to respond to ERD 0x0001 on their first read
+// (the model number may be fetched from slower storage), while ERD 0x0002
+// and others respond quickly.  A 1-second window covers the slow first read
+// without requiring hundreds of bridge-level retries; total maximum wait
+// (request_timeout * request_retries) is 10 s, matching the GEA3 budget.
 static const tiny_gea2_erd_client_configuration_t gea2_client_configuration = {
-  .request_timeout = 250,
+  .request_timeout = 1000,
   .request_retries = 10
 };
 
