@@ -44,13 +44,13 @@ uart:
     tx_pin: GPIO21  # D6 on Xiao ESP32-C3
     rx_pin: GPIO20  # D7 on Xiao ESP32-C3
     baud_rate: 230400
-  # GEA2 UART (older appliances - uncomment and update pins if needed)
-  # - id: gea2_uart
-  #   tx_pin: GPIOX
-  #   rx_pin: GPIOY
-  #   baud_rate: 19200
-  #   rx_full_threshold: 1  # required for reliable GEA2 large-ERD reads
-  #   rx_timeout: 1         # required for reliable GEA2 large-ERD reads
+
+  - id: gea2_uart
+    tx_pin: GPIO9  # D9 on Xiao ESP32-C3
+    rx_pin: GPIO10  # D10 on Xiao ESP32-C3
+    baud_rate: 19200
+    rx_full_threshold: 1
+    rx_timeout: 1
 
 # GE Appliances Bridge component
 geappliances_bridge:
