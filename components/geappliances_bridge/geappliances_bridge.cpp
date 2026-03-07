@@ -2,38 +2,6 @@
 #include "esphome/core/log.h"
 #include "esphome_time_source.h"
 
-// ESP32 IDF: configure the GEA2 UART for immediate byte delivery.
-// The GEA2 interface's inter-byte timeout is 6 ms (gea2_interbyte_timeout_msec
-// in tiny_gea2_interface.c).  At 19200 baud the ESP32 default rx_full_threshold
-// is ~19 bytes (≈10 ms worth of data), so the hardware buffers incoming bytes
-// and only delivers them to software in ~19-byte batches roughly 10 ms apart.
-// That 10 ms gap exceeds the 6 ms inter-byte timeout: the receive FSM fires
-// signal_interbyte_timeout mid-packet, aborts to state_idle_cooldown, and never
-// sends the ACK — exactly the oscilloscope-confirmed failure mode for 32-byte
-// ERD responses (e.g. 0x0001 model number, 0x0002 serial number).
-// Setting rx_full_threshold=1 causes an interrupt on every received byte, so
-// poll() sees each byte within ~0.1 ms of its arrival and the inter-byte timer
-// is reset continuously.  rx_timeout=1 (one byte-time ≈ 0.05 ms at 19200 baud)
-// further minimises latency after the end of a burst.
-#ifdef USE_ESP_IDF
-#include "driver/uart.h"
-#include "esphome/components/uart/uart_component_esp_idf.h"
-static void configure_uart_for_gea2(esphome::uart::UARTComponent* uart)
-{
-  // On ESP32 IDF, every UART component created by ESPHome is an IDFUARTComponent.
-  // The cast is safe: we are inside USE_ESP_IDF, and this function is only called
-  // when the user has declared a gea2_uart_id in their YAML (which always resolves
-  // to an IDFUARTComponent at code-gen time on this platform).
-  auto* idf_uart = static_cast<esphome::uart::IDFUARTComponent*>(uart);
-  uart_set_rx_full_threshold(idf_uart->get_uart_num(), 1);
-  uart_set_rx_timeout(idf_uart->get_uart_num(), 1);
-}
-#else
-// Non-ESP32-IDF platform: add rx_full_threshold: 1 and rx_timeout: 1 to the
-// GEA2 uart: block in your ESPHome YAML to obtain equivalent behaviour.
-static void configure_uart_for_gea2(esphome::uart::UARTComponent*) {}
-#endif
-
 namespace esphome {
 namespace geappliances_bridge {
 
@@ -129,9 +97,6 @@ void GeappliancesBridge::setup() {
   // Initialize GEA2 components if GEA2 UART is configured
   if (this->gea2_uart_ != nullptr) {
     esphome_uart_adapter_init(&this->gea2_uart_adapter_, &this->timer_group_, this->gea2_uart_);
-
-    // Configure ESP32 hardware UART for immediate byte delivery (see file-top comment).
-    configure_uart_for_gea2(this->gea2_uart_);
 
     // Initialize the periodic 1ms interrupt used to drive GEA2 internal timers.
     // The counter is incremented before the event is published so that

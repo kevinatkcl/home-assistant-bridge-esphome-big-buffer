@@ -33,10 +33,9 @@ uart:
 
 ### GEA2 (Older Appliances, 19200 baud)
 
-GEA2 appliances communicate at 19200 baud.  The component automatically
-configures the required UART settings on ESP32 IDF builds.  For other
-platforms (ESP32 Arduino, etc.) add `rx_full_threshold: 1` and
-`rx_timeout: 1` explicitly to your UART block:
+GEA2 appliances communicate at 19200 baud.  Add `rx_full_threshold: 1` and
+`rx_timeout: 1` to your GEA2 UART block — these settings are required on both
+ESP-IDF and Arduino frameworks for reliable GEA2 communication:
 
 ```yaml
 uart:
@@ -44,8 +43,8 @@ uart:
     tx_pin: GPIOX
     rx_pin: GPIOY
     baud_rate: 19200
-    rx_full_threshold: 1   # required on non-IDF platforms (auto-configured on ESP32 IDF)
-    rx_timeout: 1          # minimise idle-flush latency (auto-configured on ESP32 IDF)
+    rx_full_threshold: 1   # required: deliver each byte immediately
+    rx_timeout: 1          # required: minimise idle-flush latency
 ```
 
 > **Why these settings matter:** GEA2's inter-byte timeout is 6 ms.  At
