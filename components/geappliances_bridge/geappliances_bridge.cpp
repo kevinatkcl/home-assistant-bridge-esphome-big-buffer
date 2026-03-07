@@ -32,13 +32,17 @@ static const tiny_gea2_erd_client_configuration_t gea2_client_configuration = {
 };
 
 // Tick-counter time source for the GEA2 interface's internal timer group.
-// The counter is incremented once per real millisecond inside the tight loop so
-// that tiny_gea2_interface's internal timers advance by at most 1 ms per event
-// regardless of the ~50 ms ESPHome framework gap between loop() calls
+// The counter is incremented once per real millisecond inside the GEA2 tight
+// loop so that tiny_gea2_interface's internal timers advance by at most 1 ms
+// per event regardless of the ~50 ms ESPHome framework gap between loop() calls
 // (see PORTING_NOTES.md §13 for the full explanation).
-// Kept as a file-scope static so the timer callback lambda and the tick function
-// below can both access it without exposing it as a class member.
+// Kept as file-scope statics so the tight-loop code and the tick function
+// below can both access them without exposing them as class members.
 static tiny_time_source_ticks_t s_gea2_tick_count = 0;
+// Tracks the last millis() value at which the GEA2 msec interrupt was fired.
+// Initialized to 0 (sentinel: "not yet started"); set to millis() on the first
+// entry into the GEA2 tight loop so accumulated boot time is not replayed.
+static uint32_t s_gea2_last_ms = 0;
 
 static tiny_time_source_ticks_t gea2_tick_ticks(i_tiny_time_source_t *)
 {
@@ -98,17 +102,12 @@ void GeappliancesBridge::setup() {
   if (this->gea2_uart_ != nullptr) {
     esphome_uart_adapter_init(&this->gea2_uart_adapter_, &this->timer_group_, this->gea2_uart_);
 
-    // Initialize the periodic 1ms interrupt used to drive GEA2 internal timers.
-    // The counter is incremented before the event is published so that
-    // tiny_gea2_interface's msec_interrupt_callback sees delta == 1 rather than
-    // the accumulated wall-clock gap since the last ESPHome loop() call.
+    // Initialize the GEA2 msec-interrupt event that drives the GEA2 interface's
+    // internal timeout counters.  The event is published manually inside the
+    // GEA2 tight loop (see loop()) so it only fires when GEA2 is actually
+    // in use — keeping the shared timer_group_ free of a 1 ms periodic timer
+    // that would starve GEA3/polling-bridge timers when GEA3 is active.
     tiny_event_init(&this->gea2_msec_interrupt_);
-    tiny_timer_start_periodic(
-      &this->timer_group_, &this->gea2_msec_timer_, 1, &this->gea2_msec_interrupt_,
-      +[](void* context) {
-        s_gea2_tick_count++;
-        tiny_event_publish(reinterpret_cast<tiny_event_t*>(context), nullptr);
-      });
 
     tiny_gea2_interface_init(
       &this->gea2_interface_,
@@ -190,7 +189,23 @@ void GeappliancesBridge::loop() {
 
   if (need_gea2_loop) {
     uint32_t loop_start_ms = millis();
+    // Initialize s_gea2_last_ms on first entry so we don't replay accumulated
+    // boot time as thousands of spurious msec interrupts.
+    if (s_gea2_last_ms == 0) {
+      s_gea2_last_ms = loop_start_ms;
+    }
     while (millis() - loop_start_ms < GEA2_LOOP_DURATION_MS) {
+      // Fire the GEA2 msec interrupt once for each elapsed real millisecond.
+      // Doing this here (rather than via a timer_group_ periodic timer) ensures
+      // the 1 ms interrupt never fires in the GEA3 single-pass path, preventing
+      // starvation of the GEA3/polling-bridge timers in the shared timer_group_
+      // when both UARTs are configured but only GEA3 is active.
+      uint32_t now_ms = millis();
+      while (s_gea2_last_ms < now_ms) {
+        s_gea2_tick_count++;
+        tiny_event_publish(&this->gea2_msec_interrupt_, nullptr);
+        s_gea2_last_ms++;
+      }
       tiny_timer_group_run(&this->timer_group_);
       tiny_gea2_interface_run(&this->gea2_interface_);
     }

@@ -155,11 +155,11 @@ class GeappliancesBridge : public Component {
   tiny_gea2_erd_client_t gea2_erd_client_;
   uint8_t gea2_client_queue_buffer_[8096];
 
-  // Tick-counter time source for GEA2 interface's internal timer group.
-  // Incremented once per msec_timer_ fire to prevent spurious inter-byte
-  // timeout fires after the ~50ms ESPHome loop() gap (see PORTING_NOTES.md §13).
+  // Event fired once per millisecond to drive GEA2 interface's internal timers.
+  // Published manually inside the GEA2 tight loop (not via a timer_group_ periodic
+  // timer) so the 1 ms interrupt never fires in the GEA3 single-pass path and
+  // cannot starve the GEA3/polling-bridge timers in the shared timer_group_.
   tiny_event_t gea2_msec_interrupt_;
-  tiny_timer_t gea2_msec_timer_;
 
   // Adapter that wraps the GEA2 ERD client as a GEA3 ERD client interface
   gea2_erd_client_adapter_t gea2_erd_client_adapter_;
