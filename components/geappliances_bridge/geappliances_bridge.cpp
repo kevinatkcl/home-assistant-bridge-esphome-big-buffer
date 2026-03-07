@@ -240,10 +240,10 @@ void GeappliancesBridge::run_autodiscovery_() {
       // Handled in on_mqtt_connected_()
       break;
 
-    case AUTODISCOVERY_WAITING_10S:
+    case AUTODISCOVERY_WAITING_5S:
       // Note: Unsigned subtraction wraps correctly even when millis() overflows after ~49 days
       if (millis() - this->autodiscovery_timer_start_ >= STARTUP_DELAY_MS) {
-        ESP_LOGI(TAG, "10s delay complete, starting autodiscovery");
+        ESP_LOGI(TAG, "5s delay complete, starting autodiscovery");
         // Try GEA3 first if configured, otherwise GEA2
         if (this->uart_ != nullptr) {
           this->autodiscovery_state_ = AUTODISCOVERY_GEA3_BROADCAST_PENDING;
@@ -358,11 +358,11 @@ void GeappliancesBridge::on_mqtt_connected_() {
   // and subscriptions are fresh after reconnection.
   this->notify_mqtt_disconnected_();
 
-  // Start the 10s autodiscovery delay if not already started
+  // Start the 5s autodiscovery delay if not already started
   if (this->autodiscovery_state_ == AUTODISCOVERY_WAITING_FOR_MQTT) {
     ESP_LOGI(TAG, "MQTT connected, waiting %u seconds before autodiscovery", STARTUP_DELAY_MS / 1000);
     this->autodiscovery_timer_start_ = millis();
-    this->autodiscovery_state_ = AUTODISCOVERY_WAITING_10S;
+    this->autodiscovery_state_ = AUTODISCOVERY_WAITING_5S;
   }
 }
 

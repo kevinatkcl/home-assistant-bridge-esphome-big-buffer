@@ -74,7 +74,7 @@ The `mode` parameter is **optional**.
 
 ### Autodiscovery
 
-After connecting to the MQTT server, the component waits 20 seconds and then performs a protocol autodiscovery to find the appliance on the bus before generating a device ID.
+After connecting to the MQTT server, the component waits 5 seconds and then performs a protocol autodiscovery to find the appliance on the bus before generating a device ID.
 
 - If `gea3_uart_id` is configured, a GEA3 broadcast is sent; if a board responds its address is used.
 - Discovery repeats until at least one board is found.

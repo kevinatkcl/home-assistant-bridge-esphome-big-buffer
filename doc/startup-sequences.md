@@ -8,8 +8,8 @@ The bridge follows a unified startup sequence regardless of configuration. All c
 
 ## Timing Constants
 
-- **STARTUP_DELAY_MS**: 10 seconds - Wait time after MQTT connects before starting autodiscovery
-- **AUTODISCOVERY_BROADCAST_WINDOW_MS**: 10 seconds - Time window to collect responses from broadcast
+- **STARTUP_DELAY_MS**: 5 seconds - Wait time after MQTT connects before starting autodiscovery
+- **AUTODISCOVERY_BROADCAST_WINDOW_MS**: 5 seconds - Time window to collect responses from broadcast
 - **GEA2_LOOP_DURATION_MS**: 200 milliseconds - Tight loop duration for GEA2 operations
 - **SUBSCRIPTION_TIMEOUT_MS**: 30 seconds - Fallback timeout for AUTO mode
 
@@ -36,14 +36,14 @@ The bridge follows a unified startup sequence regardless of configuration. All c
 │                                                                      │
 │ • loop() polls for MQTT broker connection                           │
 │ • When connected: on_mqtt_connected_() triggered                    │
-│ • Set autodiscovery_state = WAITING_10S                             │
-│ • Start 10-second timer                                             │
+│ • Set autodiscovery_state = WAITING_5S                              │
+│ • Start 5-second timer                                              │
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Phase 3: Autodiscovery (Protocol & Address Detection)               │
 │                                                                      │
-│ After 10s delay, send broadcast to detect appliance:                │
+│ After 5s delay, send broadcast to detect appliance:                 │
 └─────────────────────────────────────────────────────────────────────┘
                               ↓
                     ┌─────────────────┐
@@ -64,7 +64,7 @@ The bridge follows a unified startup sequence regardless of configuration. All c
   └──────────┘         └──────────┘          └──────────┘
         ↓                     ↓                     ↓
   ┌──────────┐         ┌──────────┐          ┌──────────┐
-  │Wait 10s  │         │Wait 10s  │          │Wait 10s  │
+      │Wait 5s   │         │Wait 5s   │          │Wait 5s   │
   │for reply │         │for reply │          │for reply │
   └──────────┘         └──────────┘          └──────────┘
         ↓                     ↓                     ↓
@@ -77,7 +77,7 @@ The bridge follows a unified startup sequence regardless of configuration. All c
          │             └──────────┘                  │
          │                     ↓                     │
          │              ┌──────────┐                 │
-         │              │Wait 10s  │                 │
+         │              │Wait 5s   │                 │
          │              │for reply │                 │
          │              └──────────┘                 │
          │                     ↓                     │
@@ -215,19 +215,19 @@ The bridge behavior adapts based on YAML configuration:
 
 | Configuration | Protocol Detection | Device ID | Total Time |
 |---------------|-------------------|-----------|------------|
-| GEA3 + Auto ID | ~10s (GEA3 found) | ~5-15s (3 ERD reads) | ~15-25s |
-| GEA2 + Auto ID | ~10s (GEA2 found) | ~5-15s (3 ERD reads) | ~15-25s |
-| GEA3 + Fixed ID | ~10s (GEA3 found) | 0s (configured) | ~10-20s |
-| GEA2 + Fixed ID | ~10s (GEA2 found) | 0s (configured) | ~10-20s |
-| Both + Auto ID (GEA3) | ~10s (GEA3 found) | ~5-15s | ~15-25s |
-| Both + Auto ID (GEA2) | ~20s (GEA3 fails, GEA2 found) | ~5-15s | ~25-35s |
-| Both + Fixed ID (GEA3) | ~10s (GEA3 found) | 0s | ~10-20s |
-| Both + Fixed ID (GEA2) | ~20s (GEA3 fails, GEA2 found) | 0s | ~20-30s |
+| GEA3 + Auto ID | ~5s (GEA3 found) | ~5-15s (3 ERD reads) | ~15-25s |
+| GEA2 + Auto ID | ~5s (GEA2 found) | ~5-15s (3 ERD reads) | ~15-25s |
+| GEA3 + Fixed ID | ~5s (GEA3 found) | 0s (configured) | ~10s |
+| GEA2 + Fixed ID | ~5s (GEA2 found) | 0s (configured) | ~10s |
+| Both + Auto ID (GEA3) | ~5s (GEA3 found) | ~5-15s | ~15-25s |
+| Both + Auto ID (GEA2) | ~10s (GEA3 fails, GEA2 found) | ~5-15s | ~20-30s |
+| Both + Fixed ID (GEA3) | ~5s (GEA3 found) | 0s | ~10s |
+| Both + Fixed ID (GEA2) | ~10s (GEA3 fails, GEA2 found) | 0s | ~15s |
 
 **Breakdown:**
 - MQTT connection: Variable (depends on network)
-- Initial delay: 10 seconds (STARTUP_DELAY_MS)
-- Protocol broadcast: 10 seconds per protocol (AUTODISCOVERY_BROADCAST_WINDOW_MS)
+- Initial delay: 5 seconds (STARTUP_DELAY_MS)
+- Protocol broadcast: 5 seconds per protocol (AUTODISCOVERY_BROADCAST_WINDOW_MS)
 - Device ID generation: 5-15 seconds for 3 ERD reads (if needed)
 - Bridge initialization: <1 second
 

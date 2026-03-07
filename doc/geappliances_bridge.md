@@ -135,9 +135,9 @@ loop() begins polling
         AUTODISCOVERY_WAITING_FOR_MQTT
               │
               ▼ (MQTT connects)
-        AUTODISCOVERY_WAITING_20S  ← 20-second stabilization delay
-              │
-              ▼ (20 s elapsed)
+          AUTODISCOVERY_WAITING_5S  ← 5-second stabilization delay
+                  │
+                  ▼ (5 s elapsed)
         Autodiscovery begins
               │
               ▼
@@ -147,7 +147,7 @@ loop() begins polling
         initialize_mqtt_bridge_()
 ```
 
-The 20-second delay (`STARTUP_DELAY_MS = 20000`) allows the appliance buses to fully initialize and the MQTT broker to stabilize before sending any bus traffic.
+The 5-second delay (`STARTUP_DELAY_MS = 5000`) allows the appliance buses to fully initialize and the MQTT broker to stabilize before sending any bus traffic.
 
 ---
 
@@ -159,8 +159,8 @@ Discovery is a two-phase protocol. The full state machine is:
 AUTODISCOVERY_WAITING_FOR_MQTT
         │  (MQTT connect event)
         ▼
-AUTODISCOVERY_WAITING_20S
-        │  (20 s elapsed)
+AUTODISCOVERY_WAITING_5S
+        │  (5 s elapsed)
         ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │  GEA3 PATH                                                           │
@@ -169,7 +169,7 @@ AUTODISCOVERY_WAITING_20S
 │  (reset counters,          (send Cmd=0x01 broadcast 5× at 2s         │
 │   send first ping)          intervals; collect all responders        │
 │                             via raw packet subscription;             │
-│                             10 s window)                             │
+│                             5 s window)                              │
 │           │ no boards ◄────────────────────────────┘                │
 │           │ (retry GEA3 or try GEA2)                                │
 │           │ boards found                                             │
@@ -188,7 +188,7 @@ AUTODISCOVERY_WAITING_20S
 │                                                                      │
 │  GEA2_PING_PENDING ──────► GEA2_PING_WAITING                        │
 │  (send ERD 0x0008 broadcast  (collect all responders;                │
-│   — GEA2 has no Cmd=0x01)    10 s window)                           │
+│   — GEA2 has no Cmd=0x01)    5 s window)                            │
 │           │                                                          │
 │           ▼                                                          │
 │  GEA2_ERD_CHECK_PENDING ──► GEA2_ERD_CHECK_WAITING                  │
@@ -206,7 +206,7 @@ AUTODISCOVERY_COMPLETE → start_device_id_generation_()
 |-----------|------|------|
 | Message sent | Raw `Src=0xE4, Dst=0xFF, Cmd=0x01` (no data) | ERD `0x0008` read to `Dst=0xFF` via ERD client |
 | Repetitions | 5× at 2-second intervals | 5× at 2-second intervals |
-| Window | 10 seconds | 10 seconds |
+| Window | 5 seconds | 5 seconds |
 | Collection method | Raw packet subscription (`handle_gea3_raw_packet_`) | Raw packet subscription (`handle_gea2_raw_packet_`) |
 | Result | `gea3_board_response_list_[]` + `gea3_board_response_count_` | `gea2_board_response_list_[]` + `gea2_board_response_count_` |
 
@@ -406,8 +406,8 @@ gea3_board_response_list_[]                            gea3_discovered_addresses
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `MAX_BOARDS` | `8` | Maximum boards tracked per discovery cycle |
-| `STARTUP_DELAY_MS` | `20,000 ms` | Delay after MQTT connect before discovery starts |
-| `AUTODISCOVERY_BROADCAST_WINDOW_MS` | `10,000 ms` | Duration of Phase 1 ping window |
+| `STARTUP_DELAY_MS` | `5,000 ms` | Delay after MQTT connect before discovery starts |
+| `AUTODISCOVERY_BROADCAST_WINDOW_MS` | `5,000 ms` | Duration of Phase 1 ping window |
 | `AUTODISCOVERY_POLL_COUNT` | `5` | Number of pings sent during Phase 1 |
 | `AUTODISCOVERY_REPEAT_INTERVAL_MS` | `2,000 ms` | Interval between pings |
 | `ERD_CHECK_TIMEOUT_MS` | `3,000 ms` | Per-board Phase 2 safety timeout |
