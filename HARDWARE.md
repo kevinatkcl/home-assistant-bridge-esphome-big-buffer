@@ -31,6 +31,31 @@ uart:
 - GPIO21 = TX (to appliance RX)
 - GPIO20 = RX (from appliance TX)
 
+### GEA2 (Older Appliances, 19200 baud)
+
+GEA2 appliances communicate at 19200 baud.  The component automatically
+configures the required UART settings on ESP32 IDF builds.  For other
+platforms (ESP32 Arduino, etc.) add `rx_full_threshold: 1` and
+`rx_timeout: 1` explicitly to your UART block:
+
+```yaml
+uart:
+  - id: gea2_uart
+    tx_pin: GPIOX
+    rx_pin: GPIOY
+    baud_rate: 19200
+    rx_full_threshold: 1   # required on non-IDF platforms (auto-configured on ESP32 IDF)
+    rx_timeout: 1          # minimise idle-flush latency (auto-configured on ESP32 IDF)
+```
+
+> **Why these settings matter:** GEA2's inter-byte timeout is 6 ms.  At
+> 19200 baud the ESP32 default `rx_full_threshold` is ~19 bytes (≈10 ms),
+> so hardware buffers bytes in batches with ~10 ms gaps between deliveries.
+> That 10 ms gap exceeds the 6 ms timeout, causing the receive FSM to abort
+> large-ERD responses mid-packet (no ACK is ever sent).  With
+> `rx_full_threshold: 1` every byte is delivered to software within ~0.1 ms
+> of arrival, keeping the inter-byte gap well below the 6 ms limit.
+
 ## GEA3 Serial Connection
 
 The GEA3 protocol requires:
