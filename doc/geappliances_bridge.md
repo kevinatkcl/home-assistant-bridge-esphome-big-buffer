@@ -28,10 +28,10 @@
 
 `GeappliancesBridge` is an ESPHome `Component` that bridges one or two GE Appliance serial buses (GEA3 and/or GEA2) to MQTT. It:
 
-- **Discovers** all appliance boards on the bus automatically after startup.
-- **Generates a unique device ID** per board from the board's own appliance type, model number, and serial number ERDs.
-- **Publishes ERD (Entity Reference Designator) values** to MQTT topics and accepts write commands from MQTT.
-- **Scales** to up to 8 boards per bus (`MAX_BOARDS = 8`), creating one independent MQTT bridge per board.
+- **Discovers** appliance boards on the bus automatically after startup.
+- **Generates a unique device ID** for the primary bridged board from its appliance type, model number, and serial number ERDs.
+- **Publishes ERD (Entity Reference Designator) values** for that primary board to MQTT topics and accepts write commands from MQTT.
+- **Currently bridges a single board per bus** via one MQTT bridge instance, even though internal limits such as `MAX_BOARDS = 8` exist.
 
 The component operates entirely within ESPHome's cooperative `loop()` — there are no RTOS tasks or interrupts. All timing is driven by `tiny_timer_group`.
 
@@ -52,8 +52,8 @@ The component operates entirely within ESPHome's cooperative `loop()` — there 
 |-----------|-------|
 | Client address | `0xE4` (same as GEA3) |
 | Protocol | GEA2 (older GE bus, framed by `tiny_gea2_interface`) |
-| ERD client timeouts | 250 ms per request, 3 retries |
-| Timer | Driven by a 1 ms periodic `tiny_timer` |
+| ERD client timeouts | 250 ms per request, 0 retries (no automatic retries at ERD client layer) |
+| Timer | 1 ms tick events are manually published from within the 200 ms tight loop (no dedicated periodic `tiny_timer`) |
 
 GEA2 is only initialized when `gea2_uart_id` is configured in YAML. If GEA2 is absent, all GEA2 state machines are skipped.
 
@@ -98,20 +98,13 @@ The three library layers under the bridge:
 
 | YAML key | Setter | Default | Description |
 |----------|--------|---------|-------------|
-| `gea3_uart_id` | `set_gea3_uart()` | required | Primary GEA3 UART |
-| `gea2_uart_id` | `set_gea2_uart()` | `nullptr` | Optional GEA2 UART |
+| `gea3_uart_id` | `set_gea3_uart()` | `nullptr` | Optional GEA3 UART (at least one of `gea2_uart_id` / `gea3_uart_id` is required) |
+| `gea2_uart_id` | `set_gea2_uart()` | `nullptr` | Optional GEA2 UART (at least one of `gea2_uart_id` / `gea3_uart_id` is required) |
 | `device_id` | `set_device_id()` | `""` | Skip auto-generation; use literal string |
 | `mode` | `set_mode()` | `AUTO` | `POLL=0`, `SUBSCRIBE=1`, `AUTO=2` |
 | `polling_interval` | `set_polling_interval()` | `10000` ms | ERD poll period |
-| `only_publish_on_change` | `set_polling_only_publish_on_change()` | `false` | Suppress duplicate MQTT publishes |
-| `gea3_address` | `set_gea3_address()` | `0xC0` | Preferred primary board on GEA3 |
-| `gea2_address` | `set_gea2_address()` | `0xA0` | Preferred primary board on GEA2 |
-| `gea_mode` | `set_gea_mode()` | `AUTO` | `AUTO=0`, `GEA3=1`, `GEA2=2` |
 
-**`gea3_address` / `gea2_address`** determine which discovered board is treated as _primary_:
-- The primary board's device ID has no address suffix.
-- In subscription mode, only publications from the primary board count as "subscription activity" for the auto-mode watchdog.
-- If no boards are found during discovery (e.g., pre-configured `device_id`), `host_address_` is the sole board used.
+The discovered appliance's address becomes `host_address_` and is used for all subsequent ERD reads/writes.
 
 ---
 

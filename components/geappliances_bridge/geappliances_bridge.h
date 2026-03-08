@@ -109,7 +109,7 @@ class GeappliancesBridge : public Component {
   static constexpr uint32_t SUBSCRIPTION_TIMEOUT_MS = 30000; // 30 seconds
   
   // GEA2 tight-loop duration: covers the full TX→RX cycle at 19200 baud
-  // (see PORTING_NOTES.md section 13 for detailed explanation)
+  // (see doc/geappliances_bridge.md section 13 for detailed explanation)
   static constexpr uint32_t GEA2_LOOP_DURATION_MS = 200;
   bool gea2_protocol_active_{false}; // true once a GEA2 appliance is discovered
   

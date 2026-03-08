@@ -35,7 +35,7 @@ static const tiny_gea2_erd_client_configuration_t gea2_client_configuration = {
 // The counter is incremented once per real millisecond inside the GEA2 tight
 // loop so that tiny_gea2_interface's internal timers advance by at most 1 ms
 // per event regardless of the ~50 ms ESPHome framework gap between loop() calls
-// (see PORTING_NOTES.md §13 for the full explanation).
+// (see doc/geappliances_bridge.md §13 for the full explanation).
 // Kept as file-scope statics so the tight-loop code and the tick function
 // below can both access them without exposing them as class members.
 static tiny_time_source_ticks_t s_gea2_tick_count = 0;
@@ -181,7 +181,7 @@ void GeappliancesBridge::loop() {
 
   // Run the protocol stack. When GEA2 is active, run in a 200 ms wall-clock tight
   // loop so the full TX→RX cycle at 19200 baud completes within a single loop()
-  // call (see PORTING_NOTES.md §13 for details). Otherwise run a single pass.
+  // call (see doc/geappliances_bridge.md §13 for details). Otherwise run a single pass.
   bool need_gea2_loop = this->gea2_uart_ != nullptr && (
     this->gea2_protocol_active_ ||
     this->autodiscovery_state_ == AUTODISCOVERY_GEA2_BROADCAST_PENDING ||
