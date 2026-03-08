@@ -97,6 +97,7 @@ geappliances_bridge:
   # device_id: "MyCustomID"
   # mode: subscribe  # Optional: uncomment to force subscription
   # polling_interval: 10000  # Optional: set polling interval (ms)
+  # polling_onlypublish_onchange: false  # Optional: only publish when value changes
 ```
 
 ```cpp
@@ -137,6 +138,7 @@ The test suite covers various YAML configuration scenarios:
      # device_id: "MyCustomID"
      # mode: subscribe  # Optional: uncomment to force subscription
      # polling_interval: 10000  # Optional: set polling interval (ms)
+     # polling_onlypublish_onchange: false  # Optional: only publish when value changes
    ```
    - Dishwasher cycle operations
    - Refrigerator temperature monitoring
@@ -150,6 +152,7 @@ The test suite covers various YAML configuration scenarios:
      # device_id: "MyCustomID"
      # mode: poll  # Optional: uncomment to force polling
      # polling_interval: 10000  # Optional: set interval (ms), e.g. 5000 or 30000
+     # polling_onlypublish_onchange: false  # Optional: only publish when value changes
    ```
    - Fast polling (5 seconds) for responsive appliances
    - Default polling (10 seconds) for balanced performance
@@ -163,6 +166,7 @@ The test suite covers various YAML configuration scenarios:
      # device_id: "MyCustomID"
      # mode: auto  # Optional: uncomment to force auto mode
      # polling_interval: 10000  # Optional: set polling interval (ms)
+     # polling_onlypublish_onchange: false  # Optional: only publish when value changes
    ```
    - Start with subscription, fallback to polling if no activity
 
@@ -174,6 +178,7 @@ The test suite covers various YAML configuration scenarios:
      # device_id: "MyCustomID"  # Optional: uncomment to use a custom device ID
      # mode: auto  # Optional: uncomment to force auto mode
      # polling_interval: 10000  # Optional: set polling interval (ms)
+     # polling_onlypublish_onchange: false  # Optional: only publish when value changes
    ```
    - Use configured ID instead of auto-generation
 

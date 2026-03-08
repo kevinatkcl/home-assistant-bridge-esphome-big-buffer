@@ -103,6 +103,7 @@ The three library layers under the bridge:
 | `device_id` | `set_device_id()` | `""` | Skip auto-generation; use literal string |
 | `mode` | `set_mode()` | `AUTO` | `POLL=0`, `SUBSCRIBE=1`, `AUTO=2` |
 | `polling_interval` | `set_polling_interval()` | `10000` ms | ERD poll period |
+| `polling_onlypublish_onchange` | `set_polling_only_publish_on_change()` | `false` | When `true`, only publish ERD values to MQTT when the value changes (suppress duplicate publishes) |
 
 The discovered appliance's address becomes `host_address_` and is used for all subsequent ERD reads/writes.
 
