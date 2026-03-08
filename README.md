@@ -25,7 +25,7 @@ esp32:
 
 # External component configuration
 external_components:
-  - source: github://joshualongenecker/home-assistant-bridge@develop
+  - source: github://joshualongenecker/home-assistant-bridge
     components: [ geappliances_bridge ]
 
 # MQTT configuration for Home Assistant
