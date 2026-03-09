@@ -73,11 +73,13 @@ static inline bool is_feature_bit_erd(tiny_erd_t erd) {
          erd == ERD_APPLIANCE_FEATURE_API_2;
 }
 
-// Read up to 8 bytes from a little-endian byte buffer as a 64-bit integer.
-static inline uint64_t read_le64(const uint8_t* buf, uint8_t size) {
+// Read up to 8 bytes from a big-endian byte buffer as a 64-bit integer.
+// GEA protocol transmits ERD values MSB-first (big-endian).
+static inline uint64_t read_be64(const uint8_t* buf, uint8_t size) {
   uint64_t bits = 0;
-  for (uint8_t i = 0; i < size && i < 8; i++) {
-    bits |= static_cast<uint64_t>(buf[i]) << (i * 8);
+  uint8_t n = (size < 8) ? size : 8;
+  for (uint8_t i = 0; i < n; i++) {
+    bits = (bits << 8) | buf[i];
   }
   return bits;
 }
@@ -511,7 +513,7 @@ void GeappliancesBridge::parse_and_log_feature_bits_() {
   // The common section uses a 32-bit bitmask; extract bits 0-31 from the little-endian value.
   if (this->feature_bit_erd_0092_size_ > 0) {
     uint32_t common_bits = static_cast<uint32_t>(
-      read_le64(this->feature_bit_erd_0092_, this->feature_bit_erd_0092_size_) & 0xFFFFFFFFu);
+      read_be64(this->feature_bit_erd_0092_, this->feature_bit_erd_0092_size_) & 0xFFFFFFFFu);
     ESP_LOGI(TAG, "Common feature API (0x0092) value: 0x%08X", common_bits);
     for (uint16_t i = 0; i < common_feature_descriptor_count; i++) {
       const auto& desc = common_feature_descriptors[i];
@@ -540,7 +542,7 @@ void GeappliancesBridge::parse_and_log_feature_bits_() {
 
   for (uint8_t erd_idx = 0; erd_idx < 3; erd_idx++) {
     if (api_sizes[erd_idx] == 0) continue;
-    uint64_t bits = read_le64(api_bufs[erd_idx], api_sizes[erd_idx]);
+    uint64_t bits = read_be64(api_bufs[erd_idx], api_sizes[erd_idx]);
     ESP_LOGI(TAG, "Appliance feature API ERD %s value: 0x%016llX", erd_names[erd_idx],
              static_cast<unsigned long long>(bits));
     for (uint16_t i = 0; i < appliance_feature_api_descriptor_count; i++) {
