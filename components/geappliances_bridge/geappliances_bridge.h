@@ -66,6 +66,7 @@ class GeappliancesBridge : public Component {
   void handle_device_id_read_failure_(tiny_erd_t erd);
   void process_feature_bit_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size);
   void handle_feature_bit_read_failure_(tiny_erd_t erd);
+  void skip_to_next_feature_erd_(tiny_erd_t failed_erd);
   void parse_and_log_feature_bits_();
   std::string bytes_to_string_(const uint8_t* data, size_t size);
   std::string sanitize_for_mqtt_topic_(const std::string& input);

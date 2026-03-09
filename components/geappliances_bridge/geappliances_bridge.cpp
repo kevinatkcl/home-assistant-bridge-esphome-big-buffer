@@ -333,12 +333,10 @@ void GeappliancesBridge::loop() {
       } else {
         this->read_retry_count_++;
         if (this->read_retry_count_ >= MAX_READ_RETRIES) {
-          ESP_LOGW(TAG, "Could not read %s after %u attempts, skipping and proceeding",
+          ESP_LOGW(TAG, "Could not queue read for %s after %u attempts, skipping ERD",
                    feature_name, MAX_READ_RETRIES);
           this->read_retry_count_ = 0;
-          this->feature_bit_state_ = FEATURE_BIT_STATE_FAILED;
-          this->parse_and_log_feature_bits_();
-          this->start_device_id_generation_();
+          this->skip_to_next_feature_erd_(feature_erd);
         } else if (this->read_retry_count_ % LOG_EVERY_N_RETRIES == 0) {
           ESP_LOGW(TAG, "Failed to queue %s read, retrying... (attempt %u)",
                    feature_name, this->read_retry_count_);
@@ -556,30 +554,35 @@ void GeappliancesBridge::process_feature_bit_erd_response_(tiny_erd_t erd, const
 }
 
 void GeappliancesBridge::handle_feature_bit_read_failure_(tiny_erd_t erd) {
-  // Transition from IN_FLIGHT back to the corresponding READING state so
-  // loop() will retry the read on the next iteration.
-  if (erd == ERD_COMMON_FEATURE_API) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0092;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_0) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0093;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_1) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0094;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_2) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0095;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_3) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0096;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_4) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0097;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_5) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0109;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_6) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010A;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_7) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010B;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_8) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010C;
-  } else if (erd == ERD_APPLIANCE_FEATURE_API_9) {
-    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010D;
+  // On any feature bit ERD read failure (timeout, NACK, or "Not Supported"),
+  // skip this slot and advance to the next ERD in the chain. Not all appliances
+  // implement every slot, so a failure here is normal and non-fatal.
+  ESP_LOGD(TAG, "Feature bit ERD 0x%04X failed or not supported, skipping", erd);
+  this->skip_to_next_feature_erd_(erd);
+}
+
+void GeappliancesBridge::skip_to_next_feature_erd_(tiny_erd_t failed_erd) {
+  // Advance the state machine to the READING state for the ERD that follows
+  // failed_erd in the chain. For the last ERD (0x010D), trigger parse +
+  // device-ID generation (same path as a successful final read).
+  switch (failed_erd) {
+    case ERD_COMMON_FEATURE_API:      this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0093; break;
+    case ERD_APPLIANCE_FEATURE_API_0: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0094; break;
+    case ERD_APPLIANCE_FEATURE_API_1: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0095; break;
+    case ERD_APPLIANCE_FEATURE_API_2: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0096; break;
+    case ERD_APPLIANCE_FEATURE_API_3: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0097; break;
+    case ERD_APPLIANCE_FEATURE_API_4: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0109; break;
+    case ERD_APPLIANCE_FEATURE_API_5: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010A; break;
+    case ERD_APPLIANCE_FEATURE_API_6: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010B; break;
+    case ERD_APPLIANCE_FEATURE_API_7: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010C; break;
+    case ERD_APPLIANCE_FEATURE_API_8: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010D; break;
+    case ERD_APPLIANCE_FEATURE_API_9:
+      // Last ERD in the chain; proceed with whatever data was collected.
+      this->feature_bit_state_ = FEATURE_BIT_STATE_COMPLETE;
+      this->parse_and_log_feature_bits_();
+      this->start_device_id_generation_();
+      break;
+    default: break;
   }
 }
 
