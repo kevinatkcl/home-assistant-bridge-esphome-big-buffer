@@ -285,16 +285,16 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
         erds = collect_all_erds_for_common_feature(feature)
         array_name = f"common_feature_{sanitized}_erds"
         if erds:
-            lines.append(f"const tiny_erd_t {array_name}[] = {{")
+            lines.append(f"static const tiny_erd_t {array_name}[] = {{")
             for erd_id in erds:
                 lines.append(f"  0x{erd_id:04x},")
             lines.append("};")
         else:
-            lines.append(f"const tiny_erd_t* {array_name} = nullptr;")
+            lines.append(f"static const tiny_erd_t* {array_name} = nullptr;")
         lines.append("")
 
     # Generate master common feature descriptor array
-    lines.append("const common_feature_descriptor_t common_feature_descriptors[] = {")
+    lines.append("static const common_feature_descriptor_t common_feature_descriptors[] = {")
     for feature in all_common_features:
         sanitized = sanitize_name_for_cpp(feature['name'])
         array_name = f"common_feature_{sanitized}_erds"
@@ -304,7 +304,7 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
         null_ptr = "nullptr" if count == 0 else array_name
         lines.append(f"  {{0x{mask_val:08x}, \"{feature['name']}\", {null_ptr}, {count}}},")
     lines.append("};")
-    lines.append("const uint16_t common_feature_descriptor_count =")
+    lines.append("static const uint16_t common_feature_descriptor_count =")
     lines.append("  sizeof(common_feature_descriptors) / sizeof(common_feature_descriptors[0]);")
     lines.append("")
 
@@ -343,16 +343,16 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
         erds = collect_all_erds_for_feature_api(api)
         array_name = f"appliance_api_{sanitized}_erds"
         if erds:
-            lines.append(f"const tiny_erd_t {array_name}[] = {{")
+            lines.append(f"static const tiny_erd_t {array_name}[] = {{")
             for erd_id in erds:
                 lines.append(f"  0x{erd_id:04x},")
             lines.append("};")
         else:
-            lines.append(f"const tiny_erd_t* {array_name} = nullptr;")
+            lines.append(f"static const tiny_erd_t* {array_name} = nullptr;")
         lines.append("")
 
     # Generate master appliance feature API descriptor array
-    lines.append("const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {")
+    lines.append("static const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {")
     for key, api in valid_feature_apis:
         sanitized = sanitize_name_for_cpp(api['name'])
         array_name = f"appliance_api_{sanitized}_erds"
@@ -364,7 +364,7 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
         null_ptr = "nullptr" if count == 0 else array_name
         lines.append(f"  {{{erd_index}, {bit_pos}, \"{api['name']}\", {null_ptr}, {count}}},")
     lines.append("};")
-    lines.append("const uint16_t appliance_feature_api_descriptor_count =")
+    lines.append("static const uint16_t appliance_feature_api_descriptor_count =")
     lines.append("  sizeof(appliance_feature_api_descriptors) / sizeof(appliance_feature_api_descriptors[0]);")
     lines.append("")
     lines.append("#endif")

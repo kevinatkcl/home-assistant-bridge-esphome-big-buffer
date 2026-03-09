@@ -24,88 +24,88 @@ typedef struct {
   uint16_t erd_count;
 } common_feature_descriptor_t;
 
-const tiny_erd_t common_feature_primary_erds[] = {
+static const tiny_erd_t common_feature_primary_erds[] = {
   0x0001,
   0x0002,
   0x0008,
   0x0035,
 };
 
-const tiny_erd_t common_feature_service_mode_erds[] = {
+static const tiny_erd_t common_feature_service_mode_erds[] = {
   0x0036,
   0x0037,
 };
 
-const tiny_erd_t common_feature_boot_loader_erds[] = {
+static const tiny_erd_t common_feature_boot_loader_erds[] = {
   0x0030,
 };
 
-const tiny_erd_t common_feature_clock_format_erds[] = {
+static const tiny_erd_t common_feature_clock_format_erds[] = {
   0x0006,
 };
 
-const tiny_erd_t common_feature_sound_level_erds[] = {
+static const tiny_erd_t common_feature_sound_level_erds[] = {
   0x000a,
 };
 
-const tiny_erd_t common_feature_control_lock_erds[] = {
+static const tiny_erd_t common_feature_control_lock_erds[] = {
   0x0004,
 };
 
-const tiny_erd_t common_feature_temperature_display_units_erds[] = {
+static const tiny_erd_t common_feature_temperature_display_units_erds[] = {
   0x0007,
 };
 
-const tiny_erd_t common_feature_sabbath_erds[] = {
+static const tiny_erd_t common_feature_sabbath_erds[] = {
   0x0009,
 };
 
-const tiny_erd_t common_feature_enhanced_sabbath_erds[] = {
+static const tiny_erd_t common_feature_enhanced_sabbath_erds[] = {
   0x004f,
 };
 
-const tiny_erd_t common_feature_time_of_day_erds[] = {
+static const tiny_erd_t common_feature_time_of_day_erds[] = {
   0x0005,
 };
 
-const tiny_erd_t common_feature_reset_information_erds[] = {
+static const tiny_erd_t common_feature_reset_information_erds[] = {
   0x0700,
   0x0701,
   0x0702,
   0x0703,
 };
 
-const tiny_erd_t common_feature_configuration_hash_erds[] = {
+static const tiny_erd_t common_feature_configuration_hash_erds[] = {
   0x0060,
 };
 
-const tiny_erd_t common_feature_brand_information_erds[] = {
+static const tiny_erd_t common_feature_brand_information_erds[] = {
   0x0099,
 };
 
-const tiny_erd_t common_feature_sound_themes_erds[] = {
+static const tiny_erd_t common_feature_sound_themes_erds[] = {
   0x0800,
   0x0801,
   0x0802,
 };
 
-const tiny_erd_t common_feature_inference_results_erds[] = {
+static const tiny_erd_t common_feature_inference_results_erds[] = {
   0x0505,
 };
 
-const tiny_erd_t common_feature_ui_sound_level_erds[] = {
+static const tiny_erd_t common_feature_ui_sound_level_erds[] = {
   0x0902,
   0x0903,
   0x0904,
 };
 
-const tiny_erd_t common_feature_nonvolatile_usage_monitoring_erds[] = {
+static const tiny_erd_t common_feature_nonvolatile_usage_monitoring_erds[] = {
   0x070e,
   0x070f,
   0x0710,
 };
 
-const common_feature_descriptor_t common_feature_descriptors[] = {
+static const common_feature_descriptor_t common_feature_descriptors[] = {
   {0x00000001, "Primary", common_feature_primary_erds, 4},
   {0x00000002, "Service Mode", common_feature_service_mode_erds, 2},
   {0x00000004, "Boot Loader", common_feature_boot_loader_erds, 1},
@@ -124,7 +124,7 @@ const common_feature_descriptor_t common_feature_descriptors[] = {
   {0x00008000, "UI Sound Level", common_feature_ui_sound_level_erds, 3},
   {0x00010000, "Nonvolatile Usage Monitoring", common_feature_nonvolatile_usage_monitoring_erds, 3},
 };
-const uint16_t common_feature_descriptor_count =
+static const uint16_t common_feature_descriptor_count =
   sizeof(common_feature_descriptors) / sizeof(common_feature_descriptors[0]);
 
 // ============================================================================
@@ -141,7 +141,7 @@ typedef struct {
   uint16_t erd_count;
 } appliance_feature_api_descriptor_t;
 
-const tiny_erd_t appliance_api_water_heater_erds[] = {
+static const tiny_erd_t appliance_api_water_heater_erds[] = {
   0x4008,
   0x4009,
   0x400a,
@@ -208,7 +208,7 @@ const tiny_erd_t appliance_api_water_heater_erds[] = {
   0x4226,
 };
 
-const tiny_erd_t appliance_api_clothes_dryer_erds[] = {
+static const tiny_erd_t appliance_api_clothes_dryer_erds[] = {
   0x2000,
   0x2001,
   0x2002,
@@ -408,7 +408,7 @@ const tiny_erd_t appliance_api_clothes_dryer_erds[] = {
   0x2317,
 };
 
-const tiny_erd_t appliance_api_clothes_washer_erds[] = {
+static const tiny_erd_t appliance_api_clothes_washer_erds[] = {
   0x0004,
   0x000e,
   0x0034,
@@ -661,7 +661,7 @@ const tiny_erd_t appliance_api_clothes_washer_erds[] = {
   0x2f1b,
 };
 
-const tiny_erd_t appliance_api_refrigeration_erds[] = {
+static const tiny_erd_t appliance_api_refrigeration_erds[] = {
   0x1004,
   0x1005,
   0x1006,
@@ -793,7 +793,7 @@ const tiny_erd_t appliance_api_refrigeration_erds[] = {
   0x142c,
 };
 
-const tiny_erd_t appliance_api_microwave_erds[] = {
+static const tiny_erd_t appliance_api_microwave_erds[] = {
   0x0005,
   0x0050,
   0x0051,
@@ -866,7 +866,7 @@ const tiny_erd_t appliance_api_microwave_erds[] = {
   0x5c3e,
 };
 
-const tiny_erd_t appliance_api_advantium_erds[] = {
+static const tiny_erd_t appliance_api_advantium_erds[] = {
   0x0007,
   0x0050,
   0x0501,
@@ -898,7 +898,7 @@ const tiny_erd_t appliance_api_advantium_erds[] = {
   0x5c18,
 };
 
-const tiny_erd_t appliance_api_dishwasher_erds[] = {
+static const tiny_erd_t appliance_api_dishwasher_erds[] = {
   0x3000,
   0x3001,
   0x3003,
@@ -1002,7 +1002,7 @@ const tiny_erd_t appliance_api_dishwasher_erds[] = {
   0xd007,
 };
 
-const tiny_erd_t appliance_api_cooking_erds[] = {
+static const tiny_erd_t appliance_api_cooking_erds[] = {
   0x0501,
   0x0502,
   0x0503,
@@ -1216,7 +1216,7 @@ const tiny_erd_t appliance_api_cooking_erds[] = {
   0x6240,
 };
 
-const tiny_erd_t appliance_api_window_ac_erds[] = {
+static const tiny_erd_t appliance_api_window_ac_erds[] = {
   0x7002,
   0x7003,
   0x7020,
@@ -1244,7 +1244,7 @@ const tiny_erd_t appliance_api_window_ac_erds[] = {
   0xd00c,
 };
 
-const tiny_erd_t appliance_api_split_ac_erds[] = {
+static const tiny_erd_t appliance_api_split_ac_erds[] = {
   0x7003,
   0x7049,
   0x7100,
@@ -1306,7 +1306,7 @@ const tiny_erd_t appliance_api_split_ac_erds[] = {
   0x7b09,
 };
 
-const tiny_erd_t appliance_api_home_water_softener_erds[] = {
+static const tiny_erd_t appliance_api_home_water_softener_erds[] = {
   0x1160,
   0x1161,
   0x1162,
@@ -1327,7 +1327,7 @@ const tiny_erd_t appliance_api_home_water_softener_erds[] = {
   0x8034,
 };
 
-const tiny_erd_t appliance_api_home_water_filter_erds[] = {
+static const tiny_erd_t appliance_api_home_water_filter_erds[] = {
   0x115e,
   0x115f,
   0x1160,
@@ -1350,7 +1350,7 @@ const tiny_erd_t appliance_api_home_water_filter_erds[] = {
   0x1175,
 };
 
-const tiny_erd_t appliance_api_delivery_box_erds[] = {
+static const tiny_erd_t appliance_api_delivery_box_erds[] = {
   0x1016,
   0x116f,
   0x1170,
@@ -1360,7 +1360,7 @@ const tiny_erd_t appliance_api_delivery_box_erds[] = {
   0x2013,
 };
 
-const tiny_erd_t appliance_api_zoneline_erds[] = {
+static const tiny_erd_t appliance_api_zoneline_erds[] = {
   0x0007,
   0x7000,
   0x7001,
@@ -1455,7 +1455,7 @@ const tiny_erd_t appliance_api_zoneline_erds[] = {
   0x7612,
 };
 
-const tiny_erd_t appliance_api_hood_erds[] = {
+static const tiny_erd_t appliance_api_hood_erds[] = {
   0x500f,
   0x5020,
   0x5105,
@@ -1483,7 +1483,7 @@ const tiny_erd_t appliance_api_hood_erds[] = {
   0x5b4a,
 };
 
-const tiny_erd_t appliance_api_portable_ac_erds[] = {
+static const tiny_erd_t appliance_api_portable_ac_erds[] = {
   0x7003,
   0x7020,
   0x7835,
@@ -1501,7 +1501,7 @@ const tiny_erd_t appliance_api_portable_ac_erds[] = {
   0xd007,
 };
 
-const tiny_erd_t appliance_api_combination_washer_dryer_erds[] = {
+static const tiny_erd_t appliance_api_combination_washer_dryer_erds[] = {
   0x2000,
   0x2001,
   0x2002,
@@ -1614,7 +1614,7 @@ const tiny_erd_t appliance_api_combination_washer_dryer_erds[] = {
   0x2232,
 };
 
-const tiny_erd_t appliance_api_dual_zone_wine_chiller_erds[] = {
+static const tiny_erd_t appliance_api_dual_zone_wine_chiller_erds[] = {
   0x1004,
   0x1005,
   0x1006,
@@ -1636,7 +1636,7 @@ const tiny_erd_t appliance_api_dual_zone_wine_chiller_erds[] = {
   0x1154,
 };
 
-const tiny_erd_t appliance_api_beverage_center_erds[] = {
+static const tiny_erd_t appliance_api_beverage_center_erds[] = {
   0x1004,
   0x1005,
   0x1006,
@@ -1659,7 +1659,7 @@ const tiny_erd_t appliance_api_beverage_center_erds[] = {
   0x1154,
 };
 
-const tiny_erd_t appliance_api_coffee_brewer_erds[] = {
+static const tiny_erd_t appliance_api_coffee_brewer_erds[] = {
   0x9000,
   0x9001,
   0x9002,
@@ -1719,7 +1719,7 @@ const tiny_erd_t appliance_api_coffee_brewer_erds[] = {
   0x9136,
 };
 
-const tiny_erd_t appliance_api_opal_nugget_ice_maker_erds[] = {
+static const tiny_erd_t appliance_api_opal_nugget_ice_maker_erds[] = {
   0x9100,
   0x9101,
   0x9102,
@@ -1742,7 +1742,7 @@ const tiny_erd_t appliance_api_opal_nugget_ice_maker_erds[] = {
   0x913f,
 };
 
-const tiny_erd_t appliance_api_in_home_grower_erds[] = {
+static const tiny_erd_t appliance_api_in_home_grower_erds[] = {
   0x1019,
   0x102d,
   0x1300,
@@ -1792,7 +1792,7 @@ const tiny_erd_t appliance_api_in_home_grower_erds[] = {
   0x132c,
 };
 
-const tiny_erd_t appliance_api_dehumidifier_erds[] = {
+static const tiny_erd_t appliance_api_dehumidifier_erds[] = {
   0x7020,
   0x7261,
   0x7830,
@@ -1812,7 +1812,7 @@ const tiny_erd_t appliance_api_dehumidifier_erds[] = {
   0xd005,
 };
 
-const tiny_erd_t appliance_api_under_counter_ice_maker_erds[] = {
+static const tiny_erd_t appliance_api_under_counter_ice_maker_erds[] = {
   0x9100,
   0x9101,
   0x9102,
@@ -1828,7 +1828,7 @@ const tiny_erd_t appliance_api_under_counter_ice_maker_erds[] = {
   0x9133,
 };
 
-const tiny_erd_t appliance_api_through_wall_ac_erds[] = {
+static const tiny_erd_t appliance_api_through_wall_ac_erds[] = {
   0x7003,
   0x7966,
   0x7967,
@@ -1846,7 +1846,7 @@ const tiny_erd_t appliance_api_through_wall_ac_erds[] = {
   0xd008,
 };
 
-const tiny_erd_t appliance_api_espresso_maker_erds[] = {
+static const tiny_erd_t appliance_api_espresso_maker_erds[] = {
   0x9013,
   0x9019,
   0x901c,
@@ -1897,7 +1897,7 @@ const tiny_erd_t appliance_api_espresso_maker_erds[] = {
   0x904b,
 };
 
-const tiny_erd_t appliance_api_toaster_oven_erds[] = {
+static const tiny_erd_t appliance_api_toaster_oven_erds[] = {
   0x510a,
   0x5c1a,
   0x5c1b,
@@ -1960,7 +1960,7 @@ const tiny_erd_t appliance_api_toaster_oven_erds[] = {
   0x9238,
 };
 
-const tiny_erd_t appliance_api_zoneline_vertical_erds[] = {
+static const tiny_erd_t appliance_api_zoneline_vertical_erds[] = {
   0x7000,
   0x7001,
   0x7002,
@@ -2039,7 +2039,7 @@ const tiny_erd_t appliance_api_zoneline_vertical_erds[] = {
   0x7612,
 };
 
-const tiny_erd_t appliance_api_central_dfs_controller_erds[] = {
+static const tiny_erd_t appliance_api_central_dfs_controller_erds[] = {
   0x7002,
   0x7003,
   0x79a0,
@@ -2095,7 +2095,7 @@ const tiny_erd_t appliance_api_central_dfs_controller_erds[] = {
   0x7b06,
 };
 
-const tiny_erd_t appliance_api_stand_mixer_erds[] = {
+static const tiny_erd_t appliance_api_stand_mixer_erds[] = {
   0x0051,
   0x5300,
   0x9203,
@@ -2128,7 +2128,7 @@ const tiny_erd_t appliance_api_stand_mixer_erds[] = {
   0x9317,
 };
 
-const tiny_erd_t appliance_api_smoker_erds[] = {
+static const tiny_erd_t appliance_api_smoker_erds[] = {
   0x0051,
   0x5c1b,
   0x9201,
@@ -2198,9 +2198,9 @@ const tiny_erd_t appliance_api_smoker_erds[] = {
   0x9439,
 };
 
-const tiny_erd_t* appliance_api_air_handler_vrf_erds = nullptr;
+static const tiny_erd_t* appliance_api_air_handler_vrf_erds = nullptr;
 
-const tiny_erd_t appliance_api_fabric_care_cabinet_or_closet_erds[] = {
+static const tiny_erd_t appliance_api_fabric_care_cabinet_or_closet_erds[] = {
   0x2000,
   0x2001,
   0x2002,
@@ -2233,7 +2233,7 @@ const tiny_erd_t appliance_api_fabric_care_cabinet_or_closet_erds[] = {
   0x222b,
 };
 
-const tiny_erd_t appliance_api_laundry_center_erds[] = {
+static const tiny_erd_t appliance_api_laundry_center_erds[] = {
   0x2000,
   0x2001,
   0x2007,
@@ -2273,7 +2273,7 @@ const tiny_erd_t appliance_api_laundry_center_erds[] = {
   0x2209,
 };
 
-const tiny_erd_t appliance_api_sourdough_starter_erds[] = {
+static const tiny_erd_t appliance_api_sourdough_starter_erds[] = {
   0x9203,
   0x9204,
   0x9500,
@@ -2288,11 +2288,11 @@ const tiny_erd_t appliance_api_sourdough_starter_erds[] = {
   0x9509,
 };
 
-const tiny_erd_t appliance_api_thermostat_erds[] = {
+static const tiny_erd_t appliance_api_thermostat_erds[] = {
   0x7104,
 };
 
-const tiny_erd_t appliance_api_fpa_refrigerator_erds[] = {
+static const tiny_erd_t appliance_api_fpa_refrigerator_erds[] = {
   0x0007,
   0x0009,
   0x1005,
@@ -2360,7 +2360,7 @@ const tiny_erd_t appliance_api_fpa_refrigerator_erds[] = {
   0x1320,
 };
 
-const tiny_erd_t appliance_api_fpa_dishdrawer_erds[] = {
+static const tiny_erd_t appliance_api_fpa_dishdrawer_erds[] = {
   0x3001,
   0x3003,
   0x3006,
@@ -2468,7 +2468,7 @@ const tiny_erd_t appliance_api_fpa_dishdrawer_erds[] = {
   0xd207,
 };
 
-const tiny_erd_t appliance_api_fpa_range_erds[] = {
+static const tiny_erd_t appliance_api_fpa_range_erds[] = {
   0x0005,
   0x0006,
   0x0007,
@@ -2513,7 +2513,7 @@ const tiny_erd_t appliance_api_fpa_range_erds[] = {
   0x5218,
 };
 
-const tiny_erd_t appliance_api_fpa_cooktop_erds[] = {
+static const tiny_erd_t appliance_api_fpa_cooktop_erds[] = {
   0x5903,
   0x5904,
   0x5905,
@@ -2669,7 +2669,7 @@ const tiny_erd_t appliance_api_fpa_cooktop_erds[] = {
   0x599d,
 };
 
-const tiny_erd_t appliance_api_fpa_hood_erds[] = {
+static const tiny_erd_t appliance_api_fpa_hood_erds[] = {
   0x5b0c,
   0x5b0d,
   0x5b11,
@@ -2696,13 +2696,13 @@ const tiny_erd_t appliance_api_fpa_hood_erds[] = {
   0x5b26,
 };
 
-const tiny_erd_t appliance_api_enhanced_features_erds[] = {
+static const tiny_erd_t appliance_api_enhanced_features_erds[] = {
   0x0600,
   0x0601,
   0x0602,
 };
 
-const tiny_erd_t appliance_api_device_gateway_erds[] = {
+static const tiny_erd_t appliance_api_device_gateway_erds[] = {
   0x009c,
   0x0105,
   0x0415,
@@ -2743,7 +2743,7 @@ const tiny_erd_t appliance_api_device_gateway_erds[] = {
   0x628f,
 };
 
-const tiny_erd_t appliance_api_hvac_erds[] = {
+static const tiny_erd_t appliance_api_hvac_erds[] = {
   0x7051,
   0x7052,
   0x7053,
@@ -2780,7 +2780,7 @@ const tiny_erd_t appliance_api_hvac_erds[] = {
   0x7720,
 };
 
-const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {
+static const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {
   {0, 0, "Water Heater", appliance_api_water_heater_erds, 64},
   {0, 1, "Clothes Dryer", appliance_api_clothes_dryer_erds, 197},
   {0, 2, "Clothes Washer", appliance_api_clothes_washer_erds, 250},
@@ -2826,7 +2826,7 @@ const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {
   {2, 1, "Device Gateway", appliance_api_device_gateway_erds, 38},
   {2, 2, "HVAC", appliance_api_hvac_erds, 34},
 };
-const uint16_t appliance_feature_api_descriptor_count =
+static const uint16_t appliance_feature_api_descriptor_count =
   sizeof(appliance_feature_api_descriptors) / sizeof(appliance_feature_api_descriptors[0]);
 
 #endif
