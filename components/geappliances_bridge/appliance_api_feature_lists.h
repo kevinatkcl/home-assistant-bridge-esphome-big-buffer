@@ -691,7 +691,7 @@ static const tiny_erd_t appliance_api_clothes_washer_v1_detergent_dispense_flow_
   0x2071,
 };
 
-static const tiny_erd_t appliance_api_clothes_washer_v1_deprecated_erds[] = {
+static const tiny_erd_t appliance_api_clothes_washer_v1_deprecated_m00000080_erds[] = {
   0x2060,
   0x2061,
 };
@@ -721,7 +721,7 @@ static const tiny_erd_t appliance_api_clothes_washer_v1_time_saver_erds[] = {
   0x2055,
 };
 
-static const tiny_erd_t* appliance_api_clothes_washer_v1_deprecated_erds = nullptr;
+static const tiny_erd_t* appliance_api_clothes_washer_v1_deprecated_m00000800_erds = nullptr;
 
 static const tiny_erd_t appliance_api_clothes_washer_v1_prewash_erds[] = {
   0x205a,
@@ -5394,7 +5394,7 @@ static const appliance_feature_api_descriptor_t appliance_feature_api_descriptor
   {0x0002, 1, 0x00000010, "Clothes Washer / Bulk Dispense and Tank Status", appliance_api_clothes_washer_v1_bulk_dispense_and_tank_status_erds, 2},
   {0x0002, 1, 0x00000020, "Clothes Washer / Washer Link", appliance_api_clothes_washer_v1_washer_link_erds, 1},
   {0x0002, 1, 0x00000040, "Clothes Washer / Detergent Dispense Flow Rate", appliance_api_clothes_washer_v1_detergent_dispense_flow_rate_erds, 1},
-  {0x0002, 1, 0x00000080, "Clothes Washer / Deprecated", appliance_api_clothes_washer_v1_deprecated_erds, 2},
+  {0x0002, 1, 0x00000080, "Clothes Washer / Deprecated", appliance_api_clothes_washer_v1_deprecated_m00000080_erds, 2},
   {0x0002, 1, 0x00000100, "Clothes Washer / One Step Wash and Dry", appliance_api_clothes_washer_v1_one_step_wash_and_dry_erds, 2},
   {0x0002, 1, 0x00000200, "Clothes Washer / Smart Dispense", appliance_api_clothes_washer_v1_smart_dispense_erds, 12},
   {0x0002, 1, 0x00000400, "Clothes Washer / Time Saver", appliance_api_clothes_washer_v1_time_saver_erds, 2},

@@ -339,13 +339,38 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
         if (api['featureType'] >> 8) <= 2
     ]
 
+    # Pre-compute unique array names for every (api, ver, feature) triple.
+    # When two features in the same api+version share the same sanitized name,
+    # append the hex mask value to make each identifier unique.
+    def make_array_names(valid_feature_apis):
+        """Return a dict mapping (api_key, ver, feature_index) -> unique array name."""
+        result = {}
+        for key, api in valid_feature_apis:
+            api_sanitized = sanitize_name_for_cpp(api['name'])
+            for ver, ver_data in api.get('versions', {}).items():
+                # First pass: collect candidate names
+                candidates = {}  # name -> list of (index, mask)
+                for i, feature in enumerate(ver_data.get('features', [])):
+                    feat_sanitized = sanitize_name_for_cpp(feature['name'])
+                    base = f"appliance_api_{api_sanitized}_v{ver}_{feat_sanitized}_erds"
+                    candidates.setdefault(base, []).append((i, int(feature['mask'], 16)))
+                # Second pass: assign names, deduplicating with mask suffix
+                for base, entries in candidates.items():
+                    if len(entries) == 1:
+                        idx, _ = entries[0]
+                        result[(key, ver, idx)] = base
+                    else:
+                        for idx, mask in entries:
+                            result[(key, ver, idx)] = f"{base[:-len('_erds')]}_m{mask:08x}_erds"
+        return result
+
+    array_names = make_array_names(valid_feature_apis)
+
     # Generate one ERD array per feature per version per appliance API.
     for key, api in valid_feature_apis:
-        api_sanitized = sanitize_name_for_cpp(api['name'])
         for ver, ver_data in api.get('versions', {}).items():
-            for feature in ver_data.get('features', []):
-                feat_sanitized = sanitize_name_for_cpp(feature['name'])
-                array_name = f"appliance_api_{api_sanitized}_v{ver}_{feat_sanitized}_erds"
+            for i, feature in enumerate(ver_data.get('features', [])):
+                array_name = array_names[(key, ver, i)]
                 erds = collect_erds_for_feature(feature)
                 if erds:
                     lines.append(f"static const tiny_erd_t {array_name}[] = {{")
@@ -360,12 +385,10 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
     lines.append("static const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {")
     total_descriptors = 0
     for key, api in valid_feature_apis:
-        api_sanitized = sanitize_name_for_cpp(api['name'])
         ft = api['featureType']
         for ver, ver_data in api.get('versions', {}).items():
-            for feature in ver_data.get('features', []):
-                feat_sanitized = sanitize_name_for_cpp(feature['name'])
-                array_name = f"appliance_api_{api_sanitized}_v{ver}_{feat_sanitized}_erds"
+            for i, feature in enumerate(ver_data.get('features', [])):
+                array_name = array_names[(key, ver, i)]
                 mask_val = int(feature['mask'], 16)
                 erds = collect_erds_for_feature(feature)
                 count = len(erds)
