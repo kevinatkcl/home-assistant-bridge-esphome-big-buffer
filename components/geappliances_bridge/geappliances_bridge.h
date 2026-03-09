@@ -4,6 +4,8 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/mqtt/mqtt_client.h"
 #include <string>
+#include <set>
+#include <vector>
 
 extern "C" {
 #include "mqtt_bridge.h"
@@ -49,6 +51,7 @@ class GeappliancesBridge : public Component {
   void set_mode(uint8_t mode) { this->mode_ = static_cast<BridgeMode>(mode); }
   void set_polling_interval(uint32_t polling_interval) { this->polling_interval_ms_ = polling_interval; }
   void set_polling_only_publish_on_change(bool only_publish_on_change) { this->polling_only_publish_on_change_ = only_publish_on_change; }
+  void set_appliance_api_parsing(bool appliance_api_parsing) { this->appliance_api_parsing_ = appliance_api_parsing; }
 
  protected:
   void on_mqtt_connected_();
@@ -57,9 +60,13 @@ class GeappliancesBridge : public Component {
   void initialize_mqtt_bridge_();
   void check_subscription_activity_();
   void run_autodiscovery_();
+  void start_feature_bit_reading_();
   void start_device_id_generation_();
   void process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size);
   void handle_device_id_read_failure_(tiny_erd_t erd);
+  void process_feature_bit_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size);
+  void handle_feature_bit_read_failure_(tiny_erd_t erd);
+  void parse_and_log_feature_bits_();
   std::string bytes_to_string_(const uint8_t* data, size_t size);
   std::string sanitize_for_mqtt_topic_(const std::string& input);
   bool try_read_erd_with_retry_(tiny_erd_t erd, const char* erd_name);
@@ -71,6 +78,25 @@ class GeappliancesBridge : public Component {
     DEVICE_ID_STATE_READING_SERIAL_NUMBER,
     DEVICE_ID_STATE_COMPLETE,
     DEVICE_ID_STATE_FAILED
+  };
+
+  // States for reading the four appliance API feature bit ERDs (0x0092-0x0095).
+  // This step runs after autodiscovery and before device ID generation.
+  //
+  // READING_XXXX: loop() needs to queue a read for that ERD.
+  // IN_FLIGHT:    a read has been queued and is waiting for a response; loop()
+  //               skips this state so it does not issue a duplicate request.
+  //               On response (or failure), the handler transitions back to
+  //               the next READING state or to COMPLETE/FAILED.
+  enum FeatureBitState {
+    FEATURE_BIT_STATE_IDLE,          // Not started yet
+    FEATURE_BIT_STATE_READING_0092,  // Need to queue read for ERD 0x0092
+    FEATURE_BIT_STATE_READING_0093,  // Need to queue read for ERD 0x0093
+    FEATURE_BIT_STATE_READING_0094,  // Need to queue read for ERD 0x0094
+    FEATURE_BIT_STATE_READING_0095,  // Need to queue read for ERD 0x0095
+    FEATURE_BIT_STATE_IN_FLIGHT,     // Read queued, waiting for response
+    FEATURE_BIT_STATE_COMPLETE,
+    FEATURE_BIT_STATE_FAILED
   };
 
   enum BridgeInitState {
@@ -101,20 +127,37 @@ class GeappliancesBridge : public Component {
   BridgeMode mode_{BRIDGE_MODE_AUTO};
   uint32_t polling_interval_ms_{10000};
   bool polling_only_publish_on_change_{false};
-  
+  bool appliance_api_parsing_{false};
+
   // Auto mode fallback tracking
   bool subscription_mode_active_{false};
   bool subscription_activity_detected_{false};
   uint32_t subscription_start_time_{0};
   static constexpr uint32_t SUBSCRIPTION_TIMEOUT_MS = 30000; // 30 seconds
-  
+
   // GEA2 tight-loop duration: covers the full TX→RX cycle at 19200 baud
   // (see doc/geappliances_bridge.md section 13 for detailed explanation)
   static constexpr uint32_t GEA2_LOOP_DURATION_MS = 200;
   bool gea2_protocol_active_{false}; // true once a GEA2 appliance is discovered
-  
+
   DeviceIdState device_id_state_{DEVICE_ID_STATE_IDLE};
   BridgeInitState bridge_init_state_{BRIDGE_INIT_STATE_WAITING_FOR_DEVICE_ID};
+
+  // Feature bit reading state machine (runs after autodiscovery, before device ID gen)
+  FeatureBitState feature_bit_state_{FEATURE_BIT_STATE_IDLE};
+  uint8_t feature_bit_erd_0092_[8]{};  // raw bytes from ERD 0x0092 (common features)
+  uint8_t feature_bit_erd_0093_[8]{};  // raw bytes from ERD 0x0093 (appliance APIs, group 0)
+  uint8_t feature_bit_erd_0094_[8]{};  // raw bytes from ERD 0x0094 (appliance APIs, group 1)
+  uint8_t feature_bit_erd_0095_[8]{};  // raw bytes from ERD 0x0095 (appliance APIs, group 2)
+  uint8_t feature_bit_erd_0092_size_{0};
+  uint8_t feature_bit_erd_0093_size_{0};
+  uint8_t feature_bit_erd_0094_size_{0};
+  uint8_t feature_bit_erd_0095_size_{0};
+  // Set of valid ERDs built from parsed feature bits; used when appliance_api_parsing_ is true
+  std::set<tiny_erd_t> appliance_api_valid_erds_;
+  // Sorted vector of the same set, for passing to the polling bridge as a C array
+  std::vector<tiny_erd_t> appliance_api_valid_erds_vec_;
+  bool appliance_api_valid_list_ready_{false};
 
   // Autodiscovery state machine
   AutodiscoveryState autodiscovery_state_{AUTODISCOVERY_WAITING_FOR_MQTT};

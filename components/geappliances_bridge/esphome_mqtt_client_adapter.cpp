@@ -86,7 +86,14 @@ static void register_erd(i_mqtt_client_t* _self, tiny_erd_t erd)
 static void update_erd(i_mqtt_client_t* _self, tiny_erd_t erd, const void* value, uint8_t size)
 {
   auto self = reinterpret_cast<esphome_mqtt_client_adapter_t*>(_self);
-  
+
+  // If a valid ERD filter is set (appliance_api_parsing mode), skip ERDs not
+  // in the validated list. This applies to both subscription and polling modes.
+  if(self->valid_erds_filter != nullptr &&
+     self->valid_erds_filter->find(erd) == self->valid_erds_filter->end()) {
+    return;
+  }
+
   // Validate inputs
   if (value == nullptr || size == 0) {
     ESP_LOGW(TAG, "Invalid ERD update: null value or zero size for ERD 0x%04X", erd);
@@ -181,9 +188,17 @@ extern "C" void esphome_mqtt_client_adapter_init(
   self->interface.api = &api;
   self->device_id = new std::string(device_id);
   self->pending_updates = new std::deque<PendingErdUpdate>();
-  
+  self->valid_erds_filter = nullptr;
+
   tiny_event_init(&self->on_write_request_event);
   tiny_event_init(&self->on_mqtt_disconnect_event);
+}
+
+extern "C" void esphome_mqtt_client_adapter_set_valid_erds_filter(
+  esphome_mqtt_client_adapter_t* self,
+  const std::set<tiny_erd_t>* valid_erds_filter)
+{
+  self->valid_erds_filter = valid_erds_filter;
 }
 
 extern "C" void esphome_mqtt_client_adapter_notify_disconnected(

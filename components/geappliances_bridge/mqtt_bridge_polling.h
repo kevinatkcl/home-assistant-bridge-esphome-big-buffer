@@ -37,6 +37,10 @@ typedef struct {
   uint16_t erd_index;
   uint16_t polling_retries;
   bool only_publish_on_change;
+  // Optional pre-populated polling list from appliance API parsing.
+  // When non-NULL, discovery states are skipped and this list is polled directly.
+  const tiny_erd_t* api_parsed_list;
+  uint16_t api_parsed_list_count;
 } mqtt_bridge_polling_t;
 
 /*!

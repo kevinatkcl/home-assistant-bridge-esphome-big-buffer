@@ -360,7 +360,16 @@ static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_sign
         self->erd_host_address = args->address;
         self->appliance_type = *reinterpret_cast<const uint8_t*>(args->read_completed.data);
       }
-      tiny_hsm_transition(hsm, state_add_common_erds);
+      // If an API-parsed ERD list is available, skip ERD discovery and go
+      // directly to polling using that list.
+      if(self->api_parsed_list != nullptr) {
+        self->erd_index = 0;
+        self->polling_retries = 0;
+        tiny_hsm_transition(hsm, state_polling);
+      }
+      else {
+        tiny_hsm_transition(hsm, state_add_common_erds);
+      }
       break;
 
     case tiny_hsm_signal_exit:
@@ -489,9 +498,11 @@ static tiny_hsm_result_t state_add_appliance_erds(tiny_hsm_t* hsm, tiny_hsm_sign
 
 static void send_next_poll_read_request(mqtt_bridge_polling_t* self)
 {
-  if(self->erd_index < self->polling_list_count) {
+  const tiny_erd_t* poll_list = self->api_parsed_list ? self->api_parsed_list : self->erd_polling_list;
+  uint16_t poll_count = self->api_parsed_list ? self->api_parsed_list_count : self->polling_list_count;
+  if(self->erd_index < poll_count) {
     self->request_id++;
-    tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->erd_polling_list[self->erd_index]);
+    tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, poll_list[self->erd_index]);
     self->erd_index++;
     arm_timer(self, retry_delay);
   }
@@ -502,9 +513,18 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
   mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
   auto args = reinterpret_cast<const tiny_gea3_erd_client_on_activity_args_t*>(data);
 
+  uint16_t poll_count = self->api_parsed_list ? self->api_parsed_list_count : self->polling_list_count;
+
   switch(signal) {
     case tiny_hsm_signal_entry:
       erd_cache(self).clear();
+      // When using an API-parsed list, register all ERDs upfront since
+      // the discovery states are skipped.
+      if(self->api_parsed_list != nullptr) {
+        for(uint16_t i = 0; i < self->api_parsed_list_count; i++) {
+          add_erd_to_polling_list(self, self->api_parsed_list[i]);
+        }
+      }
       arm_polling_timer(self, self->polling_interval_ms);
       __attribute__((fallthrough));
 
@@ -513,7 +533,7 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
       break;
 
     case signal_polling_timer_expired:
-      if((self->erd_index >= self->polling_list_count) || (self->polling_retries >= max_polling_retries)) {
+      if((self->erd_index >= poll_count) || (self->polling_retries >= max_polling_retries)) {
         self->erd_index = 0;
         self->polling_retries = 0;
         send_next_poll_read_request(self);
@@ -602,6 +622,13 @@ void mqtt_bridge_polling_init(
   self->mqtt_client = mqtt_client;
   self->polling_interval_ms = polling_interval_ms;
   self->only_publish_on_change = only_publish_on_change;
+  // Always initialize the API-list fields to nullptr/0. Callers that want to
+  // use an API-parsed polling list must set api_parsed_list and
+  // api_parsed_list_count AFTER this call (but before the first read_completed
+  // event fires, which is safe since state_identify_appliance only checks
+  // api_parsed_list in the signal_read_completed case).
+  self->api_parsed_list = nullptr;
+  self->api_parsed_list_count = 0;
   self->erd_set = reinterpret_cast<void*>(new set<tiny_erd_t>());
   self->erd_cache = reinterpret_cast<void*>(new map<tiny_erd_t, vector<uint8_t>>());
 
