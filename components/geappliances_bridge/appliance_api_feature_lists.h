@@ -128,7 +128,7 @@ static const uint16_t common_feature_descriptor_count =
   sizeof(common_feature_descriptors) / sizeof(common_feature_descriptors[0]);
 
 // ============================================================================
-// Appliance Feature APIs (ERDs 0x0093 to 0x0095)
+// Appliance Feature APIs (ERDs 0x0093-0x0097 and 0x0109-0x010D)
 // Each ERD value is: [2B featureType][2B version][4B feature bitmap]
 // One descriptor per feature per version; matched at runtime by featureType+version.
 // ============================================================================
@@ -5308,6 +5308,257 @@ static const tiny_erd_t appliance_api_hvac_v1_energy_conservation_erds[] = {
   0x7054,
 };
 
+static const tiny_erd_t appliance_api_voice_control_v1_alexa_voice_service_erds[] = {
+  0x0300,
+  0x0301,
+};
+
+static const tiny_erd_t appliance_api_android_ui_v1_sign_of_life_erds[] = {
+  0x0900,
+};
+
+static const tiny_erd_t appliance_api_android_ui_v1_camera_configuration_personality_erds[] = {
+  0x0117,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_electrical_energy_usage_erds[] = {
+  0xd007,
+  0xd014,
+  0xd015,
+  0xd02c,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_hot_water_usage_in_liters_erds[] = {
+  0xd016,
+  0xd017,
+  0xd018,
+  0xd02d,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_hot_water_usage_in_milliliters_erds[] = {
+  0xd017,
+  0xd018,
+  0xd020,
+  0xd02d,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_cold_water_usage_in_liters_erds[] = {
+  0xd019,
+  0xd01a,
+  0xd01b,
+  0xd02e,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_cold_water_usage_in_milliliters_erds[] = {
+  0xd01a,
+  0xd01b,
+  0xd021,
+  0xd02e,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_gas_usage_erds[] = {
+  0xd01c,
+  0xd01d,
+  0xd01e,
+  0xd01f,
+  0xd02f,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_electrical_time_of_use_pricing_schedules_season_1_erds[] = {
+  0xd022,
+  0xd023,
+  0xd024,
+  0xd025,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_electrical_time_of_use_pricing_schedules_season_2_erds[] = {
+  0xd026,
+  0xd027,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_electrical_time_of_use_pricing_schedules_season_3_erds[] = {
+  0xd028,
+  0xd029,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_electrical_time_of_use_pricing_schedules_season_4_erds[] = {
+  0xd02a,
+  0xd02b,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_cost_comfort_slider_erds[] = {
+  0xd00e,
+  0xd00f,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_dsm_override_erds[] = {
+  0xd001,
+  0xd002,
+};
+
+static const tiny_erd_t appliance_api_resource_management_v1_electrical_energy_usage_v2_erds[] = {
+  0xd014,
+  0xd015,
+  0xd02c,
+  0xd030,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_device_air_quality_erds[] = {
+  0x5b4b,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_relative_humidity_sensor_erds[] = {
+  0x5b27,
+  0x5b28,
+  0x5b29,
+  0x5b2a,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_voc_index_sensor_erds[] = {
+  0x5b2b,
+  0x5b2c,
+  0x5b2d,
+  0x5b2e,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_fine_air_particles_sensor_erds[] = {
+  0x5b2f,
+  0x5b30,
+  0x5b31,
+  0x5b32,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_nox_index_sensor_erds[] = {
+  0x5b33,
+  0x5b34,
+  0x5b35,
+  0x5b36,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_1_um_particle_sensor_erds[] = {
+  0x5b37,
+  0x5b38,
+  0x5b39,
+  0x5b3a,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_4_um_particle_sensor_erds[] = {
+  0x5b3b,
+  0x5b3c,
+  0x5b3d,
+  0x5b3f,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_10_um_particle_sensor_erds[] = {
+  0x5b40,
+  0x5b41,
+  0x5b42,
+  0x5b43,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_temperature_sensor_erds[] = {
+  0x5b44,
+  0x5b45,
+  0x5b46,
+  0x5b47,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_displayed_color_scheme_erds[] = {
+  0x5b4c,
+  0x5b4d,
+  0x5b4e,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_fine_air_particles_sensor_index_erds[] = {
+  0x5b4f,
+  0x5b50,
+  0x5b51,
+  0x5b52,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_1_um_particle_sensor_index_erds[] = {
+  0x5b53,
+  0x5b54,
+  0x5b55,
+  0x5b56,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_4_um_particle_sensor_index_erds[] = {
+  0x5b57,
+  0x5b58,
+  0x5b59,
+  0x5b5a,
+};
+
+static const tiny_erd_t appliance_api_environmental_sensing_v1_10_um_particle_sensor_index_erds[] = {
+  0x5b5b,
+  0x5b5c,
+  0x5b5d,
+  0x5b5e,
+};
+
+static const tiny_erd_t appliance_api_battery_v1_foundation_erds[] = {
+  0x0910,
+  0x0911,
+  0x0912,
+  0x0913,
+  0x0914,
+};
+
+static const tiny_erd_t appliance_api_software_diagnostics_v1_reset_information_erds[] = {
+  0x0700,
+  0x0701,
+  0x0702,
+  0x0703,
+};
+
+static const tiny_erd_t appliance_api_software_diagnostics_v1_linux_diagnostics_erds[] = {
+  0x0704,
+  0x0705,
+  0x0706,
+  0x0707,
+};
+
+static const tiny_erd_t appliance_api_software_diagnostics_v1_gea2_gea3_interface_diagnostics_for_interfaces_1_to_3_erds[] = {
+  0x0708,
+  0x0709,
+  0x070a,
+};
+
+static const tiny_erd_t appliance_api_software_diagnostics_v1_gea2_gea3_interface_diagnostics_for_interfaces_4_to_6_erds[] = {
+  0x070b,
+  0x070c,
+  0x070d,
+};
+
+static const tiny_erd_t appliance_api_matter_room_ac_v1_foundation_erds[] = {
+  0x009c,
+  0x0400,
+  0x0401,
+  0x0402,
+  0x0410,
+  0x0411,
+  0x0412,
+  0x0413,
+  0x0414,
+  0x0415,
+  0x7a20,
+  0x7a21,
+  0x7a22,
+  0x7a23,
+  0x7a24,
+  0x7a25,
+  0x7a26,
+  0x7a27,
+  0x7a28,
+  0x7a40,
+  0x7a41,
+  0x7a42,
+  0x7a43,
+  0x7a44,
+  0x7a45,
+};
+
 static const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {
   {0x0000, 1, 0x00000001, "Water Heater / Foundation", appliance_api_water_heater_v1_foundation_erds, 23},
   {0x0000, 1, 0x00000002, "Water Heater / Anode Depletion", appliance_api_water_heater_v1_anode_depletion_erds, 3},
@@ -6104,6 +6355,42 @@ static const appliance_feature_api_descriptor_t appliance_feature_api_descriptor
   {0x0202, 1, 0x00000080, "HVAC / Cooling Setpoint Maximum Limit Configurable", appliance_api_hvac_v1_cooling_setpoint_maximum_limit_configurable_erds, 2},
   {0x0202, 1, 0x00000100, "HVAC / Air Purifier", appliance_api_hvac_v1_air_purifier_erds, 2},
   {0x0202, 1, 0x00000200, "HVAC / Energy Conservation", appliance_api_hvac_v1_energy_conservation_erds, 2},
+  {0x0300, 1, 0x00000001, "Voice Control / Alexa Voice Service", appliance_api_voice_control_v1_alexa_voice_service_erds, 2},
+  {0x0301, 1, 0x00000001, "Android UI / Sign of Life", appliance_api_android_ui_v1_sign_of_life_erds, 1},
+  {0x0301, 1, 0x00000002, "Android UI / Camera Configuration Personality", appliance_api_android_ui_v1_camera_configuration_personality_erds, 1},
+  {0x0302, 1, 0x00000001, "Resource Management / Electrical Energy Usage", appliance_api_resource_management_v1_electrical_energy_usage_erds, 4},
+  {0x0302, 1, 0x00000002, "Resource Management / Hot Water Usage in Liters", appliance_api_resource_management_v1_hot_water_usage_in_liters_erds, 4},
+  {0x0302, 1, 0x00000004, "Resource Management / Hot Water Usage in Milliliters", appliance_api_resource_management_v1_hot_water_usage_in_milliliters_erds, 4},
+  {0x0302, 1, 0x00000008, "Resource Management / Cold Water Usage in Liters", appliance_api_resource_management_v1_cold_water_usage_in_liters_erds, 4},
+  {0x0302, 1, 0x00000010, "Resource Management / Cold Water Usage in Milliliters", appliance_api_resource_management_v1_cold_water_usage_in_milliliters_erds, 4},
+  {0x0302, 1, 0x00000020, "Resource Management / Gas Usage", appliance_api_resource_management_v1_gas_usage_erds, 5},
+  {0x0302, 1, 0x00000040, "Resource Management / Electrical Time of Use Pricing Schedules Season 1", appliance_api_resource_management_v1_electrical_time_of_use_pricing_schedules_season_1_erds, 4},
+  {0x0302, 1, 0x00000080, "Resource Management / Electrical Time of Use Pricing Schedules Season 2", appliance_api_resource_management_v1_electrical_time_of_use_pricing_schedules_season_2_erds, 2},
+  {0x0302, 1, 0x00000100, "Resource Management / Electrical Time of Use Pricing Schedules Season 3", appliance_api_resource_management_v1_electrical_time_of_use_pricing_schedules_season_3_erds, 2},
+  {0x0302, 1, 0x00000200, "Resource Management / Electrical Time of Use Pricing Schedules Season 4", appliance_api_resource_management_v1_electrical_time_of_use_pricing_schedules_season_4_erds, 2},
+  {0x0302, 1, 0x00000400, "Resource Management / Cost Comfort Slider", appliance_api_resource_management_v1_cost_comfort_slider_erds, 2},
+  {0x0302, 1, 0x00000800, "Resource Management / DSM Override", appliance_api_resource_management_v1_dsm_override_erds, 2},
+  {0x0302, 1, 0x00001000, "Resource Management / Electrical Energy Usage v2", appliance_api_resource_management_v1_electrical_energy_usage_v2_erds, 4},
+  {0x0303, 1, 0x00000001, "Environmental Sensing / Device Air Quality", appliance_api_environmental_sensing_v1_device_air_quality_erds, 1},
+  {0x0303, 1, 0x00000002, "Environmental Sensing / Relative Humidity Sensor", appliance_api_environmental_sensing_v1_relative_humidity_sensor_erds, 4},
+  {0x0303, 1, 0x00000004, "Environmental Sensing / VOC Index Sensor", appliance_api_environmental_sensing_v1_voc_index_sensor_erds, 4},
+  {0x0303, 1, 0x00000008, "Environmental Sensing / Fine Air Particles Sensor", appliance_api_environmental_sensing_v1_fine_air_particles_sensor_erds, 4},
+  {0x0303, 1, 0x00000010, "Environmental Sensing / NOx Index Sensor", appliance_api_environmental_sensing_v1_nox_index_sensor_erds, 4},
+  {0x0303, 1, 0x00000020, "Environmental Sensing / 1 um Particle Sensor", appliance_api_environmental_sensing_v1_1_um_particle_sensor_erds, 4},
+  {0x0303, 1, 0x00000040, "Environmental Sensing / 4 um Particle Sensor", appliance_api_environmental_sensing_v1_4_um_particle_sensor_erds, 4},
+  {0x0303, 1, 0x00000080, "Environmental Sensing / 10 um Particle Sensor", appliance_api_environmental_sensing_v1_10_um_particle_sensor_erds, 4},
+  {0x0303, 1, 0x00000100, "Environmental Sensing / Temperature Sensor", appliance_api_environmental_sensing_v1_temperature_sensor_erds, 4},
+  {0x0303, 1, 0x00000200, "Environmental Sensing / Displayed Color Scheme", appliance_api_environmental_sensing_v1_displayed_color_scheme_erds, 3},
+  {0x0303, 1, 0x00000400, "Environmental Sensing / Fine Air Particles Sensor Index", appliance_api_environmental_sensing_v1_fine_air_particles_sensor_index_erds, 4},
+  {0x0303, 1, 0x00000800, "Environmental Sensing / 1 um Particle Sensor Index", appliance_api_environmental_sensing_v1_1_um_particle_sensor_index_erds, 4},
+  {0x0303, 1, 0x00001000, "Environmental Sensing / 4 um Particle Sensor Index", appliance_api_environmental_sensing_v1_4_um_particle_sensor_index_erds, 4},
+  {0x0303, 1, 0x00002000, "Environmental Sensing / 10 um Particle Sensor Index", appliance_api_environmental_sensing_v1_10_um_particle_sensor_index_erds, 4},
+  {0x0304, 1, 0x00000001, "Battery / Foundation", appliance_api_battery_v1_foundation_erds, 5},
+  {0x0400, 1, 0x00000001, "Software Diagnostics / Reset Information", appliance_api_software_diagnostics_v1_reset_information_erds, 4},
+  {0x0400, 1, 0x00000002, "Software Diagnostics / Linux Diagnostics", appliance_api_software_diagnostics_v1_linux_diagnostics_erds, 4},
+  {0x0400, 1, 0x00000004, "Software Diagnostics / GEA2 GEA3 Interface Diagnostics for Interfaces 1 to 3", appliance_api_software_diagnostics_v1_gea2_gea3_interface_diagnostics_for_interfaces_1_to_3_erds, 3},
+  {0x0400, 1, 0x00000008, "Software Diagnostics / GEA2 GEA3 Interface Diagnostics for Interfaces 4 to 6", appliance_api_software_diagnostics_v1_gea2_gea3_interface_diagnostics_for_interfaces_4_to_6_erds, 3},
+  {0x0500, 1, 0x00000001, "Matter Room AC / Foundation", appliance_api_matter_room_ac_v1_foundation_erds, 25},
 };
 static const uint16_t appliance_feature_api_descriptor_count =
   sizeof(appliance_feature_api_descriptors) / sizeof(appliance_feature_api_descriptors[0]);

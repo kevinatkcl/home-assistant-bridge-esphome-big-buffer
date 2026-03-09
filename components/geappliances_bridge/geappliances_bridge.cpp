@@ -64,15 +64,29 @@ static constexpr tiny_erd_t ERD_COMMON_FEATURE_API = 0x0092;
 static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_0 = 0x0093;
 static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_1 = 0x0094;
 static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_2 = 0x0095;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_3 = 0x0096;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_4 = 0x0097;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_5 = 0x0109;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_6 = 0x010A;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_7 = 0x010B;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_8 = 0x010C;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_9 = 0x010D;
 
 static constexpr uint8_t APPLIANCE_FEATURE_ERD_SIZE = 8; // [2B featureType][2B version][4B bitmap]
 
-// Returns true if the ERD is one of the four feature bit ERDs (0x0092-0x0095).
+// Returns true if the ERD is one of the feature bit ERDs (0x0092-0x0097 and 0x0109-0x010D).
 static inline bool is_feature_bit_erd(tiny_erd_t erd) {
   return erd == ERD_COMMON_FEATURE_API ||
          erd == ERD_APPLIANCE_FEATURE_API_0 ||
          erd == ERD_APPLIANCE_FEATURE_API_1 ||
-         erd == ERD_APPLIANCE_FEATURE_API_2;
+         erd == ERD_APPLIANCE_FEATURE_API_2 ||
+         erd == ERD_APPLIANCE_FEATURE_API_3 ||
+         erd == ERD_APPLIANCE_FEATURE_API_4 ||
+         erd == ERD_APPLIANCE_FEATURE_API_5 ||
+         erd == ERD_APPLIANCE_FEATURE_API_6 ||
+         erd == ERD_APPLIANCE_FEATURE_API_7 ||
+         erd == ERD_APPLIANCE_FEATURE_API_8 ||
+         erd == ERD_APPLIANCE_FEATURE_API_9;
 }
 
 // Read up to 8 bytes from a big-endian byte buffer as a 64-bit integer.
@@ -287,6 +301,27 @@ void GeappliancesBridge::loop() {
     } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0095) {
       feature_erd = ERD_APPLIANCE_FEATURE_API_2;
       feature_name = "appliance feature API 2 (0x0095)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0096) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_3;
+      feature_name = "appliance feature API 3 (0x0096)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0097) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_4;
+      feature_name = "appliance feature API 4 (0x0097)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0109) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_5;
+      feature_name = "appliance feature API 5 (0x0109)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_010A) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_6;
+      feature_name = "appliance feature API 6 (0x010A)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_010B) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_7;
+      feature_name = "appliance feature API 7 (0x010B)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_010C) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_8;
+      feature_name = "appliance feature API 8 (0x010C)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_010D) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_9;
+      feature_name = "appliance feature API 9 (0x010D)";
     }
 
     if (feature_name != nullptr) {
@@ -438,7 +473,7 @@ void GeappliancesBridge::start_feature_bit_reading_() {
   if (this->feature_bit_state_ != FEATURE_BIT_STATE_IDLE) {
     return;
   }
-  ESP_LOGI(TAG, "Reading appliance API feature bits (ERDs 0x0092-0x0095)...");
+  ESP_LOGI(TAG, "Reading appliance API feature bits (ERDs 0x0092-0x0097 and 0x0109-0x010D)...");
   this->read_retry_count_ = 0;
   this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0092;
 }
@@ -448,44 +483,72 @@ void GeappliancesBridge::process_feature_bit_erd_response_(tiny_erd_t erd, const
   uint8_t copy_size = (size <= 8) ? size : 8;
   this->read_retry_count_ = 0;
 
+  // Helper lambda: try to immediately queue the next ERD read; if busy, fall
+  // back to setting the corresponding READING state so loop() retries.
+  auto queue_next = [this](tiny_erd_t next_erd, FeatureBitState fallback_state) {
+    if (this->active_erd_client_ != nullptr &&
+        tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
+                                   this->host_address_, next_erd)) {
+      this->feature_bit_state_ = FEATURE_BIT_STATE_IN_FLIGHT;
+    } else {
+      this->feature_bit_state_ = fallback_state;
+    }
+  };
+
   if (erd == ERD_COMMON_FEATURE_API) {
     memcpy(this->feature_bit_erd_0092_, data, copy_size);
     this->feature_bit_erd_0092_size_ = copy_size;
     ESP_LOGD(TAG, "Read common feature API (0x0092): %u bytes", copy_size);
-    // Immediately queue the next read
-    if (this->active_erd_client_ != nullptr &&
-        tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
-                                   this->host_address_, ERD_APPLIANCE_FEATURE_API_0)) {
-      this->feature_bit_state_ = FEATURE_BIT_STATE_IN_FLIGHT;
-    } else {
-      this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0093;
-    }
+    queue_next(ERD_APPLIANCE_FEATURE_API_0, FEATURE_BIT_STATE_READING_0093);
   } else if (erd == ERD_APPLIANCE_FEATURE_API_0) {
     memcpy(this->feature_bit_erd_0093_, data, copy_size);
     this->feature_bit_erd_0093_size_ = copy_size;
     ESP_LOGD(TAG, "Read appliance feature API 0 (0x0093): %u bytes", copy_size);
-    if (this->active_erd_client_ != nullptr &&
-        tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
-                                   this->host_address_, ERD_APPLIANCE_FEATURE_API_1)) {
-      this->feature_bit_state_ = FEATURE_BIT_STATE_IN_FLIGHT;
-    } else {
-      this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0094;
-    }
+    queue_next(ERD_APPLIANCE_FEATURE_API_1, FEATURE_BIT_STATE_READING_0094);
   } else if (erd == ERD_APPLIANCE_FEATURE_API_1) {
     memcpy(this->feature_bit_erd_0094_, data, copy_size);
     this->feature_bit_erd_0094_size_ = copy_size;
     ESP_LOGD(TAG, "Read appliance feature API 1 (0x0094): %u bytes", copy_size);
-    if (this->active_erd_client_ != nullptr &&
-        tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
-                                   this->host_address_, ERD_APPLIANCE_FEATURE_API_2)) {
-      this->feature_bit_state_ = FEATURE_BIT_STATE_IN_FLIGHT;
-    } else {
-      this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0095;
-    }
+    queue_next(ERD_APPLIANCE_FEATURE_API_2, FEATURE_BIT_STATE_READING_0095);
   } else if (erd == ERD_APPLIANCE_FEATURE_API_2) {
     memcpy(this->feature_bit_erd_0095_, data, copy_size);
     this->feature_bit_erd_0095_size_ = copy_size;
     ESP_LOGD(TAG, "Read appliance feature API 2 (0x0095): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_3, FEATURE_BIT_STATE_READING_0096);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_3) {
+    memcpy(this->feature_bit_erd_0096_, data, copy_size);
+    this->feature_bit_erd_0096_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 3 (0x0096): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_4, FEATURE_BIT_STATE_READING_0097);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_4) {
+    memcpy(this->feature_bit_erd_0097_, data, copy_size);
+    this->feature_bit_erd_0097_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 4 (0x0097): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_5, FEATURE_BIT_STATE_READING_0109);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_5) {
+    memcpy(this->feature_bit_erd_0109_, data, copy_size);
+    this->feature_bit_erd_0109_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 5 (0x0109): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_6, FEATURE_BIT_STATE_READING_010A);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_6) {
+    memcpy(this->feature_bit_erd_010A_, data, copy_size);
+    this->feature_bit_erd_010A_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 6 (0x010A): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_7, FEATURE_BIT_STATE_READING_010B);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_7) {
+    memcpy(this->feature_bit_erd_010B_, data, copy_size);
+    this->feature_bit_erd_010B_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 7 (0x010B): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_8, FEATURE_BIT_STATE_READING_010C);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_8) {
+    memcpy(this->feature_bit_erd_010C_, data, copy_size);
+    this->feature_bit_erd_010C_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 8 (0x010C): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_9, FEATURE_BIT_STATE_READING_010D);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_9) {
+    memcpy(this->feature_bit_erd_010D_, data, copy_size);
+    this->feature_bit_erd_010D_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 9 (0x010D): %u bytes", copy_size);
     this->feature_bit_state_ = FEATURE_BIT_STATE_COMPLETE;
     this->parse_and_log_feature_bits_();
     this->start_device_id_generation_();
@@ -503,6 +566,20 @@ void GeappliancesBridge::handle_feature_bit_read_failure_(tiny_erd_t erd) {
     this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0094;
   } else if (erd == ERD_APPLIANCE_FEATURE_API_2) {
     this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0095;
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_3) {
+    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0096;
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_4) {
+    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0097;
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_5) {
+    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0109;
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_6) {
+    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010A;
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_7) {
+    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010B;
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_8) {
+    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010C;
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_9) {
+    this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010D;
   }
 }
 
@@ -529,24 +606,41 @@ void GeappliancesBridge::parse_and_log_feature_bits_() {
     }
   }
 
-  // Parse appliance feature APIs from ERDs 0x0093-0x0095.
+  // Parse appliance feature APIs from ERDs 0x0093-0x0097 and 0x0109-0x010D.
   // Each ERD has the structure: [2B featureType][2B version][4B feature bitmap]
   // featureType identifies the appliance API (e.g. 0x0014 = Zoneline).
   // version selects which version's feature set applies.
   // Each set bit in the feature bitmap enables a specific feature's ERDs.
-  const uint8_t* api_bufs[3] = {
+  const uint8_t* api_bufs[10] = {
     this->feature_bit_erd_0093_,
     this->feature_bit_erd_0094_,
-    this->feature_bit_erd_0095_
+    this->feature_bit_erd_0095_,
+    this->feature_bit_erd_0096_,
+    this->feature_bit_erd_0097_,
+    this->feature_bit_erd_0109_,
+    this->feature_bit_erd_010A_,
+    this->feature_bit_erd_010B_,
+    this->feature_bit_erd_010C_,
+    this->feature_bit_erd_010D_
   };
-  const uint8_t api_sizes[3] = {
+  const uint8_t api_sizes[10] = {
     this->feature_bit_erd_0093_size_,
     this->feature_bit_erd_0094_size_,
-    this->feature_bit_erd_0095_size_
+    this->feature_bit_erd_0095_size_,
+    this->feature_bit_erd_0096_size_,
+    this->feature_bit_erd_0097_size_,
+    this->feature_bit_erd_0109_size_,
+    this->feature_bit_erd_010A_size_,
+    this->feature_bit_erd_010B_size_,
+    this->feature_bit_erd_010C_size_,
+    this->feature_bit_erd_010D_size_
   };
-  static const char* const erd_names[3] = {"0x0093", "0x0094", "0x0095"};
+  static const char* const erd_names[10] = {
+    "0x0093", "0x0094", "0x0095", "0x0096", "0x0097",
+    "0x0109", "0x010A", "0x010B", "0x010C", "0x010D"
+  };
 
-  for (uint8_t erd_idx = 0; erd_idx < 3; erd_idx++) {
+  for (uint8_t erd_idx = 0; erd_idx < 10; erd_idx++) {
     if (api_sizes[erd_idx] < APPLIANCE_FEATURE_ERD_SIZE) continue;
     const uint8_t* buf = api_bufs[erd_idx];
     uint16_t appliance_type = (static_cast<uint16_t>(buf[0]) << 8) | buf[1];

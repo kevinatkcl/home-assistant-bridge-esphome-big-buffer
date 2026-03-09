@@ -8,7 +8,7 @@ Generates two files:
      phase, plus the POLLING_LIST_MAX_SIZE constant.
 
   2. appliance_api_feature_lists.h (from appliance_api.json):
-     Feature API descriptors that map feature bits in ERDs 0x0092-0x0095 to
+     Feature API descriptors that map feature bits in ERDs 0x0092-0x0097 and 0x0109-0x010D to
      the associated ERD lists. Used at runtime to build the valid ERD set when
      appliance_api_parsing is enabled.
 """
@@ -307,14 +307,14 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
     lines.append("")
 
     # -------------------------------------------------------------------------
-    # Appliance Feature APIs (ERDs 0x0093-0x0095)
+    # Appliance Feature APIs (ERDs 0x0093-0x0097 and 0x0109-0x010D)
     # Each ERD carries: [2-byte featureType][2-byte version][4-byte feature bitmap]
     # featureType identifies the appliance API (e.g. 0x0014 = Zoneline).
     # version selects the API version.
     # Each bit in the feature bitmap corresponds to a feature's mask value.
     # -------------------------------------------------------------------------
     lines.append("// ============================================================================")
-    lines.append("// Appliance Feature APIs (ERDs 0x0093 to 0x0095)")
+    lines.append("// Appliance Feature APIs (ERDs 0x0093-0x0097 and 0x0109-0x010D)")
     lines.append("// Each ERD value is: [2B featureType][2B version][4B feature bitmap]")
     lines.append("// One descriptor per feature per version; matched at runtime by featureType+version.")
     lines.append("// ============================================================================")
@@ -331,12 +331,12 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
 
     feature_apis = appliance_api_data.get('featureApis', {})
 
-    # Include only feature APIs whose featureType fits in ERDs 0x0093-0x0095
-    # (featureType high byte 0-2 maps to ERD 0x0093/0x0094/0x0095 respectively).
+    # Include only feature APIs whose featureType fits in the 10 ERD slots:
+    #   0x0093-0x0097 (high byte 0-4) and 0x0109-0x010D (high byte 5-9).
     valid_feature_apis = [
         (key, api)
         for key, api in feature_apis.items()
-        if (api['featureType'] >> 8) <= 2
+        if (api['featureType'] >> 8) <= 9
     ]
 
     # Pre-compute unique array names for every (api, ver, feature) triple.
@@ -481,8 +481,8 @@ def main():
 
     feature_apis = appliance_api_data.get('featureApis', {})
     common_features = appliance_api_data.get('common', {})
-    valid_feature_apis = [api for api in feature_apis.values() if (api['featureType'] >> 8) <= 2]
-    print(f"Found {len(feature_apis)} feature APIs ({len(valid_feature_apis)} within ERDs 0x0093-0x0095)")
+    valid_feature_apis = [api for api in feature_apis.values() if (api['featureType'] >> 8) <= 9]
+    print(f"Found {len(feature_apis)} feature APIs ({len(valid_feature_apis)} within ERDs 0x0093-0x0097 and 0x0109-0x010D)")
     common_ver_count = sum(
         len(vd.get('features', []))
         for vd in common_features.get('versions', {}).values()

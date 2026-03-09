@@ -80,7 +80,9 @@ class GeappliancesBridge : public Component {
     DEVICE_ID_STATE_FAILED
   };
 
-  // States for reading the four appliance API feature bit ERDs (0x0092-0x0095).
+  // States for reading the appliance API feature bit ERDs:
+  //   0x0092 (common), 0x0093-0x0097 (appliance groups 0-4),
+  //   0x0109-0x010D (appliance groups 5-9).
   // This step runs after autodiscovery and before device ID generation.
   //
   // READING_XXXX: loop() needs to queue a read for that ERD.
@@ -94,6 +96,13 @@ class GeappliancesBridge : public Component {
     FEATURE_BIT_STATE_READING_0093,  // Need to queue read for ERD 0x0093
     FEATURE_BIT_STATE_READING_0094,  // Need to queue read for ERD 0x0094
     FEATURE_BIT_STATE_READING_0095,  // Need to queue read for ERD 0x0095
+    FEATURE_BIT_STATE_READING_0096,  // Need to queue read for ERD 0x0096
+    FEATURE_BIT_STATE_READING_0097,  // Need to queue read for ERD 0x0097
+    FEATURE_BIT_STATE_READING_0109,  // Need to queue read for ERD 0x0109
+    FEATURE_BIT_STATE_READING_010A,  // Need to queue read for ERD 0x010A
+    FEATURE_BIT_STATE_READING_010B,  // Need to queue read for ERD 0x010B
+    FEATURE_BIT_STATE_READING_010C,  // Need to queue read for ERD 0x010C
+    FEATURE_BIT_STATE_READING_010D,  // Need to queue read for ERD 0x010D
     FEATURE_BIT_STATE_IN_FLIGHT,     // Read queued, waiting for response
     FEATURE_BIT_STATE_COMPLETE,
     FEATURE_BIT_STATE_FAILED
@@ -149,10 +158,24 @@ class GeappliancesBridge : public Component {
   uint8_t feature_bit_erd_0093_[8]{};  // raw bytes from ERD 0x0093 (appliance APIs, group 0)
   uint8_t feature_bit_erd_0094_[8]{};  // raw bytes from ERD 0x0094 (appliance APIs, group 1)
   uint8_t feature_bit_erd_0095_[8]{};  // raw bytes from ERD 0x0095 (appliance APIs, group 2)
+  uint8_t feature_bit_erd_0096_[8]{};  // raw bytes from ERD 0x0096 (appliance APIs, group 3)
+  uint8_t feature_bit_erd_0097_[8]{};  // raw bytes from ERD 0x0097 (appliance APIs, group 4)
+  uint8_t feature_bit_erd_0109_[8]{};  // raw bytes from ERD 0x0109 (appliance APIs, group 5)
+  uint8_t feature_bit_erd_010A_[8]{};  // raw bytes from ERD 0x010A (appliance APIs, group 6)
+  uint8_t feature_bit_erd_010B_[8]{};  // raw bytes from ERD 0x010B (appliance APIs, group 7)
+  uint8_t feature_bit_erd_010C_[8]{};  // raw bytes from ERD 0x010C (appliance APIs, group 8)
+  uint8_t feature_bit_erd_010D_[8]{};  // raw bytes from ERD 0x010D (appliance APIs, group 9)
   uint8_t feature_bit_erd_0092_size_{0};
   uint8_t feature_bit_erd_0093_size_{0};
   uint8_t feature_bit_erd_0094_size_{0};
   uint8_t feature_bit_erd_0095_size_{0};
+  uint8_t feature_bit_erd_0096_size_{0};
+  uint8_t feature_bit_erd_0097_size_{0};
+  uint8_t feature_bit_erd_0109_size_{0};
+  uint8_t feature_bit_erd_010A_size_{0};
+  uint8_t feature_bit_erd_010B_size_{0};
+  uint8_t feature_bit_erd_010C_size_{0};
+  uint8_t feature_bit_erd_010D_size_{0};
   // Set of valid ERDs built from parsed feature bits; used when appliance_api_parsing_ is true
   std::set<tiny_erd_t> appliance_api_valid_erds_;
   // Sorted vector of the same set, for passing to the polling bridge as a C array
