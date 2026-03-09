@@ -778,7 +778,7 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
                                    this->feature_bit_state_ != FEATURE_BIT_STATE_COMPLETE &&
                                    this->feature_bit_state_ != FEATURE_BIT_STATE_FAILED);
       if (is_feature_bit_erd(erd) && feature_bit_active) {
-        ESP_LOGW(TAG, "Failed to read feature bit ERD 0x%04X (reason: %u), will retry",
+        ESP_LOGW(TAG, "Failed to read feature bit ERD 0x%04X (reason: %u), advancing to next ERD",
                  erd, args->read_failed.reason);
         this->handle_feature_bit_read_failure_(erd);
       } else {
@@ -890,8 +890,11 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
   // Initialize MQTT client adapter
   esphome_mqtt_client_adapter_init(&this->mqtt_client_adapter_, this->final_device_id_.c_str());
 
-  // Apply valid ERD filter if appliance_api_parsing is enabled and list is ready
-  if (this->appliance_api_parsing_ && this->appliance_api_valid_list_ready_) {
+  // Apply valid ERD filter if appliance_api_parsing is enabled, the list is ready,
+  // and at least one ERD was added to the valid set. An empty set would silently
+  // suppress all ERD publishes, so skip the filter if parsing produced no results.
+  if (this->appliance_api_parsing_ && this->appliance_api_valid_list_ready_ &&
+      !this->appliance_api_valid_erds_.empty()) {
     esphome_mqtt_client_adapter_set_valid_erds_filter(
       &this->mqtt_client_adapter_, &this->appliance_api_valid_erds_);
     ESP_LOGI(TAG, "Appliance API parsing enabled: publishing filtered to %zu valid ERDs",
