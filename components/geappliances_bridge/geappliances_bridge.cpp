@@ -65,6 +65,8 @@ static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_0 = 0x0093;
 static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_1 = 0x0094;
 static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_2 = 0x0095;
 
+static constexpr uint8_t APPLIANCE_FEATURE_ERD_SIZE = 8; // [2B featureType][2B version][4B bitmap]
+
 // Returns true if the ERD is one of the four feature bit ERDs (0x0092-0x0095).
 static inline bool is_feature_bit_erd(tiny_erd_t erd) {
   return erd == ERD_COMMON_FEATURE_API ||
@@ -509,8 +511,8 @@ void GeappliancesBridge::parse_and_log_feature_bits_() {
   this->appliance_api_valid_erds_vec_.clear();
   this->appliance_api_valid_list_ready_ = false;
 
-  // Parse common features from ERD 0x0092
-  // The common section uses a 32-bit bitmask; extract bits 0-31 from the little-endian value.
+  // Parse common features from ERD 0x0092.
+  // ERD 0x0092 is a 4-byte big-endian bitmask; each bit corresponds to a common feature.
   if (this->feature_bit_erd_0092_size_ > 0) {
     uint32_t common_bits = static_cast<uint32_t>(
       read_be64(this->feature_bit_erd_0092_, this->feature_bit_erd_0092_size_) & 0xFFFFFFFFu);
@@ -527,7 +529,11 @@ void GeappliancesBridge::parse_and_log_feature_bits_() {
     }
   }
 
-  // Parse appliance feature APIs from ERDs 0x0093-0x0095
+  // Parse appliance feature APIs from ERDs 0x0093-0x0095.
+  // Each ERD has the structure: [2B featureType][2B version][4B feature bitmap]
+  // featureType identifies the appliance API (e.g. 0x0014 = Zoneline).
+  // version selects which version's feature set applies.
+  // Each set bit in the feature bitmap enables a specific feature's ERDs.
   const uint8_t* api_bufs[3] = {
     this->feature_bit_erd_0093_,
     this->feature_bit_erd_0094_,
@@ -541,20 +547,33 @@ void GeappliancesBridge::parse_and_log_feature_bits_() {
   static const char* const erd_names[3] = {"0x0093", "0x0094", "0x0095"};
 
   for (uint8_t erd_idx = 0; erd_idx < 3; erd_idx++) {
-    if (api_sizes[erd_idx] == 0) continue;
-    uint64_t bits = read_be64(api_bufs[erd_idx], api_sizes[erd_idx]);
-    ESP_LOGI(TAG, "Appliance feature API ERD %s value: 0x%016llX", erd_names[erd_idx],
-             static_cast<unsigned long long>(bits));
+    if (api_sizes[erd_idx] < APPLIANCE_FEATURE_ERD_SIZE) continue;
+    const uint8_t* buf = api_bufs[erd_idx];
+    uint16_t appliance_type = (static_cast<uint16_t>(buf[0]) << 8) | buf[1];
+    uint16_t version        = (static_cast<uint16_t>(buf[2]) << 8) | buf[3];
+    uint32_t feature_bitmap = (static_cast<uint32_t>(buf[4]) << 24) |
+                              (static_cast<uint32_t>(buf[5]) << 16) |
+                              (static_cast<uint32_t>(buf[6]) <<  8) |
+                               buf[7];
+    if (appliance_type == 0 && version == 0 && feature_bitmap == 0) continue;
+    ESP_LOGI(TAG, "Appliance feature ERD %s: type 0x%04X, version %u, features 0x%08X",
+             erd_names[erd_idx], appliance_type, version, feature_bitmap);
+    bool found_matching_descriptor = false;
     for (uint16_t i = 0; i < appliance_feature_api_descriptor_count; i++) {
       const auto& desc = appliance_feature_api_descriptors[i];
-      if (desc.erd_index != erd_idx) continue;
-      if (bits & (static_cast<uint64_t>(1) << desc.bit_position)) {
-        ESP_LOGI(TAG, "  [SET] Feature API: %s (ERD %s bit %u, %u ERDs)",
-                 desc.name, erd_names[erd_idx], desc.bit_position, desc.erd_count);
+      if (desc.feature_type != appliance_type || desc.version != version) continue;
+      found_matching_descriptor = true;
+      if (feature_bitmap & desc.bit_mask) {
+        ESP_LOGI(TAG, "  [SET] %s (mask 0x%08X, %u ERDs)",
+                 desc.name, desc.bit_mask, desc.erd_count);
         for (uint16_t j = 0; j < desc.erd_count; j++) {
           this->appliance_api_valid_erds_.insert(desc.erds[j]);
         }
       }
+    }
+    if (!found_matching_descriptor) {
+      ESP_LOGW(TAG, "  No known API definition for type 0x%04X version %u",
+               appliance_type, version);
     }
   }
 

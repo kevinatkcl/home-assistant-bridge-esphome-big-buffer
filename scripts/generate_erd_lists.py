@@ -220,13 +220,11 @@ def sanitize_name_for_cpp(name: str) -> str:
     return result.strip('_').lower()
 
 
-def collect_all_erds_for_feature_api(api: Dict) -> List[int]:
-    """Collect all unique ERD IDs from all versions and inner features of a feature API."""
+def collect_erds_for_feature(feature: Dict) -> List[int]:
+    """Collect all ERD IDs for a single feature (required + optional)."""
     erds: Set[int] = set()
-    for ver_data in api.get('versions', {}).values():
-        for feature in ver_data.get('features', []):
-            for erd_entry in feature.get('required', []) + feature.get('optional', []):
-                erds.add(parse_erd_id(erd_entry['erd']))
+    for erd_entry in feature.get('required', []) + feature.get('optional', []):
+        erds.add(parse_erd_id(erd_entry['erd']))
     return sorted(erds)
 
 
@@ -310,19 +308,22 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
 
     # -------------------------------------------------------------------------
     # Appliance Feature APIs (ERDs 0x0093-0x0095)
-    # featureType = (erd_index << 8) | bit_position
-    # erd_index: 0=ERD 0x0093, 1=ERD 0x0094, 2=ERD 0x0095
+    # Each ERD carries: [2-byte featureType][2-byte version][4-byte feature bitmap]
+    # featureType identifies the appliance API (e.g. 0x0014 = Zoneline).
+    # version selects the API version.
+    # Each bit in the feature bitmap corresponds to a feature's mask value.
     # -------------------------------------------------------------------------
     lines.append("// ============================================================================")
     lines.append("// Appliance Feature APIs (ERDs 0x0093 to 0x0095)")
-    lines.append("// featureType = (erd_index << 8) | bit_position")
-    lines.append("// erd_index: 0=ERD 0x0093, 1=ERD 0x0094, 2=ERD 0x0095")
+    lines.append("// Each ERD value is: [2B featureType][2B version][4B feature bitmap]")
+    lines.append("// One descriptor per feature per version; matched at runtime by featureType+version.")
     lines.append("// ============================================================================")
     lines.append("")
     lines.append("typedef struct {")
-    lines.append("  uint8_t erd_index;      // 0=0x0093, 1=0x0094, 2=0x0095")
-    lines.append("  uint8_t bit_position;   // bit position within the 8-byte ERD value")
-    lines.append("  const char* name;")
+    lines.append("  uint16_t feature_type;  // appliance API type (bytes 0-1 of ERD value)")
+    lines.append("  uint16_t version;       // API version (bytes 2-3 of ERD value)")
+    lines.append("  uint32_t bit_mask;      // feature bitmap mask (within bytes 4-7 of ERD value)")
+    lines.append("  const char* name;       // human-readable \"ApiName / FeatureName\" label")
     lines.append("  const tiny_erd_t* erds;")
     lines.append("  uint16_t erd_count;")
     lines.append("} appliance_feature_api_descriptor_t;")
@@ -330,39 +331,50 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
 
     feature_apis = appliance_api_data.get('featureApis', {})
 
-    # Filter: only include feature APIs that map to ERDs 0x0093-0x0095 (erd_index 0-2)
+    # Include only feature APIs whose featureType fits in ERDs 0x0093-0x0095
+    # (featureType high byte 0-2 maps to ERD 0x0093/0x0094/0x0095 respectively).
     valid_feature_apis = [
         (key, api)
         for key, api in feature_apis.items()
         if (api['featureType'] >> 8) <= 2
     ]
 
-    # Generate ERD arrays for each feature API
+    # Generate one ERD array per feature per version per appliance API.
     for key, api in valid_feature_apis:
-        sanitized = sanitize_name_for_cpp(api['name'])
-        erds = collect_all_erds_for_feature_api(api)
-        array_name = f"appliance_api_{sanitized}_erds"
-        if erds:
-            lines.append(f"static const tiny_erd_t {array_name}[] = {{")
-            for erd_id in erds:
-                lines.append(f"  0x{erd_id:04x},")
-            lines.append("};")
-        else:
-            lines.append(f"static const tiny_erd_t* {array_name} = nullptr;")
-        lines.append("")
+        api_sanitized = sanitize_name_for_cpp(api['name'])
+        for ver, ver_data in api.get('versions', {}).items():
+            for feature in ver_data.get('features', []):
+                feat_sanitized = sanitize_name_for_cpp(feature['name'])
+                array_name = f"appliance_api_{api_sanitized}_v{ver}_{feat_sanitized}_erds"
+                erds = collect_erds_for_feature(feature)
+                if erds:
+                    lines.append(f"static const tiny_erd_t {array_name}[] = {{")
+                    for erd_id in erds:
+                        lines.append(f"  0x{erd_id:04x},")
+                    lines.append("};")
+                else:
+                    lines.append(f"static const tiny_erd_t* {array_name} = nullptr;")
+                lines.append("")
 
-    # Generate master appliance feature API descriptor array
+    # Generate master descriptor array: one row per feature per version.
     lines.append("static const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {")
+    total_descriptors = 0
     for key, api in valid_feature_apis:
-        sanitized = sanitize_name_for_cpp(api['name'])
-        array_name = f"appliance_api_{sanitized}_erds"
+        api_sanitized = sanitize_name_for_cpp(api['name'])
         ft = api['featureType']
-        erd_index = ft >> 8
-        bit_pos = ft & 0xFF
-        erds = collect_all_erds_for_feature_api(api)
-        count = len(erds)
-        null_ptr = "nullptr" if count == 0 else array_name
-        lines.append(f"  {{{erd_index}, {bit_pos}, \"{api['name']}\", {null_ptr}, {count}}},")
+        for ver, ver_data in api.get('versions', {}).items():
+            for feature in ver_data.get('features', []):
+                feat_sanitized = sanitize_name_for_cpp(feature['name'])
+                array_name = f"appliance_api_{api_sanitized}_v{ver}_{feat_sanitized}_erds"
+                mask_val = int(feature['mask'], 16)
+                erds = collect_erds_for_feature(feature)
+                count = len(erds)
+                null_ptr = "nullptr" if count == 0 else array_name
+                label = f"{api['name']} / {feature['name']}"
+                lines.append(
+                    f"  {{0x{ft:04x}, {ver}, 0x{mask_val:08x}, \"{label}\", {null_ptr}, {count}}},"
+                )
+                total_descriptors += 1
     lines.append("};")
     lines.append("static const uint16_t appliance_feature_api_descriptor_count =")
     lines.append("  sizeof(appliance_feature_api_descriptors) / sizeof(appliance_feature_api_descriptors[0]);")
