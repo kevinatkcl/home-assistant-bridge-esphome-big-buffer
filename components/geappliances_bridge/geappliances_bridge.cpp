@@ -1,6 +1,8 @@
 #include "geappliances_bridge.h"
+#include "appliance_api_feature_lists.h"
 #include "esphome/core/log.h"
 #include "esphome_time_source.h"
+#include <cstring>
 
 namespace esphome {
 namespace geappliances_bridge {
@@ -56,6 +58,47 @@ static constexpr tiny_erd_t ERD_MODEL_NUMBER = 0x0001;
 static constexpr tiny_erd_t ERD_SERIAL_NUMBER = 0x0002;
 static constexpr tiny_erd_t ERD_APPLIANCE_TYPE = 0x0008;
 static constexpr uint8_t GEA_BROADCAST_ADDRESS = 0xFF;
+
+// ERD identifiers for appliance API feature bits
+static constexpr tiny_erd_t ERD_COMMON_FEATURE_API = 0x0092;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_0 = 0x0093;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_1 = 0x0094;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_2 = 0x0095;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_3 = 0x0096;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_4 = 0x0097;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_5 = 0x0109;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_6 = 0x010A;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_7 = 0x010B;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_8 = 0x010C;
+static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_9 = 0x010D;
+
+static constexpr uint8_t APPLIANCE_FEATURE_ERD_SIZE = 8; // [2B featureType][2B version][4B bitmap]
+
+// Returns true if the ERD is one of the feature bit ERDs (0x0092-0x0097 and 0x0109-0x010D).
+static inline bool is_feature_bit_erd(tiny_erd_t erd) {
+  return erd == ERD_COMMON_FEATURE_API ||
+         erd == ERD_APPLIANCE_FEATURE_API_0 ||
+         erd == ERD_APPLIANCE_FEATURE_API_1 ||
+         erd == ERD_APPLIANCE_FEATURE_API_2 ||
+         erd == ERD_APPLIANCE_FEATURE_API_3 ||
+         erd == ERD_APPLIANCE_FEATURE_API_4 ||
+         erd == ERD_APPLIANCE_FEATURE_API_5 ||
+         erd == ERD_APPLIANCE_FEATURE_API_6 ||
+         erd == ERD_APPLIANCE_FEATURE_API_7 ||
+         erd == ERD_APPLIANCE_FEATURE_API_8 ||
+         erd == ERD_APPLIANCE_FEATURE_API_9;
+}
+
+// Read up to 8 bytes from a big-endian byte buffer as a 64-bit integer.
+// GEA protocol transmits ERD values MSB-first (big-endian).
+static inline uint64_t read_be64(const uint8_t* buf, uint8_t size) {
+  uint64_t bits = 0;
+  uint8_t n = (size < 8) ? size : 8;
+  for (uint8_t i = 0; i < n; i++) {
+    bits = (bits << 8) | buf[i];
+  }
+  return bits;
+}
 
 void GeappliancesBridge::setup() {
   ESP_LOGCONFIG(TAG, "Setting up GE Appliances Bridge...");
@@ -237,6 +280,81 @@ void GeappliancesBridge::loop() {
     this->check_subscription_activity_();
   }
 
+  // Feature bit reading: runs after autodiscovery, before device ID generation.
+  // Uses direct read requests (not try_read_erd_with_retry_) to avoid interfering
+  // with device_id_state_. State transitions to IN_FLIGHT when a read is queued,
+  // preventing duplicate requests.
+  if (this->active_erd_client_ != nullptr) {
+    // When the last feature-bit ERD has been processed (in the GEA callback),
+    // feature_bit_parse_pending_ is set and parsing is deferred to here so the
+    // callback returns quickly and the GEA2 tight-loop can continue processing
+    // UART bytes without being stalled by the potentially slow parse_and_log_feature_bits_().
+    if (this->feature_bit_state_ == FEATURE_BIT_STATE_COMPLETE && this->feature_bit_parse_pending_) {
+      this->feature_bit_parse_pending_ = false;
+      this->parse_and_log_feature_bits_();
+      this->start_device_id_generation_();
+    }
+
+    tiny_erd_t feature_erd = 0;
+    const char* feature_name = nullptr;
+    FeatureBitState next_in_flight_state = FEATURE_BIT_STATE_IN_FLIGHT;
+
+    if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0092) {
+      feature_erd = ERD_COMMON_FEATURE_API;
+      feature_name = "common feature API (0x0092)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0093) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_0;
+      feature_name = "appliance feature API 0 (0x0093)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0094) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_1;
+      feature_name = "appliance feature API 1 (0x0094)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0095) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_2;
+      feature_name = "appliance feature API 2 (0x0095)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0096) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_3;
+      feature_name = "appliance feature API 3 (0x0096)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0097) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_4;
+      feature_name = "appliance feature API 4 (0x0097)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_0109) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_5;
+      feature_name = "appliance feature API 5 (0x0109)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_010A) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_6;
+      feature_name = "appliance feature API 6 (0x010A)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_010B) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_7;
+      feature_name = "appliance feature API 7 (0x010B)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_010C) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_8;
+      feature_name = "appliance feature API 8 (0x010C)";
+    } else if (this->feature_bit_state_ == FEATURE_BIT_STATE_READING_010D) {
+      feature_erd = ERD_APPLIANCE_FEATURE_API_9;
+      feature_name = "appliance feature API 9 (0x010D)";
+    }
+
+    if (feature_name != nullptr) {
+      if (tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
+                                     this->host_address_, feature_erd)) {
+        ESP_LOGD(TAG, "Queued read for %s", feature_name);
+        this->read_retry_count_ = 0;
+        this->feature_bit_state_ = next_in_flight_state;
+      } else {
+        this->read_retry_count_++;
+        if (this->read_retry_count_ >= MAX_READ_RETRIES) {
+          ESP_LOGW(TAG, "Could not queue read for %s after %u attempts, skipping ERD",
+                   feature_name, MAX_READ_RETRIES);
+          this->read_retry_count_ = 0;
+          this->skip_to_next_feature_erd_(feature_erd);
+        } else if (this->read_retry_count_ % LOG_EVERY_N_RETRIES == 0) {
+          ESP_LOGW(TAG, "Failed to queue %s read, retrying... (attempt %u)",
+                   feature_name, this->read_retry_count_);
+        }
+      }
+    }
+  }
+
   // Device ID generation: use active_erd_client_ regardless of protocol
   if (this->active_erd_client_ != nullptr) {
     if (this->device_id_state_ == DEVICE_ID_STATE_READING_APPLIANCE_TYPE) {
@@ -288,7 +406,7 @@ void GeappliancesBridge::run_autodiscovery_() {
           // host_address_ already set by first responder in handler
           ESP_LOGI(TAG, "GEA3 board discovered at 0x%02X, autodiscovery complete", this->host_address_);
           this->autodiscovery_state_ = AUTODISCOVERY_COMPLETE;
-          this->start_device_id_generation_();
+          this->start_feature_bit_reading_();
         } else if (this->gea2_uart_ != nullptr) {
           // GEA3 failed, try GEA2
           ESP_LOGW(TAG, "No GEA3 boards found, trying GEA2...");
@@ -322,7 +440,7 @@ void GeappliancesBridge::run_autodiscovery_() {
           ESP_LOGI(TAG, "GEA2 board discovered at 0x%02X, autodiscovery complete", this->host_address_);
           this->autodiscovery_state_ = AUTODISCOVERY_COMPLETE;
           this->gea2_protocol_active_ = true;
-          this->start_device_id_generation_();
+          this->start_feature_bit_reading_();
         } else if (this->uart_ != nullptr) {
           // Both configured, retry GEA3 next
           ESP_LOGW(TAG, "No GEA2 boards found, retrying GEA3...");
@@ -357,6 +475,225 @@ void GeappliancesBridge::start_device_id_generation_() {
   ESP_LOGI(TAG, "Starting device ID generation from host address 0x%02X via %s",
            this->host_address_, protocol);
   this->device_id_state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
+}
+
+void GeappliancesBridge::start_feature_bit_reading_() {
+  if (this->feature_bit_state_ != FEATURE_BIT_STATE_IDLE) {
+    return;
+  }
+  ESP_LOGI(TAG, "Reading appliance API feature bits (ERDs 0x0092-0x0097 and 0x0109-0x010D)...");
+  this->read_retry_count_ = 0;
+  this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0092;
+}
+
+void GeappliancesBridge::process_feature_bit_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size) {
+  // Clamp to 8 bytes max per ERD
+  uint8_t copy_size = (size <= 8) ? size : 8;
+  this->read_retry_count_ = 0;
+
+  // Helper lambda: try to immediately queue the next ERD read; if busy, fall
+  // back to setting the corresponding READING state so loop() retries.
+  auto queue_next = [this](tiny_erd_t next_erd, FeatureBitState fallback_state) {
+    if (this->active_erd_client_ != nullptr &&
+        tiny_gea3_erd_client_read(this->active_erd_client_, &this->pending_request_id_,
+                                   this->host_address_, next_erd)) {
+      this->feature_bit_state_ = FEATURE_BIT_STATE_IN_FLIGHT;
+    } else {
+      this->feature_bit_state_ = fallback_state;
+    }
+  };
+
+  if (erd == ERD_COMMON_FEATURE_API) {
+    memcpy(this->feature_bit_erd_0092_, data, copy_size);
+    this->feature_bit_erd_0092_size_ = copy_size;
+    ESP_LOGD(TAG, "Read common feature API (0x0092): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_0, FEATURE_BIT_STATE_READING_0093);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_0) {
+    memcpy(this->feature_bit_erd_0093_, data, copy_size);
+    this->feature_bit_erd_0093_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 0 (0x0093): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_1, FEATURE_BIT_STATE_READING_0094);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_1) {
+    memcpy(this->feature_bit_erd_0094_, data, copy_size);
+    this->feature_bit_erd_0094_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 1 (0x0094): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_2, FEATURE_BIT_STATE_READING_0095);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_2) {
+    memcpy(this->feature_bit_erd_0095_, data, copy_size);
+    this->feature_bit_erd_0095_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 2 (0x0095): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_3, FEATURE_BIT_STATE_READING_0096);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_3) {
+    memcpy(this->feature_bit_erd_0096_, data, copy_size);
+    this->feature_bit_erd_0096_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 3 (0x0096): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_4, FEATURE_BIT_STATE_READING_0097);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_4) {
+    memcpy(this->feature_bit_erd_0097_, data, copy_size);
+    this->feature_bit_erd_0097_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 4 (0x0097): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_5, FEATURE_BIT_STATE_READING_0109);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_5) {
+    memcpy(this->feature_bit_erd_0109_, data, copy_size);
+    this->feature_bit_erd_0109_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 5 (0x0109): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_6, FEATURE_BIT_STATE_READING_010A);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_6) {
+    memcpy(this->feature_bit_erd_010A_, data, copy_size);
+    this->feature_bit_erd_010A_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 6 (0x010A): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_7, FEATURE_BIT_STATE_READING_010B);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_7) {
+    memcpy(this->feature_bit_erd_010B_, data, copy_size);
+    this->feature_bit_erd_010B_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 7 (0x010B): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_8, FEATURE_BIT_STATE_READING_010C);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_8) {
+    memcpy(this->feature_bit_erd_010C_, data, copy_size);
+    this->feature_bit_erd_010C_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 8 (0x010C): %u bytes", copy_size);
+    queue_next(ERD_APPLIANCE_FEATURE_API_9, FEATURE_BIT_STATE_READING_010D);
+  } else if (erd == ERD_APPLIANCE_FEATURE_API_9) {
+    memcpy(this->feature_bit_erd_010D_, data, copy_size);
+    this->feature_bit_erd_010D_size_ = copy_size;
+    ESP_LOGD(TAG, "Read appliance feature API 9 (0x010D): %u bytes", copy_size);
+    // Defer parsing and device-ID generation to loop() so this callback returns
+    // quickly. parse_and_log_feature_bits_() can be slow (many ESP_LOGI calls,
+    // std::set insertions) and must not stall the GEA2 tight-loop.
+    this->feature_bit_state_ = FEATURE_BIT_STATE_COMPLETE;
+    this->feature_bit_parse_pending_ = true;
+  }
+}
+
+void GeappliancesBridge::handle_feature_bit_read_failure_(tiny_erd_t erd) {
+  // On any feature bit ERD read failure (timeout, NACK, or "Not Supported"),
+  // skip this slot and advance to the next ERD in the chain. Not all appliances
+  // implement every slot, so a failure here is normal and non-fatal.
+  ESP_LOGD(TAG, "Feature bit ERD 0x%04X failed or not supported, skipping", erd);
+  this->skip_to_next_feature_erd_(erd);
+}
+
+void GeappliancesBridge::skip_to_next_feature_erd_(tiny_erd_t failed_erd) {
+  // Advance the state machine to the READING state for the ERD that follows
+  // failed_erd in the chain. For the last ERD (0x010D), trigger parse +
+  // device-ID generation (same path as a successful final read).
+  switch (failed_erd) {
+    case ERD_COMMON_FEATURE_API:      this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0093; break;
+    case ERD_APPLIANCE_FEATURE_API_0: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0094; break;
+    case ERD_APPLIANCE_FEATURE_API_1: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0095; break;
+    case ERD_APPLIANCE_FEATURE_API_2: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0096; break;
+    case ERD_APPLIANCE_FEATURE_API_3: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0097; break;
+    case ERD_APPLIANCE_FEATURE_API_4: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0109; break;
+    case ERD_APPLIANCE_FEATURE_API_5: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010A; break;
+    case ERD_APPLIANCE_FEATURE_API_6: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010B; break;
+    case ERD_APPLIANCE_FEATURE_API_7: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010C; break;
+    case ERD_APPLIANCE_FEATURE_API_8: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010D; break;
+    case ERD_APPLIANCE_FEATURE_API_9:
+      // Last ERD in the chain; proceed with whatever data was collected.
+      // Defer parsing and device-ID generation to loop() (same as the success path).
+      this->feature_bit_state_ = FEATURE_BIT_STATE_COMPLETE;
+      this->feature_bit_parse_pending_ = true;
+      break;
+    default: break;
+  }
+}
+
+void GeappliancesBridge::parse_and_log_feature_bits_() {
+  this->appliance_api_valid_erds_.clear();
+  this->appliance_api_valid_erds_vec_.clear();
+  this->appliance_api_valid_list_ready_ = false;
+
+  // Parse common features from ERD 0x0092.
+  // ERD 0x0092 is a 4-byte big-endian bitmask; each bit corresponds to a common feature.
+  if (this->feature_bit_erd_0092_size_ > 0) {
+    uint32_t common_bits = static_cast<uint32_t>(
+      read_be64(this->feature_bit_erd_0092_, this->feature_bit_erd_0092_size_) & 0xFFFFFFFFu);
+    ESP_LOGI(TAG, "Common feature API (0x0092) value: 0x%08X", common_bits);
+    for (uint16_t i = 0; i < common_feature_descriptor_count; i++) {
+      const auto& desc = common_feature_descriptors[i];
+      if (common_bits & desc.bit_mask) {
+        ESP_LOGI(TAG, "  [SET] Common feature: %s (mask 0x%08X, %u ERDs)",
+                 desc.name, desc.bit_mask, desc.erd_count);
+        for (uint16_t j = 0; j < desc.erd_count; j++) {
+          this->appliance_api_valid_erds_.insert(desc.erds[j]);
+        }
+      }
+    }
+  }
+
+  // Parse appliance feature APIs from ERDs 0x0093-0x0097 and 0x0109-0x010D.
+  // Each ERD has the structure: [2B featureType][2B version][4B feature bitmap]
+  // featureType identifies the appliance API (e.g. 0x0014 = Zoneline).
+  // version selects which version's feature set applies.
+  // Each set bit in the feature bitmap enables a specific feature's ERDs.
+  const uint8_t* api_bufs[10] = {
+    this->feature_bit_erd_0093_,
+    this->feature_bit_erd_0094_,
+    this->feature_bit_erd_0095_,
+    this->feature_bit_erd_0096_,
+    this->feature_bit_erd_0097_,
+    this->feature_bit_erd_0109_,
+    this->feature_bit_erd_010A_,
+    this->feature_bit_erd_010B_,
+    this->feature_bit_erd_010C_,
+    this->feature_bit_erd_010D_
+  };
+  const uint8_t api_sizes[10] = {
+    this->feature_bit_erd_0093_size_,
+    this->feature_bit_erd_0094_size_,
+    this->feature_bit_erd_0095_size_,
+    this->feature_bit_erd_0096_size_,
+    this->feature_bit_erd_0097_size_,
+    this->feature_bit_erd_0109_size_,
+    this->feature_bit_erd_010A_size_,
+    this->feature_bit_erd_010B_size_,
+    this->feature_bit_erd_010C_size_,
+    this->feature_bit_erd_010D_size_
+  };
+  static const char* const erd_names[10] = {
+    "0x0093", "0x0094", "0x0095", "0x0096", "0x0097",
+    "0x0109", "0x010A", "0x010B", "0x010C", "0x010D"
+  };
+
+  for (uint8_t erd_idx = 0; erd_idx < 10; erd_idx++) {
+    if (api_sizes[erd_idx] < APPLIANCE_FEATURE_ERD_SIZE) continue;
+    const uint8_t* buf = api_bufs[erd_idx];
+    uint16_t appliance_type = (static_cast<uint16_t>(buf[0]) << 8) | buf[1];
+    uint16_t version        = (static_cast<uint16_t>(buf[2]) << 8) | buf[3];
+    uint32_t feature_bitmap = (static_cast<uint32_t>(buf[4]) << 24) |
+                              (static_cast<uint32_t>(buf[5]) << 16) |
+                              (static_cast<uint32_t>(buf[6]) <<  8) |
+                               buf[7];
+    if (appliance_type == 0 && version == 0 && feature_bitmap == 0) continue;
+    ESP_LOGI(TAG, "Appliance feature ERD %s: type 0x%04X, version %u, features 0x%08X",
+             erd_names[erd_idx], appliance_type, version, feature_bitmap);
+    bool found_matching_descriptor = false;
+    for (uint16_t i = 0; i < appliance_feature_api_descriptor_count; i++) {
+      const auto& desc = appliance_feature_api_descriptors[i];
+      if (desc.feature_type != appliance_type || desc.version != version) continue;
+      found_matching_descriptor = true;
+      if (feature_bitmap & desc.bit_mask) {
+        ESP_LOGI(TAG, "  [SET] %s (mask 0x%08X, %u ERDs)",
+                 desc.name, desc.bit_mask, desc.erd_count);
+        for (uint16_t j = 0; j < desc.erd_count; j++) {
+          this->appliance_api_valid_erds_.insert(desc.erds[j]);
+        }
+      }
+    }
+    if (!found_matching_descriptor) {
+      ESP_LOGW(TAG, "  No known API definition for type 0x%04X version %u",
+               appliance_type, version);
+    }
+  }
+
+  // Build the sorted vector for passing to the polling bridge
+  this->appliance_api_valid_erds_vec_.assign(
+    this->appliance_api_valid_erds_.begin(),
+    this->appliance_api_valid_erds_.end());
+
+  ESP_LOGI(TAG, "Appliance API feature parsing complete: %zu valid ERDs identified",
+           this->appliance_api_valid_erds_vec_.size());
+  this->appliance_api_valid_list_ready_ = true;
 }
 
 void GeappliancesBridge::on_mqtt_connected_() {
@@ -426,17 +763,41 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
     return;
   }
 
-  // Device ID reads (after discovery, before bridge init)
+  // Device ID + feature bit reads (after discovery, before bridge init)
   if (!this->mqtt_bridge_initialized_ && args->address == this->host_address_) {
+    // Route based on ERD value: feature bit ERDs go to the feature bit handler,
+    // device ID ERDs go to the device ID handler. This ensures responses are
+    // processed even when the state is IN_FLIGHT (read already queued).
     if (args->type == tiny_gea3_erd_client_activity_type_read_completed) {
-      this->process_device_id_erd_response_(
-        args->read_completed.erd,
-        reinterpret_cast<const uint8_t*>(args->read_completed.data),
-        args->read_completed.data_size);
+      tiny_erd_t erd = args->read_completed.erd;
+      bool feature_bit_active = (this->feature_bit_state_ != FEATURE_BIT_STATE_IDLE &&
+                                   this->feature_bit_state_ != FEATURE_BIT_STATE_COMPLETE &&
+                                   this->feature_bit_state_ != FEATURE_BIT_STATE_FAILED);
+      if (is_feature_bit_erd(erd) && feature_bit_active) {
+        this->process_feature_bit_erd_response_(
+          erd,
+          reinterpret_cast<const uint8_t*>(args->read_completed.data),
+          args->read_completed.data_size);
+      } else {
+        this->process_device_id_erd_response_(
+          erd,
+          reinterpret_cast<const uint8_t*>(args->read_completed.data),
+          args->read_completed.data_size);
+      }
     } else if (args->type == tiny_gea3_erd_client_activity_type_read_failed) {
-      ESP_LOGW(TAG, "Failed to read ERD 0x%04X for device ID generation (reason: %u), will retry",
-               args->read_failed.erd, args->read_failed.reason);
-      this->handle_device_id_read_failure_(args->read_failed.erd);
+      tiny_erd_t erd = args->read_failed.erd;
+      bool feature_bit_active = (this->feature_bit_state_ != FEATURE_BIT_STATE_IDLE &&
+                                   this->feature_bit_state_ != FEATURE_BIT_STATE_COMPLETE &&
+                                   this->feature_bit_state_ != FEATURE_BIT_STATE_FAILED);
+      if (is_feature_bit_erd(erd) && feature_bit_active) {
+        ESP_LOGW(TAG, "Failed to read feature bit ERD 0x%04X (reason: %u), advancing to next ERD",
+                 erd, args->read_failed.reason);
+        this->handle_feature_bit_read_failure_(erd);
+      } else {
+        ESP_LOGW(TAG, "Failed to read ERD 0x%04X for device ID generation (reason: %u), will retry",
+                 erd, args->read_failed.reason);
+        this->handle_device_id_read_failure_(erd);
+      }
     }
   }
 }
@@ -541,6 +902,17 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
   // Initialize MQTT client adapter
   esphome_mqtt_client_adapter_init(&this->mqtt_client_adapter_, this->final_device_id_.c_str());
 
+  // Apply valid ERD filter if appliance_api_parsing is enabled, the list is ready,
+  // and at least one ERD was added to the valid set. An empty set would silently
+  // suppress all ERD publishes, so skip the filter if parsing produced no results.
+  if (this->appliance_api_parsing_ && this->appliance_api_valid_list_ready_ &&
+      !this->appliance_api_valid_erds_.empty()) {
+    esphome_mqtt_client_adapter_set_valid_erds_filter(
+      &this->mqtt_client_adapter_, &this->appliance_api_valid_erds_);
+    ESP_LOGI(TAG, "Appliance API parsing enabled: publishing filtered to %zu valid ERDs",
+             this->appliance_api_valid_erds_.size());
+  }
+
   // Initialize MQTT bridge based on mode
   if (use_polling) {
     mqtt_bridge_polling_init(
@@ -550,6 +922,17 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
       &this->mqtt_client_adapter_.interface,
       this->polling_interval_ms_,
       this->polling_only_publish_on_change_);
+    // Set the API-parsed list AFTER init but before any events fire.
+    // state_identify_appliance only checks api_parsed_list in signal_read_completed,
+    // so setting it here (synchronously, before any events) is safe.
+    if (this->appliance_api_parsing_ && this->appliance_api_valid_list_ready_ &&
+        !this->appliance_api_valid_erds_vec_.empty()) {
+      this->mqtt_bridge_polling_.api_parsed_list = this->appliance_api_valid_erds_vec_.data();
+      this->mqtt_bridge_polling_.api_parsed_list_count =
+        static_cast<uint16_t>(this->appliance_api_valid_erds_vec_.size());
+      ESP_LOGI(TAG, "Polling with API-parsed list of %u ERDs (discovery skipped)",
+               this->mqtt_bridge_polling_.api_parsed_list_count);
+    }
   } else {
     mqtt_bridge_init(
       &this->mqtt_bridge_,
@@ -640,7 +1023,6 @@ void GeappliancesBridge::check_subscription_activity_() {
     // Destroy the subscription bridge
     mqtt_bridge_destroy(&this->mqtt_bridge_);
     
-    // Initialize polling bridge
     mqtt_bridge_polling_init(
       &this->mqtt_bridge_polling_,
       &this->timer_group_,
@@ -648,6 +1030,13 @@ void GeappliancesBridge::check_subscription_activity_() {
       &this->mqtt_client_adapter_.interface,
       this->polling_interval_ms_,
       this->polling_only_publish_on_change_);
+    // Set API-parsed list AFTER init (see initialize_mqtt_bridge_ for rationale)
+    if (this->appliance_api_parsing_ && this->appliance_api_valid_list_ready_ &&
+        !this->appliance_api_valid_erds_vec_.empty()) {
+      this->mqtt_bridge_polling_.api_parsed_list = this->appliance_api_valid_erds_vec_.data();
+      this->mqtt_bridge_polling_.api_parsed_list_count =
+        static_cast<uint16_t>(this->appliance_api_valid_erds_vec_.size());
+    }
     
     // Mark that we're no longer in subscription mode
     this->subscription_mode_active_ = false;
@@ -703,6 +1092,10 @@ void GeappliancesBridge::dump_config() {
   if (this->mode_ == BRIDGE_MODE_POLL || !this->subscription_mode_active_) {
     ESP_LOGCONFIG(TAG, "  Polling Interval: %u ms", this->polling_interval_ms_);
     ESP_LOGCONFIG(TAG, "  Only Publish On Change: %s", this->polling_only_publish_on_change_ ? "yes" : "no");
+  }
+  ESP_LOGCONFIG(TAG, "  Appliance API Parsing: %s", this->appliance_api_parsing_ ? "enabled" : "disabled");
+  if (this->appliance_api_valid_list_ready_) {
+    ESP_LOGCONFIG(TAG, "  Appliance API Valid ERDs: %zu", this->appliance_api_valid_erds_.size());
   }
 }
 

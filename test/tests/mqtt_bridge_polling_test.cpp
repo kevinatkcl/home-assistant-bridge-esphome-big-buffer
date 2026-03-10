@@ -274,3 +274,165 @@ TEST(mqtt_bridge_polling, should_register_and_poll_late_erd_when_only_publish_on
   nothing_should_happen();
   when_a_poll_read_completes(0xC0, late_erd, uint8_t(0xCD));
 }
+
+// ============================================================================
+// Tests for appliance API-parsed polling list (api_parsed_list feature)
+// ============================================================================
+
+TEST_GROUP(mqtt_bridge_polling_api_list)
+{
+  enum {
+    retry_delay = 100,
+    polling_interval = 1000,
+    api_erd_1 = 0x1000,
+    api_erd_2 = 0x2000
+  };
+
+  mqtt_bridge_polling_t self;
+
+  tiny_timer_group_double_t timer_group;
+  tiny_gea3_erd_client_double_t erd_client;
+  mqtt_client_double_t mqtt_client;
+
+  const tiny_erd_t api_list[2] = {api_erd_1, api_erd_2};
+
+  void setup()
+  {
+    mock().strictOrder();
+    tiny_timer_group_double_init(&timer_group);
+    tiny_gea3_erd_client_double_init(&erd_client);
+    mqtt_client_double_init(&mqtt_client);
+  }
+
+  void teardown()
+  {
+    mock().disable();
+    mqtt_bridge_polling_destroy(&self);
+    mock().enable();
+  }
+
+  void when_the_bridge_is_initialized()
+  {
+    mqtt_bridge_polling_init(
+      &self,
+      &timer_group.timer_group,
+      &erd_client.interface,
+      &mqtt_client.interface,
+      polling_interval,
+      false);
+    // Set the API-parsed list AFTER init (api_parsed_list is always zeroed in init)
+    self.api_parsed_list = api_list;
+    self.api_parsed_list_count = 2;
+  }
+
+  void after(tiny_timer_ticks_t ticks)
+  {
+    tiny_timer_group_double_elapse_time(&timer_group, ticks);
+  }
+
+  void trigger_read_completed(uint8_t address, tiny_erd_t erd, const void* data, uint8_t data_size)
+  {
+    tiny_gea3_erd_client_on_activity_args_t args;
+    args.type = tiny_gea3_erd_client_activity_type_read_completed;
+    args.address = address;
+    args.read_completed.erd = erd;
+    args.read_completed.data = data;
+    args.read_completed.data_size = data_size;
+    tiny_gea3_erd_client_double_trigger_activity_event(&erd_client, &args);
+  }
+
+  void should_request_read(uint8_t address, tiny_erd_t erd)
+  {
+    mock()
+      .expectOneCall("read")
+      .onObject(&erd_client)
+      .withParameter("address", address)
+      .withParameter("erd", erd)
+      .ignoreOtherParameters()
+      .andReturnValue(true);
+  }
+
+  void should_register_erd(tiny_erd_t erd)
+  {
+    mock()
+      .expectOneCall("register_erd")
+      .onObject(&mqtt_client)
+      .withParameter("erd", erd);
+  }
+
+  template <typename T>
+  void should_update_erd(tiny_erd_t erd, T value)
+  {
+    static T _value;
+    _value = value;
+    mock()
+      .expectOneCall("update_erd")
+      .onObject(&mqtt_client)
+      .withParameter("erd", erd)
+      .withMemoryBufferParameter("value", reinterpret_cast<const uint8_t*>(&_value), sizeof(_value));
+  }
+
+  template <typename T>
+  void when_a_poll_read_completes(uint8_t address, tiny_erd_t erd, T value)
+  {
+    static T _value;
+    _value = value;
+    trigger_read_completed(address, erd, &_value, sizeof(_value));
+  }
+};
+
+// When api_parsed_list is set, the bridge should skip ERD discovery and go
+// directly to polling the API-provided list after finding the appliance type.
+TEST(mqtt_bridge_polling_api_list, should_skip_discovery_and_poll_api_list_directly)
+{
+  // Init sends broadcast (appliance type read)
+  should_request_read(0xFF, 0x0008);
+  when_the_bridge_is_initialized();
+
+  // Appliance responds: api_parsed_list is set so bridge skips to state_polling.
+  // state_polling entry registers all api_list ERDs and starts polling the first.
+  should_register_erd(api_erd_1);
+  should_register_erd(api_erd_2);
+  should_request_read(0xC0, api_erd_1);
+  uint8_t appliance_type = 0x03; // refrigeration
+  trigger_read_completed(0xC0, 0x0008, &appliance_type, sizeof(appliance_type));
+
+  // First poll completes: publishes erd_1, immediately reads erd_2
+  should_update_erd(api_erd_1, uint8_t(0xAA));
+  should_request_read(0xC0, api_erd_2);
+  when_a_poll_read_completes(0xC0, api_erd_1, uint8_t(0xAA));
+
+  // Second poll completes: publishes erd_2, no more ERDs to read
+  should_update_erd(api_erd_2, uint8_t(0xBB));
+  when_a_poll_read_completes(0xC0, api_erd_2, uint8_t(0xBB));
+}
+
+// After a full polling cycle, the next cycle should restart from the first ERD.
+TEST(mqtt_bridge_polling_api_list, should_restart_poll_cycle_on_polling_timer)
+{
+  // Init + appliance discovery
+  should_request_read(0xFF, 0x0008);
+  when_the_bridge_is_initialized();
+
+  should_register_erd(api_erd_1);
+  should_register_erd(api_erd_2);
+  should_request_read(0xC0, api_erd_1);
+  uint8_t appliance_type = 0x03;
+  trigger_read_completed(0xC0, 0x0008, &appliance_type, sizeof(appliance_type));
+
+  // Complete first cycle
+  should_update_erd(api_erd_1, uint8_t(0xAA));
+  should_request_read(0xC0, api_erd_2);
+  when_a_poll_read_completes(0xC0, api_erd_1, uint8_t(0xAA));
+
+  should_update_erd(api_erd_2, uint8_t(0xBB));
+  when_a_poll_read_completes(0xC0, api_erd_2, uint8_t(0xBB));
+
+  // Polling timer fires: restart from erd_1
+  should_request_read(0xC0, api_erd_1);
+  after(polling_interval);
+
+  should_update_erd(api_erd_1, uint8_t(0xAA));
+  should_request_read(0xC0, api_erd_2);
+  when_a_poll_read_completes(0xC0, api_erd_1, uint8_t(0xAA));
+}
