@@ -1,5 +1,6 @@
 #include "geappliances_bridge.h"
 #include "appliance_api_feature_lists.h"
+#include "ha_discovery_config.h"
 #include "esphome/core/log.h"
 #include "esphome_time_source.h"
 #include <cstring>
@@ -944,6 +945,180 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
 
   this->mqtt_bridge_initialized_ = true;
   ESP_LOGI(TAG, "MQTT bridge initialized successfully");
+
+  // Publish Home Assistant MQTT Discovery payloads so HA auto-creates entities
+  this->publish_ha_discovery_();
+}
+
+// Escape a string value for embedding inside a JSON string literal.
+// Only `"` and `\` need escaping; control chars are also handled.
+static std::string escape_json_str(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() + 4);
+  for (unsigned char c : s) {
+    if (c == '"') {
+      out += "\\\"";
+    } else if (c == '\\') {
+      out += "\\\\";
+    } else if (c < 0x20) {
+      char buf[8];
+      snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
+      out += buf;
+    } else {
+      out += static_cast<char>(c);
+    }
+  }
+  return out;
+}
+
+void GeappliancesBridge::publish_ha_discovery_() {
+  auto* mqtt_client = esphome::mqtt::global_mqtt_client;
+  if (mqtt_client == nullptr || !mqtt_client->is_connected()) {
+    ESP_LOGW(TAG, "MQTT not connected, skipping HA discovery publish");
+    return;
+  }
+
+  const std::string& device_id = this->final_device_id_;
+
+  // Build device info JSON fragment (reused for every discovery payload)
+  std::string device_json = "{\"identifiers\":[\"" + device_id + "\"]";
+  std::string appliance_name = appliance_type_to_string(this->appliance_type_);
+  device_json += ",\"name\":\"" + escape_json_str(appliance_name) + "\"";
+  if (!this->model_number_.empty()) {
+    device_json += ",\"model\":\"" + escape_json_str(this->model_number_) + "\"";
+  }
+  if (!this->serial_number_.empty()) {
+    device_json += ",\"serial_number\":\"" + escape_json_str(this->serial_number_) + "\"";
+  }
+  device_json += ",\"manufacturer\":\"GE Appliances\"}";
+
+  uint16_t published_count = 0;
+  for (uint16_t i = 0; i < ha_erd_discovery_config_count; i++) {
+    const ha_erd_discovery_config_t& cfg = ha_erd_discovery_configs[i];
+
+    char erd_id_str[5];
+    snprintf(erd_id_str, sizeof(erd_id_str), "%04x", cfg.erd_id);
+
+    bool is_request = (cfg.pair_role[0] == 'r');  // "request"
+
+    // Build state_topic (read state from) and command_topic (send commands to)
+    std::string state_topic;
+    std::string command_topic;
+
+    if (is_request && cfg.paired_erd_id != 0) {
+      char paired_id_str[5];
+      snprintf(paired_id_str, sizeof(paired_id_str), "%04x", cfg.paired_erd_id);
+      state_topic = "geappliances/" + device_id + "/erd/0x" + paired_id_str + "/value";
+      command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
+    } else {
+      state_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/value";
+      // Buttons and other command-only entities also write to their own ERD
+      command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
+    }
+
+    std::string unique_id = device_id + "_" + erd_id_str;
+    std::string payload;
+
+    // Helper lambdas to append optional JSON fields
+    auto add_str_field = [&](const char* key, const char* val) {
+      if (val && val[0] != '\0') {
+        payload += ",\"";
+        payload += key;
+        payload += "\":\"";
+        payload += escape_json_str(std::string(val));
+        payload += "\"";
+      }
+    };
+    auto add_template_field = [&](const char* key, const char* val) {
+      if (val && val[0] != '\0') {
+        // Templates contain Jinja2 syntax with {{ }}, which is valid JSON – just
+        // escape any " or \ characters that might appear in the template string.
+        payload += ",\"";
+        payload += key;
+        payload += "\":\"";
+        payload += escape_json_str(std::string(val));
+        payload += "\"";
+      }
+    };
+
+    if (strcmp(cfg.ha_domain, "sensor") == 0) {
+      payload = "{\"name\":\"" + std::string(cfg.name) + "\"";
+      payload += ",\"state_topic\":\"" + state_topic + "\"";
+      payload += ",\"unique_id\":\"" + unique_id + "\"";
+      add_template_field("value_template", cfg.value_template);
+      add_str_field("unit_of_measurement", cfg.unit_of_measurement);
+      add_str_field("device_class", cfg.device_class);
+      add_str_field("state_class", cfg.state_class);
+      payload += ",\"device\":" + device_json + "}";
+
+    } else if (strcmp(cfg.ha_domain, "binary_sensor") == 0) {
+      payload = "{\"name\":\"" + std::string(cfg.name) + "\"";
+      payload += ",\"state_topic\":\"" + state_topic + "\"";
+      payload += ",\"unique_id\":\"" + unique_id + "\"";
+      add_template_field("value_template", cfg.value_template);
+      payload += ",\"payload_on\":\"01\"";
+      payload += ",\"payload_off\":\"00\"";
+      add_str_field("device_class", cfg.device_class);
+      payload += ",\"device\":" + device_json + "}";
+
+    } else if (strcmp(cfg.ha_domain, "switch") == 0) {
+      payload = "{\"name\":\"" + std::string(cfg.name) + "\"";
+      payload += ",\"state_topic\":\"" + state_topic + "\"";
+      payload += ",\"command_topic\":\"" + command_topic + "\"";
+      payload += ",\"unique_id\":\"" + unique_id + "\"";
+      add_template_field("value_template", cfg.value_template);
+      payload += ",\"state_on\":\"01\"";
+      payload += ",\"state_off\":\"00\"";
+      payload += ",\"payload_on\":\"01\"";
+      payload += ",\"payload_off\":\"00\"";
+      payload += ",\"device\":" + device_json + "}";
+
+    } else if (strcmp(cfg.ha_domain, "select") == 0) {
+      payload = "{\"name\":\"" + std::string(cfg.name) + "\"";
+      payload += ",\"state_topic\":\"" + state_topic + "\"";
+      payload += ",\"command_topic\":\"" + command_topic + "\"";
+      payload += ",\"unique_id\":\"" + unique_id + "\"";
+      add_template_field("value_template", cfg.value_template);
+      add_template_field("command_template", cfg.command_template);
+      if (cfg.options_json && cfg.options_json[0] != '\0') {
+        payload += ",\"options\":";
+        payload += cfg.options_json;
+      }
+      payload += ",\"device\":" + device_json + "}";
+
+    } else if (strcmp(cfg.ha_domain, "number") == 0) {
+      payload = "{\"name\":\"" + std::string(cfg.name) + "\"";
+      payload += ",\"state_topic\":\"" + state_topic + "\"";
+      payload += ",\"command_topic\":\"" + command_topic + "\"";
+      payload += ",\"unique_id\":\"" + unique_id + "\"";
+      add_template_field("value_template", cfg.value_template);
+      add_template_field("command_template", cfg.command_template);
+      add_str_field("unit_of_measurement", cfg.unit_of_measurement);
+      add_str_field("device_class", cfg.device_class);
+      payload += ",\"mode\":\"box\"";
+      payload += ",\"device\":" + device_json + "}";
+
+    } else if (strcmp(cfg.ha_domain, "button") == 0) {
+      payload = "{\"name\":\"" + std::string(cfg.name) + "\"";
+      payload += ",\"command_topic\":\"" + command_topic + "\"";
+      payload += ",\"unique_id\":\"" + unique_id + "\"";
+      payload += ",\"payload_press\":\"01\"";
+      add_str_field("device_class", cfg.device_class);
+      payload += ",\"device\":" + device_json + "}";
+
+    } else {
+      continue;  // Unknown domain – skip
+    }
+
+    std::string discovery_topic = "homeassistant/" + std::string(cfg.ha_domain)
+                                   + "/" + device_id + "/" + erd_id_str + "/config";
+    mqtt_client->publish(discovery_topic, payload, 1, true);  // QoS 1, retain
+    published_count++;
+    ESP_LOGD(TAG, "Published HA discovery for ERD 0x%04X (%s) as %s",
+             cfg.erd_id, cfg.name, cfg.ha_domain);
+  }
+
+  ESP_LOGI(TAG, "Published %u HA MQTT Discovery payloads", published_count);
 }
 
 std::string GeappliancesBridge::bytes_to_string_(const uint8_t* data, size_t size) {

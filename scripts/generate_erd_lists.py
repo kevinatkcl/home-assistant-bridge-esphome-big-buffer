@@ -2,7 +2,7 @@
 """
 Script to generate C header files from the public-appliance-api-documentation library.
 
-Generates two files:
+Generates three files:
   1. erd_lists.h (from appliance_api_erd_definitions.json):
      ERD lists organized by appliance type for the polling bridge discovery
      phase, plus the POLLING_LIST_MAX_SIZE constant.
@@ -11,6 +11,10 @@ Generates two files:
      Feature API descriptors that map feature bits in ERDs 0x0092-0x0097 and 0x0109-0x010D to
      the associated ERD lists. Used at runtime to build the valid ERD set when
      appliance_api_parsing is enabled.
+
+  3. ha_discovery_config.h (from appliance_api_erd_definitions.json):
+     Home Assistant MQTT Discovery configuration for ERDs that carry ha_domain metadata,
+     enabling automatic entity creation in Home Assistant when the bridge starts up.
 """
 
 import json
@@ -408,6 +412,239 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
     return "\n".join(lines)
 
 
+def get_erd_byte_size(erd_data: List[Dict]) -> int:
+    """Compute the actual byte size of an ERD from its data field definitions.
+
+    Each data field has an 'offset' (byte offset) and 'size' (byte count).
+    Fields may overlap (bit-fields share the same bytes), so the true ERD byte
+    size is the highest (offset + size) value across all fields.
+    """
+    if not erd_data:
+        return 0
+    return max((d.get('offset', 0) + d.get('size', 0)) for d in erd_data)
+
+
+def get_first_enum_values(erd_data: List[Dict]) -> Dict[str, str]:
+    """Return the values dict from the first enum-typed data field, or {}."""
+    for d in erd_data:
+        if d.get('type') == 'enum':
+            return d.get('values', {})
+    return {}
+
+
+def _unit_to_ha(unit: str) -> str:
+    """Convert an API unit string to the Home Assistant display unit."""
+    return {'degF': '\u00b0F', 'degC': '\u00b0C'}.get(unit, unit)
+
+
+def _c_str(s: str) -> str:
+    """Wrap a Python string as a C string literal (double-quoted, escaped)."""
+    escaped = s.replace('\\', '\\\\').replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _compute_sensor_value_template(scaling_factor: int, data_size: int) -> str:
+    """Return the Jinja2 value_template for a numeric sensor ERD."""
+    if scaling_factor > 1:
+        if scaling_factor == 10:
+            dp = 1
+        elif scaling_factor == 100:
+            dp = 2
+        else:
+            dp = 3
+        return f'{{{{ (value | int(base=16)) / {scaling_factor} | round({dp}) }}}}'
+    return '{{ value | int(base=16) }}'
+
+
+def _compute_binary_sensor_value_template(data_size: int) -> str:
+    """Return value_template for a binary_sensor ERD.
+
+    For single-byte ERDs the raw hex payload ('00'/'01') already matches
+    payload_on/payload_off, so no template is needed.  For multi-byte ERDs
+    we slice the first two hex characters to extract just the first byte.
+    """
+    return '{{ value[:2] }}' if data_size > 1 else ''
+
+
+def _select_options_and_templates(enum_values: Dict[str, str], data_size: int):
+    """Build options_json, value_template and command_template for a select entity.
+
+    'Request Consumed' (value 255) is excluded from selectable options.
+    Returns (options_json_str, value_template_str, command_template_str).
+    """
+    # Filter out 'Request Consumed' (255) and sort by numeric key
+    valid_pairs = sorted(
+        [(int(k), v) for k, v in enum_values.items() if v != 'Request Consumed'],
+        key=lambda x: x[0]
+    )
+    if not valid_pairs:
+        return ('[]', '', '')
+
+    hex_chars = data_size * 2
+
+    # Build value_template: map hex string -> option name
+    hex_to_name = ', '.join(
+        f"'{k:0{hex_chars}x}': '{v}'" for k, v in valid_pairs
+    )
+    value_template = f"{{{{ {{{hex_to_name}}}.get(value[:{hex_chars}], 'Unknown') }}}}"
+
+    # Build command_template: map option name -> hex string
+    name_to_hex = ', '.join(
+        f"'{v}': '{k:0{hex_chars}x}'" for k, v in valid_pairs
+    )
+    command_template = f"{{{{ {{{name_to_hex}}}[value] }}}}"
+
+    # Build options JSON array
+    option_names = [v for _, v in valid_pairs]
+    options_json = '[' + ', '.join(f'"{name}"' for name in option_names) + ']'
+
+    return (options_json, value_template, command_template)
+
+
+def _number_command_template(data_size: int, scaling_factor: int) -> str:
+    """Return command_template for a number entity."""
+    hex_chars = data_size * 2
+    if scaling_factor > 1:
+        return f"{{{{ '%0{hex_chars}x' % ((value | float) * {scaling_factor} | int) }}}}"
+    return f"{{{{ '%0{hex_chars}x' % (value | int) }}}}"
+
+
+def generate_ha_discovery_header(erds: List[Dict]) -> str:
+    """Generate ha_discovery_config.h from ERDs that have ha_domain metadata.
+
+    Each annotated ERD produces one entry in the ha_erd_discovery_configs[] array.
+    The C++ bridge reads this array at startup and publishes an MQTT Discovery
+    payload for each entry, causing Home Assistant to auto-create entities.
+    """
+    # Build a lookup dict: ERD id string -> ERD dict for paired-ERD resolution
+    erd_by_id: Dict[str, Dict] = {e['id']: e for e in erds}
+
+    lines: List[str] = []
+    lines.append('/*!')
+    lines.append(' * @file')
+    lines.append(' * @brief Home Assistant MQTT Discovery configuration per ERD')
+    lines.append(' *')
+    lines.append(' * This file is auto-generated from appliance_api_erd_definitions.json')
+    lines.append(' * Do not edit this file manually. Run scripts/generate_erd_lists.py to regenerate.')
+    lines.append(' */')
+    lines.append('')
+    lines.append('#ifndef HA_DISCOVERY_CONFIG_H')
+    lines.append('#define HA_DISCOVERY_CONFIG_H')
+    lines.append('')
+    lines.append('#include <stdint.h>')
+    lines.append('')
+    lines.append('typedef struct {')
+    lines.append('  uint16_t erd_id;')
+    lines.append('  const char* name;')
+    lines.append('  const char* ha_domain;')
+    lines.append('  const char* unit_of_measurement;  /* "" if none */')
+    lines.append('  const char* device_class;          /* "" if none */')
+    lines.append('  const char* state_class;           /* "" if none */')
+    lines.append('  uint32_t scaling_factor;           /* 1 if no scaling */')
+    lines.append('  uint8_t data_size;                 /* ERD payload byte count */')
+    lines.append('  uint16_t paired_erd_id;            /* 0 if no pair */')
+    lines.append('  const char* pair_role;             /* "status", "request", or "" */')
+    lines.append('  const char* value_template;        /* Jinja2 template for state values; "" if none */')
+    lines.append('  const char* command_template;      /* Jinja2 template for command payloads; "" if none */')
+    lines.append('  const char* options_json;          /* JSON array of select options; "" if not select */')
+    lines.append('} ha_erd_discovery_config_t;')
+    lines.append('')
+    lines.append('static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {')
+
+    ha_erds = [e for e in erds if 'ha_domain' in e]
+    for erd in ha_erds:
+        erd_id_int = parse_erd_id(erd['id'])
+        name = erd.get('name', '')
+        ha_domain = erd.get('ha_domain', '')
+        unit_raw = erd.get('unit_of_measurement') or ''
+        unit = _unit_to_ha(unit_raw)
+        device_class = erd.get('device_class') or ''
+        state_class = erd.get('state_class') or ''
+        scaling_factor = int(erd.get('scaling_factor') or 1)
+        pair_role = erd.get('pair_role') or ''
+        paired_erd_str = erd.get('paired_erd') or ''
+        paired_erd_id = parse_erd_id(paired_erd_str) if paired_erd_str else 0
+
+        erd_data = erd.get('data', [])
+        data_size = get_erd_byte_size(erd_data)
+        if data_size == 0:
+            data_size = 1  # safe fallback
+
+        # --- Compute templates ---
+        value_template = ''
+        command_template = ''
+        options_json = ''
+
+        if ha_domain == 'sensor':
+            if device_class == 'enum':
+                value_template = '{{ value | int(base=16) }}'
+            elif scaling_factor > 1 or (data_size <= 4 and device_class != ''):
+                value_template = _compute_sensor_value_template(scaling_factor, data_size)
+            elif data_size <= 4:
+                value_template = _compute_sensor_value_template(scaling_factor, data_size)
+            # For large multi-field sensor ERDs (data_size > 4) leave value_template empty;
+            # the bridge will publish the raw hex string.
+
+        elif ha_domain == 'binary_sensor':
+            value_template = _compute_binary_sensor_value_template(data_size)
+
+        elif ha_domain == 'switch':
+            # State is read from the paired status ERD; derive its data_size
+            if paired_erd_str and paired_erd_str in erd_by_id:
+                status_erd = erd_by_id[paired_erd_str]
+                status_data_size = get_erd_byte_size(status_erd.get('data', []))
+                if status_data_size == 0:
+                    status_data_size = 1
+                value_template = _compute_binary_sensor_value_template(status_data_size)
+            # No command_template for switch – payload_on/off handles it
+
+        elif ha_domain == 'select':
+            enum_values = get_first_enum_values(erd_data)
+            if enum_values:
+                options_json, value_template, command_template = \
+                    _select_options_and_templates(enum_values, data_size)
+
+        elif ha_domain == 'number':
+            if paired_erd_str and paired_erd_str in erd_by_id:
+                status_erd = erd_by_id[paired_erd_str]
+                status_scale = int(status_erd.get('scaling_factor') or 1)
+                value_template = _compute_sensor_value_template(status_scale, data_size)
+            else:
+                value_template = _compute_sensor_value_template(scaling_factor, data_size)
+            command_template = _number_command_template(data_size, scaling_factor)
+
+        # button: no value_template or command_template (payload_press handled in C++)
+
+        # Format the struct initialiser
+        fields = [
+            f'0x{erd_id_int:04x}',
+            _c_str(name),
+            _c_str(ha_domain),
+            _c_str(unit),
+            _c_str(device_class),
+            _c_str(state_class),
+            str(scaling_factor),
+            str(data_size),
+            f'0x{paired_erd_id:04x}',
+            _c_str(pair_role),
+            _c_str(value_template),
+            _c_str(command_template),
+            _c_str(options_json),
+        ]
+        lines.append(f'  /* {erd["id"]} {name} */')
+        lines.append('  {' + ', '.join(fields) + '},')
+
+    lines.append('};')
+    lines.append('')
+    lines.append('static const uint16_t ha_erd_discovery_config_count =')
+    lines.append('  (uint16_t)(sizeof(ha_erd_discovery_configs) / sizeof(ha_erd_discovery_configs[0]));')
+    lines.append('')
+    lines.append('#endif')
+    lines.append('')
+
+    return '\n'.join(lines)
+
+
 def main():
     """Main entry point for the script."""
     # Determine paths relative to script location
@@ -494,6 +731,20 @@ def main():
     print(f"\nWriting generated header to {api_output_file}")
     with open(api_output_file, 'w') as f:
         f.write(api_header_content)
+
+    # -------------------------------------------------------------------------
+    # Generate ha_discovery_config.h from appliance_api_erd_definitions.json
+    # -------------------------------------------------------------------------
+    ha_output_file = repo_root / 'components' / 'geappliances_bridge' / 'ha_discovery_config.h'
+
+    ha_erds = [e for e in erds if 'ha_domain' in e]
+    print(f"\nFound {len(ha_erds)} ERDs with ha_domain metadata for HA MQTT Discovery")
+
+    ha_header_content = generate_ha_discovery_header(erds)
+
+    print(f"\nWriting generated header to {ha_output_file}")
+    with open(ha_output_file, 'w') as f:
+        f.write(ha_header_content)
 
     print("Done!")
 

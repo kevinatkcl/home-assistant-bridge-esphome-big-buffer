@@ -50,11 +50,14 @@ ERD_DEFINITIONS_JSON := lib/public-appliance-api-documentation/appliance_api_erd
 APPLIANCE_API_FEATURE_LISTS_HEADER := components/geappliances_bridge/appliance_api_feature_lists.h
 APPLIANCE_API_JSON := lib/public-appliance-api-documentation/appliance_api.json
 
-$(ERD_LISTS_HEADER) $(APPLIANCE_API_FEATURE_LISTS_HEADER): $(ERD_DEFINITIONS_JSON) $(APPLIANCE_API_JSON) scripts/generate_erd_lists.py
-	@echo Generating ERD lists and feature API lists...
+# Generate ha_discovery_config.h from appliance_api_erd_definitions.json before building
+HA_DISCOVERY_CONFIG_HEADER := components/geappliances_bridge/ha_discovery_config.h
+
+$(ERD_LISTS_HEADER) $(APPLIANCE_API_FEATURE_LISTS_HEADER) $(HA_DISCOVERY_CONFIG_HEADER): $(ERD_DEFINITIONS_JSON) $(APPLIANCE_API_JSON) scripts/generate_erd_lists.py
+	@echo Generating ERD lists, feature API lists, and HA discovery config...
 	@python3 scripts/generate_erd_lists.py
 
-BUILD_DEPS += $(ERD_LISTS_HEADER) $(APPLIANCE_API_FEATURE_LISTS_HEADER)
+BUILD_DEPS += $(ERD_LISTS_HEADER) $(APPLIANCE_API_FEATURE_LISTS_HEADER) $(HA_DISCOVERY_CONFIG_HEADER)
 
 .PHONY: test
 test: $(BUILD_DIR)/$(TARGET)

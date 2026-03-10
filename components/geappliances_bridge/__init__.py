@@ -160,7 +160,7 @@ def load_appliance_types():
     
     # If local paths failed, try fetching from GitHub as fallback
     if data is None:
-        url = "https://raw.githubusercontent.com/geappliances/public-appliance-api-documentation/main/appliance_api_erd_definitions.json"
+        url = "https://raw.githubusercontent.com/joshualongenecker/public-appliance-api-documentation/main/appliance_api_erd_definitions.json"
         _LOGGER.warning("Could not find local library. Fetching from GitHub as fallback: %s", url)
         
         try:
@@ -281,7 +281,7 @@ async def to_code(config):
     cg.add_library("https://github.com/geappliances/tiny-gea-api#develop", None)
     # Add public-appliance-api-documentation as a library dependency
     # This allows users to control the version by updating the library reference
-    cg.add_library("https://github.com/geappliances/public-appliance-api-documentation", None)
+    cg.add_library("https://github.com/joshualongenecker/public-appliance-api-documentation", None)
     
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
