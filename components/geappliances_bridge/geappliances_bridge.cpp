@@ -285,6 +285,16 @@ void GeappliancesBridge::loop() {
   // with device_id_state_. State transitions to IN_FLIGHT when a read is queued,
   // preventing duplicate requests.
   if (this->active_erd_client_ != nullptr) {
+    // When the last feature-bit ERD has been processed (in the GEA callback),
+    // feature_bit_parse_pending_ is set and parsing is deferred to here so the
+    // callback returns quickly and the GEA2 tight-loop can continue processing
+    // UART bytes without being stalled by the potentially slow parse_and_log_feature_bits_().
+    if (this->feature_bit_state_ == FEATURE_BIT_STATE_COMPLETE && this->feature_bit_parse_pending_) {
+      this->feature_bit_parse_pending_ = false;
+      this->parse_and_log_feature_bits_();
+      this->start_device_id_generation_();
+    }
+
     tiny_erd_t feature_erd = 0;
     const char* feature_name = nullptr;
     FeatureBitState next_in_flight_state = FEATURE_BIT_STATE_IN_FLIGHT;
@@ -547,9 +557,11 @@ void GeappliancesBridge::process_feature_bit_erd_response_(tiny_erd_t erd, const
     memcpy(this->feature_bit_erd_010D_, data, copy_size);
     this->feature_bit_erd_010D_size_ = copy_size;
     ESP_LOGD(TAG, "Read appliance feature API 9 (0x010D): %u bytes", copy_size);
+    // Defer parsing and device-ID generation to loop() so this callback returns
+    // quickly. parse_and_log_feature_bits_() can be slow (many ESP_LOGI calls,
+    // std::set insertions) and must not stall the GEA2 tight-loop.
     this->feature_bit_state_ = FEATURE_BIT_STATE_COMPLETE;
-    this->parse_and_log_feature_bits_();
-    this->start_device_id_generation_();
+    this->feature_bit_parse_pending_ = true;
   }
 }
 
@@ -578,9 +590,9 @@ void GeappliancesBridge::skip_to_next_feature_erd_(tiny_erd_t failed_erd) {
     case ERD_APPLIANCE_FEATURE_API_8: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_010D; break;
     case ERD_APPLIANCE_FEATURE_API_9:
       // Last ERD in the chain; proceed with whatever data was collected.
+      // Defer parsing and device-ID generation to loop() (same as the success path).
       this->feature_bit_state_ = FEATURE_BIT_STATE_COMPLETE;
-      this->parse_and_log_feature_bits_();
-      this->start_device_id_generation_();
+      this->feature_bit_parse_pending_ = true;
       break;
     default: break;
   }

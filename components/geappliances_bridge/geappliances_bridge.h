@@ -182,6 +182,11 @@ class GeappliancesBridge : public Component {
   // Sorted vector of the same set, for passing to the polling bridge as a C array
   std::vector<tiny_erd_t> appliance_api_valid_erds_vec_;
   bool appliance_api_valid_list_ready_{false};
+  // Flag set by the GEA callback (process_feature_bit_erd_response_ / skip_to_next_feature_erd_)
+  // when the last feature-bit ERD has been processed. The actual parsing and transition to
+  // device-ID generation are deferred to loop() so the callback returns quickly and the GEA2
+  // tight-loop continues processing UART bytes without being stalled by parse_and_log_feature_bits_().
+  bool feature_bit_parse_pending_{false};
 
   // Autodiscovery state machine
   AutodiscoveryState autodiscovery_state_{AUTODISCOVERY_WAITING_FOR_MQTT};
