@@ -189,6 +189,17 @@ class GeappliancesBridge : public Component {
   // tight-loop continues processing UART bytes without being stalled by parse_and_log_feature_bits_().
   bool feature_bit_parse_pending_{false};
 
+  // HA device discovery publish: deferred until ERD values have settled.
+  // In subscription mode, publish 10 s after the last ERD activity (or 10 s
+  // after subscription starts if no activity arrives).  In polling mode,
+  // publish after the first full polling cycle (approximated by the same
+  // 10 s window from bridge init).
+  bool ha_discovery_pending_{false};
+  bool ha_discovery_published_{false};
+  uint32_t ha_discovery_timer_start_{0};   // millis() when the 10-s window opened
+  uint32_t ha_discovery_last_activity_{0}; // millis() of last ERD publish (subscription mode)
+  static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;  // 10 s quiet period
+
   // Autodiscovery state machine
   AutodiscoveryState autodiscovery_state_{AUTODISCOVERY_WAITING_FOR_MQTT};
   uint32_t autodiscovery_timer_start_{0};
