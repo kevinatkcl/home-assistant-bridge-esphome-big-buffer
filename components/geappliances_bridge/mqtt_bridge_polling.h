@@ -41,6 +41,11 @@ typedef struct {
   // When non-NULL, discovery states are skipped and this list is polled directly.
   const tiny_erd_t* api_parsed_list;
   uint16_t api_parsed_list_count;
+  // Optional list of user-configured custom ERDs to poll in addition to the
+  // standard list. Set after mqtt_bridge_polling_init(). Works with both
+  // discovery mode and api_parsed_list mode.
+  const tiny_erd_t* custom_erd_list;
+  uint16_t custom_erd_list_count;
 } mqtt_bridge_polling_t;
 
 /*!
