@@ -52,12 +52,14 @@ class GeappliancesBridge : public Component {
   void set_polling_interval(uint32_t polling_interval) { this->polling_interval_ms_ = polling_interval; }
   void set_polling_only_publish_on_change(bool only_publish_on_change) { this->polling_only_publish_on_change_ = only_publish_on_change; }
   void set_appliance_api_parsing(bool appliance_api_parsing) { this->appliance_api_parsing_ = appliance_api_parsing; }
+  void add_custom_erd(uint16_t erd) { this->custom_erds_vec_.push_back(static_cast<tiny_erd_t>(erd)); }
 
  protected:
   void on_mqtt_connected_();
   void notify_mqtt_disconnected_();
   void handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args);
   void initialize_mqtt_bridge_();
+  void configure_polling_optional_lists_();
   void check_subscription_activity_();
   void run_autodiscovery_();
   void start_feature_bit_reading_();
@@ -138,6 +140,9 @@ class GeappliancesBridge : public Component {
   uint32_t polling_interval_ms_{10000};
   bool polling_only_publish_on_change_{false};
   bool appliance_api_parsing_{false};
+  // User-configured custom ERDs to poll in addition to the standard list.
+  // Populated by add_custom_erd() calls generated from the YAML custom_erds option.
+  std::vector<tiny_erd_t> custom_erds_vec_;
 
   // Auto mode fallback tracking
   bool subscription_mode_active_{false};

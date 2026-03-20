@@ -436,3 +436,197 @@ TEST(mqtt_bridge_polling_api_list, should_restart_poll_cycle_on_polling_timer)
   should_request_read(0xC0, api_erd_2);
   when_a_poll_read_completes(0xC0, api_erd_1, uint8_t(0xAA));
 }
+
+// ============================================================================
+// Tests for user-configured custom ERD polling list (custom_erd_list feature)
+// ============================================================================
+
+TEST_GROUP(mqtt_bridge_polling_custom_erds)
+{
+  enum {
+    retry_delay = 100,
+    polling_interval = 1000,
+    api_erd = 0x1000,
+    custom_erd_1 = 0x7000,
+    custom_erd_2 = 0x7001
+  };
+
+  mqtt_bridge_polling_t self;
+
+  tiny_timer_group_double_t timer_group;
+  tiny_gea3_erd_client_double_t erd_client;
+  mqtt_client_double_t mqtt_client;
+
+  const tiny_erd_t api_list[1] = {api_erd};
+  const tiny_erd_t custom_list[2] = {custom_erd_1, custom_erd_2};
+
+  void setup()
+  {
+    mock().strictOrder();
+    tiny_timer_group_double_init(&timer_group);
+    tiny_gea3_erd_client_double_init(&erd_client);
+    mqtt_client_double_init(&mqtt_client);
+  }
+
+  void teardown()
+  {
+    mock().disable();
+    mqtt_bridge_polling_destroy(&self);
+    mock().enable();
+  }
+
+  void when_the_bridge_is_initialized_with_api_list_and_custom_erds()
+  {
+    mqtt_bridge_polling_init(
+      &self,
+      &timer_group.timer_group,
+      &erd_client.interface,
+      &mqtt_client.interface,
+      polling_interval,
+      false);
+    self.api_parsed_list = api_list;
+    self.api_parsed_list_count = 1;
+    self.custom_erd_list = custom_list;
+    self.custom_erd_list_count = 2;
+  }
+
+  void when_the_bridge_is_initialized_with_custom_erds_only()
+  {
+    mqtt_bridge_polling_init(
+      &self,
+      &timer_group.timer_group,
+      &erd_client.interface,
+      &mqtt_client.interface,
+      polling_interval,
+      false);
+    self.custom_erd_list = custom_list;
+    self.custom_erd_list_count = 2;
+  }
+
+  void after(tiny_timer_ticks_t ticks)
+  {
+    tiny_timer_group_double_elapse_time(&timer_group, ticks);
+  }
+
+  void trigger_read_completed(uint8_t address, tiny_erd_t erd, const void* data, uint8_t data_size)
+  {
+    tiny_gea3_erd_client_on_activity_args_t args;
+    args.type = tiny_gea3_erd_client_activity_type_read_completed;
+    args.address = address;
+    args.read_completed.erd = erd;
+    args.read_completed.data = data;
+    args.read_completed.data_size = data_size;
+    tiny_gea3_erd_client_double_trigger_activity_event(&erd_client, &args);
+  }
+
+  void should_request_read(uint8_t address, tiny_erd_t erd)
+  {
+    mock()
+      .expectOneCall("read")
+      .onObject(&erd_client)
+      .withParameter("address", address)
+      .withParameter("erd", erd)
+      .ignoreOtherParameters()
+      .andReturnValue(true);
+  }
+
+  void should_register_erd(tiny_erd_t erd)
+  {
+    mock()
+      .expectOneCall("register_erd")
+      .onObject(&mqtt_client)
+      .withParameter("erd", erd);
+  }
+
+  template <typename T>
+  void should_update_erd(tiny_erd_t erd, T value)
+  {
+    static T _value;
+    _value = value;
+    mock()
+      .expectOneCall("update_erd")
+      .onObject(&mqtt_client)
+      .withParameter("erd", erd)
+      .withMemoryBufferParameter("value", reinterpret_cast<const uint8_t*>(&_value), sizeof(_value));
+  }
+
+  template <typename T>
+  void when_a_poll_read_completes(uint8_t address, tiny_erd_t erd, T value)
+  {
+    static T _value;
+    _value = value;
+    trigger_read_completed(address, erd, &_value, sizeof(_value));
+  }
+};
+
+// Custom ERDs should be polled after api_parsed_list ERDs when both are configured.
+TEST(mqtt_bridge_polling_custom_erds, should_poll_custom_erds_alongside_api_parsed_list)
+{
+  // Init sends broadcast
+  should_request_read(0xFF, 0x0008);
+  when_the_bridge_is_initialized_with_api_list_and_custom_erds();
+
+  // Appliance type received: all ERDs registered and first read starts
+  should_register_erd(api_erd);
+  should_register_erd(custom_erd_1);
+  should_register_erd(custom_erd_2);
+  should_request_read(0xC0, api_erd);
+  uint8_t appliance_type = 0x03;
+  trigger_read_completed(0xC0, 0x0008, &appliance_type, sizeof(appliance_type));
+
+  // api_erd completes: publishes, immediately reads custom_erd_1
+  should_update_erd(api_erd, uint8_t(0xAA));
+  should_request_read(0xC0, custom_erd_1);
+  when_a_poll_read_completes(0xC0, api_erd, uint8_t(0xAA));
+
+  // custom_erd_1 completes: publishes, immediately reads custom_erd_2
+  should_update_erd(custom_erd_1, uint8_t(0xBB));
+  should_request_read(0xC0, custom_erd_2);
+  when_a_poll_read_completes(0xC0, custom_erd_1, uint8_t(0xBB));
+
+  // custom_erd_2 completes: publishes, no more ERDs in cycle
+  should_update_erd(custom_erd_2, uint8_t(0xCC));
+  when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xCC));
+
+  // Polling timer fires: restart cycle from api_erd
+  should_request_read(0xC0, api_erd);
+  after(polling_interval);
+}
+
+// Custom ERDs should be polled in every cycle when only custom_erds are configured
+// (no api_parsed_list, going through discovery).
+TEST(mqtt_bridge_polling_custom_erds, should_poll_custom_erds_in_discovery_mode)
+{
+  mock().disable();
+  // Initialize with custom ERDs only (no api_parsed_list)
+  when_the_bridge_is_initialized_with_custom_erds_only();
+
+  // Appliance type received: transition to discovery states (water heater = type 0)
+  uint8_t appliance_type = 0x00;
+  trigger_read_completed(0xC0, 0x0008, &appliance_type, sizeof(appliance_type));
+
+  // Skip through all discovery ERDs via timer expirations (no responses provided).
+  // This transitions through state_add_common_erds → state_add_energy_erds →
+  // state_add_appliance_erds → state_polling. In state_polling entry, custom ERDs
+  // are registered while mock is disabled. erd_index is left at waterHeaterErdCount
+  // (>= polling_list_count=2), so the initial send_next_poll_read_request is a no-op.
+  // The count commonErdCount + energyErdCount + waterHeaterErdCount is the number of
+  // timer expirations needed to exhaust each discovery state's ERD list and transition
+  // to the next, with one expiration per ERD slot per state.
+  after(retry_delay * (commonErdCount + energyErdCount + waterHeaterErdCount));
+  mock().enable();
+
+  // Polling timer fires: erd_index >= polling_list_count, so cycle restarts from 0,
+  // reading custom_erd_1 first.
+  should_request_read(0xC0, custom_erd_1);
+  after(polling_interval);
+
+  // custom_erd_1 completes: publishes, immediately reads custom_erd_2
+  should_update_erd(custom_erd_1, uint8_t(0xBB));
+  should_request_read(0xC0, custom_erd_2);
+  when_a_poll_read_completes(0xC0, custom_erd_1, uint8_t(0xBB));
+
+  // custom_erd_2 completes: publishes, no more ERDs in cycle
+  should_update_erd(custom_erd_2, uint8_t(0xCC));
+  when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xCC));
+}
