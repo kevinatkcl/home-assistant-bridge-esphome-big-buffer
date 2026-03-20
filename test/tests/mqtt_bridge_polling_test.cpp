@@ -630,3 +630,43 @@ TEST(mqtt_bridge_polling_custom_erds, should_poll_custom_erds_in_discovery_mode)
   should_update_erd(custom_erd_2, uint8_t(0xCC));
   when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xCC));
 }
+
+// When the polling bridge is used only for custom ERDs alongside a subscription bridge
+// (subscribe/auto mode), it is configured with api_parsed_list = custom ERDs. This
+// means discovery is skipped and only the custom ERDs are polled each cycle.
+TEST(mqtt_bridge_polling_custom_erds, should_poll_only_custom_erds_when_used_alongside_subscribe_bridge)
+{
+  // Bridge init: configured with api_parsed_list = custom ERDs only (no separate custom_erd_list).
+  // This mirrors how geappliances_bridge initializes custom_erd_bridge_ in subscribe mode.
+  should_request_read(0xFF, 0x0008);
+
+  mqtt_bridge_polling_init(
+    &self,
+    &timer_group.timer_group,
+    &erd_client.interface,
+    &mqtt_client.interface,
+    polling_interval,
+    false);
+  self.api_parsed_list = custom_list;
+  self.api_parsed_list_count = 2;
+
+  // Appliance identified: discovery skipped; both custom ERDs registered and first read starts
+  should_register_erd(custom_erd_1);
+  should_register_erd(custom_erd_2);
+  should_request_read(0xC0, custom_erd_1);
+  uint8_t appliance_type = 0x03;
+  trigger_read_completed(0xC0, 0x0008, &appliance_type, sizeof(appliance_type));
+
+  // custom_erd_1 read completes: publishes, reads custom_erd_2
+  should_update_erd(custom_erd_1, uint8_t(0xAA));
+  should_request_read(0xC0, custom_erd_2);
+  when_a_poll_read_completes(0xC0, custom_erd_1, uint8_t(0xAA));
+
+  // custom_erd_2 read completes: publishes, cycle ends
+  should_update_erd(custom_erd_2, uint8_t(0xBB));
+  when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xBB));
+
+  // Polling timer fires: restart cycle from custom_erd_1
+  should_request_read(0xC0, custom_erd_1);
+  after(polling_interval);
+}
