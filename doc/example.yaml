@@ -67,6 +67,3 @@ geappliances_bridge:
   # mode: poll                    # Default: auto   Options: auto, subscribe, poll
   # polling_interval: 10000       # Default: 10000 ms (10 seconds), used when in polling mode
   # polling_onlypublish_onchange: false  # Default: false, only publish if value changed
-  # custom_erds:                  # Optional: extra ERDs to poll (in addition to the standard list)
-  #   - 0x7000
-  #   - 0x7001
