@@ -60,11 +60,6 @@ static constexpr tiny_erd_t ERD_SERIAL_NUMBER = 0x0002;
 static constexpr tiny_erd_t ERD_APPLIANCE_TYPE = 0x0008;
 static constexpr uint8_t GEA_BROADCAST_ADDRESS = 0xFF;
 
-// Origin info included in the HA device discovery payload
-static const char* const HA_ORIGIN_NAME = "GEA ESPHome Bridge";
-static const char* const HA_ORIGIN_URL =
-  "https://github.com/joshualongenecker/home-assistant-bridge-esphome";
-
 // ERD identifiers for appliance API feature bits
 static constexpr tiny_erd_t ERD_COMMON_FEATURE_API = 0x0092;
 static constexpr tiny_erd_t ERD_APPLIANCE_FEATURE_API_0 = 0x0093;
@@ -286,18 +281,22 @@ void GeappliancesBridge::loop() {
     this->check_subscription_activity_();
   }
 
-  // Deferred HA device discovery: publish once after a 10 s quiet window from bridge init.
-  // In subscription mode the window resets whenever ERD activity is detected, so the
-  // payload is sent after 10 s of silence (ERDs have settled).  In polling mode or
-  // when there is no activity, the payload is sent 10 s after initialization.
-  if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
+  // Deferred HA discovery: wait for the 10 s quiet window, then publish entities
+  // one at a time across successive loop() calls to avoid large heap allocations
+  // that would trigger an OOM panic or watchdog reset on ESP32.
+  if (this->ha_discovery_pending_ && !this->ha_discovery_publish_in_progress_) {
     uint32_t now = millis();
     uint32_t since_activity = now - this->ha_discovery_last_activity_;
     uint32_t since_start = now - this->ha_discovery_timer_start_;
-    // Publish once: either 10 s of quiet since last ERD activity, or 10 s from init
+    // Start publishing once 10 s of quiet has passed (ERDs settled) or 10 s since init
     if (since_activity >= HA_DISCOVERY_QUIET_MS || since_start >= HA_DISCOVERY_QUIET_MS) {
       this->publish_ha_discovery_();
     }
+  }
+
+  // One entity per loop() call while publishing is in progress
+  if (this->ha_discovery_publish_in_progress_) {
+    this->publish_next_ha_discovery_entity_();
   }
 
   // Feature bit reading: runs after autodiscovery, before device ID generation.
@@ -1007,162 +1006,154 @@ void GeappliancesBridge::publish_ha_discovery_() {
     return;
   }
 
-  this->ha_discovery_published_ = true;
+  // Start the per-entity publishing sequence.  Entities are published one per
+  // loop() call by publish_next_ha_discovery_entity_() to avoid building a
+  // single large JSON string that would exhaust heap on ESP32.
+  // If MQTT disconnects mid-sequence, publish_next_ha_discovery_entity_() will
+  // pause (ha_discovery_publish_in_progress_ stays true) and resume automatically
+  // on the next loop() call once MQTT reconnects.
   this->ha_discovery_pending_ = false;
+  this->ha_discovery_publish_index_ = 0;
+  this->ha_discovery_publish_in_progress_ = true;
+  ESP_LOGI(TAG, "HA discovery: starting, will publish %u entities one per loop()",
+           ha_erd_discovery_config_count);
+}
 
-  const std::string& device_id = this->final_device_id_;
-  std::string appliance_name = appliance_type_to_string(this->appliance_type_);
-
-  // -----------------------------------------------------------------------
-  // Build the HA MQTT device discovery payload
-  // Topic: homeassistant/device/<device_id>/config
-  // Payload: single JSON object with "dev", "o", and "cmps" keys.
-  // All 111 pre-generated component configs are inlined under "cmps".
-  // -----------------------------------------------------------------------
-
-  // Helper lambdas for optional JSON fields (appended to a running string)
-  std::string components_json;
-  bool first_component = true;
-
-  for (uint16_t i = 0; i < ha_erd_discovery_config_count; i++) {
-    const ha_erd_discovery_config_t& cfg = ha_erd_discovery_configs[i];
-
-    char erd_id_str[5];
-    snprintf(erd_id_str, sizeof(erd_id_str), "%04x", cfg.erd_id);
-
-    bool is_request = (cfg.pair_role[0] == 'r');  // "request"
-
-    // Build state_topic and command_topic
-    std::string state_topic;
-    std::string command_topic;
-    if (is_request && cfg.paired_erd_id != 0) {
-      char paired_id_str[5];
-      snprintf(paired_id_str, sizeof(paired_id_str), "%04x", cfg.paired_erd_id);
-      state_topic = "geappliances/" + device_id + "/erd/0x" + paired_id_str + "/value";
-      command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
-    } else {
-      state_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/value";
-      command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
-    }
-
-    std::string unique_id = device_id + "_" + erd_id_str;
-
-    // Helpers that append optional key:value fields to 'comp'
-    std::string comp;
-    auto add_str = [&](const char* key, const char* val) {
-      if (val && val[0] != '\0') {
-        comp += ",\"" + std::string(key) + "\":\"" + escape_json_str(std::string(val)) + "\"";
-      }
-    };
-    auto add_tmpl = [&](const char* key, const char* val) {
-      if (val && val[0] != '\0') {
-        comp += ",\"" + std::string(key) + "\":\"" + escape_json_str(std::string(val)) + "\"";
-      }
-    };
-
-    // Build the per-component object (platform is "p" in device-discovery format)
-    if (strcmp(cfg.ha_domain, "sensor") == 0) {
-      comp  = "{\"p\":\"sensor\"";
-      comp += ",\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-      comp += ",\"state_topic\":\"" + state_topic + "\"";
-      comp += ",\"unique_id\":\"" + unique_id + "\"";
-      add_tmpl("value_template", cfg.value_template);
-      add_str("unit_of_measurement", cfg.unit_of_measurement);
-      add_str("device_class", cfg.device_class);
-      add_str("state_class", cfg.state_class);
-      comp += "}";
-
-    } else if (strcmp(cfg.ha_domain, "binary_sensor") == 0) {
-      comp  = "{\"p\":\"binary_sensor\"";
-      comp += ",\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-      comp += ",\"state_topic\":\"" + state_topic + "\"";
-      comp += ",\"unique_id\":\"" + unique_id + "\"";
-      add_tmpl("value_template", cfg.value_template);
-      comp += ",\"payload_on\":\"01\"";
-      comp += ",\"payload_off\":\"00\"";
-      add_str("device_class", cfg.device_class);
-      comp += "}";
-
-    } else if (strcmp(cfg.ha_domain, "switch") == 0) {
-      comp  = "{\"p\":\"switch\"";
-      comp += ",\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-      comp += ",\"state_topic\":\"" + state_topic + "\"";
-      comp += ",\"command_topic\":\"" + command_topic + "\"";
-      comp += ",\"unique_id\":\"" + unique_id + "\"";
-      add_tmpl("value_template", cfg.value_template);
-      comp += ",\"state_on\":\"01\"";
-      comp += ",\"state_off\":\"00\"";
-      comp += ",\"payload_on\":\"01\"";
-      comp += ",\"payload_off\":\"00\"";
-      comp += "}";
-
-    } else if (strcmp(cfg.ha_domain, "select") == 0) {
-      comp  = "{\"p\":\"select\"";
-      comp += ",\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-      comp += ",\"state_topic\":\"" + state_topic + "\"";
-      comp += ",\"command_topic\":\"" + command_topic + "\"";
-      comp += ",\"unique_id\":\"" + unique_id + "\"";
-      add_tmpl("value_template", cfg.value_template);
-      add_tmpl("command_template", cfg.command_template);
-      if (cfg.options_json && cfg.options_json[0] != '\0') {
-        comp += ",\"options\":" + std::string(cfg.options_json);
-      }
-      comp += "}";
-
-    } else if (strcmp(cfg.ha_domain, "number") == 0) {
-      comp  = "{\"p\":\"number\"";
-      comp += ",\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-      comp += ",\"state_topic\":\"" + state_topic + "\"";
-      comp += ",\"command_topic\":\"" + command_topic + "\"";
-      comp += ",\"unique_id\":\"" + unique_id + "\"";
-      add_tmpl("value_template", cfg.value_template);
-      add_tmpl("command_template", cfg.command_template);
-      add_str("unit_of_measurement", cfg.unit_of_measurement);
-      add_str("device_class", cfg.device_class);
-      comp += ",\"mode\":\"box\"";
-      comp += "}";
-
-    } else if (strcmp(cfg.ha_domain, "button") == 0) {
-      comp  = "{\"p\":\"button\"";
-      comp += ",\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-      comp += ",\"command_topic\":\"" + command_topic + "\"";
-      comp += ",\"unique_id\":\"" + unique_id + "\"";
-      comp += ",\"payload_press\":\"01\"";
-      add_str("device_class", cfg.device_class);
-      comp += "}";
-
-    } else {
-      continue;  // Unknown domain – skip
-    }
-
-    if (!first_component) {
-      components_json += ",";
-    }
-    components_json += "\"" + std::string(erd_id_str) + "\":" + comp;
-    first_component = false;
+void GeappliancesBridge::publish_next_ha_discovery_entity_() {
+  auto* mqtt_client = esphome::mqtt::global_mqtt_client;
+  if (mqtt_client == nullptr || !mqtt_client->is_connected()) {
+    // MQTT dropped mid-sequence; leave in_progress so we resume on reconnect
+    return;
   }
 
-  // Assemble the full device discovery payload
-  std::string payload;
-  payload  = "{\"dev\":{\"ids\":[\"" + device_id + "\"]";
-  payload += ",\"name\":\"" + escape_json_str(appliance_name) + "\"";
-  payload += ",\"mf\":\"GE Appliances\"";
+  if (this->ha_discovery_publish_index_ >= ha_erd_discovery_config_count) {
+    this->ha_discovery_publish_in_progress_ = false;
+    this->ha_discovery_published_ = true;
+    ESP_LOGI(TAG, "HA discovery: all %u entities published", ha_erd_discovery_config_count);
+    return;
+  }
+
+  const ha_erd_discovery_config_t& cfg =
+    ha_erd_discovery_configs[this->ha_discovery_publish_index_];
+  const std::string& device_id = this->final_device_id_;
+
+  char erd_id_str[5];
+  snprintf(erd_id_str, sizeof(erd_id_str), "%04x", cfg.erd_id);
+
+  bool is_request = (cfg.pair_role[0] == 'r');
+  std::string state_topic;
+  std::string command_topic;
+  if (is_request && cfg.paired_erd_id != 0) {
+    char paired_id_str[5];
+    snprintf(paired_id_str, sizeof(paired_id_str), "%04x", cfg.paired_erd_id);
+    state_topic = "geappliances/" + device_id + "/erd/0x" + paired_id_str + "/value";
+    command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
+  } else {
+    state_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/value";
+    command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
+  }
+
+  // Device info is included in every message so HA correctly groups all entities
+  // under one device regardless of publish order.
+  std::string device_json = "{\"identifiers\":[\"" + device_id + "\"]";
+  device_json += ",\"name\":\"" + escape_json_str(appliance_type_to_string(this->appliance_type_)) + "\"";
+  device_json += ",\"manufacturer\":\"GE Appliances\"";
   if (!this->model_number_.empty()) {
-    payload += ",\"mdl\":\"" + escape_json_str(this->model_number_) + "\"";
+    device_json += ",\"model\":\"" + escape_json_str(this->model_number_) + "\"";
   }
   if (!this->serial_number_.empty()) {
-    payload += ",\"sn\":\"" + escape_json_str(this->serial_number_) + "\"";
+    device_json += ",\"serial_number\":\"" + escape_json_str(this->serial_number_) + "\"";
   }
-  payload += "}";
-  payload += ",\"o\":{\"name\":\"" + std::string(HA_ORIGIN_NAME) + "\""
-             ",\"url\":\"" + std::string(HA_ORIGIN_URL) + "\"}";
-  payload += ",\"cmps\":{" + components_json + "}}";
+  device_json += "}";
 
-  std::string discovery_topic = "homeassistant/device/" + device_id + "/config";
+  std::string unique_id = device_id + "_" + erd_id_str;
+  std::string payload;
+
+  // Appends an optional JSON string field; also used for Jinja2 template strings.
+  auto add_field = [&](const char* key, const char* val) {
+    if (val && val[0] != '\0') {
+      payload += ",\"" + std::string(key) + "\":\"" + escape_json_str(std::string(val)) + "\"";
+    }
+  };
+
+  if (strcmp(cfg.ha_domain, "sensor") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", cfg.value_template);
+    add_field("unit_of_measurement", cfg.unit_of_measurement);
+    add_field("device_class", cfg.device_class);
+    add_field("state_class", cfg.state_class);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(cfg.ha_domain, "binary_sensor") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", cfg.value_template);
+    payload += ",\"payload_on\":\"01\"";
+    payload += ",\"payload_off\":\"00\"";
+    add_field("device_class", cfg.device_class);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(cfg.ha_domain, "switch") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", cfg.value_template);
+    payload += ",\"state_on\":\"01\"";
+    payload += ",\"state_off\":\"00\"";
+    payload += ",\"payload_on\":\"01\"";
+    payload += ",\"payload_off\":\"00\"";
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(cfg.ha_domain, "select") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", cfg.value_template);
+    add_field("command_template", cfg.command_template);
+    if (cfg.options_json && cfg.options_json[0] != '\0') {
+      payload += ",\"options\":" + std::string(cfg.options_json);
+    }
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(cfg.ha_domain, "number") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", cfg.value_template);
+    add_field("command_template", cfg.command_template);
+    add_field("unit_of_measurement", cfg.unit_of_measurement);
+    add_field("device_class", cfg.device_class);
+    payload += ",\"mode\":\"box\"";
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(cfg.ha_domain, "button") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    payload += ",\"payload_press\":\"01\"";
+    add_field("device_class", cfg.device_class);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else {
+    // Unknown domain – skip this entry
+    this->ha_discovery_publish_index_++;
+    return;
+  }
+
+  std::string discovery_topic = "homeassistant/" + std::string(cfg.ha_domain)
+                                 + "/" + device_id + "/" + erd_id_str + "/config";
   mqtt_client->publish(discovery_topic, payload, 1, true);  // QoS 1, retain
+  ESP_LOGD(TAG, "HA discovery [%u/%u]: ERD 0x%04X (%s) as %s",
+           this->ha_discovery_publish_index_ + 1, (unsigned)ha_erd_discovery_config_count,
+           cfg.erd_id, cfg.name, cfg.ha_domain);
 
-  ESP_LOGI(TAG, "Published HA device discovery payload to %s (%zu components)",
-           discovery_topic.c_str(), ha_erd_discovery_config_count);
+  this->ha_discovery_publish_index_++;
 }
 
 std::string GeappliancesBridge::bytes_to_string_(const uint8_t* data, size_t size) {

@@ -59,6 +59,7 @@ class GeappliancesBridge : public Component {
   void handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args);
   void initialize_mqtt_bridge_();
   void publish_ha_discovery_();
+  void publish_next_ha_discovery_entity_();
   void check_subscription_activity_();
   void run_autodiscovery_();
   void start_feature_bit_reading_();
@@ -196,8 +197,10 @@ class GeappliancesBridge : public Component {
   // 10 s window from bridge init).
   bool ha_discovery_pending_{false};
   bool ha_discovery_published_{false};
-  uint32_t ha_discovery_timer_start_{0};   // millis() when the 10-s window opened
-  uint32_t ha_discovery_last_activity_{0}; // millis() of last ERD publish (subscription mode)
+  bool ha_discovery_publish_in_progress_{false};
+  uint16_t ha_discovery_publish_index_{0};         // next entity index to publish
+  uint32_t ha_discovery_timer_start_{0};           // millis() when the 10-s window opened
+  uint32_t ha_discovery_last_activity_{0};         // millis() of last ERD publish (subscription mode)
   static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;  // 10 s quiet period
 
   // Autodiscovery state machine
