@@ -347,6 +347,7 @@ static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_sign
     case tiny_hsm_signal_entry:
       self->erd_host_address = tiny_gea_broadcast_address;
       self->polling_list_complete = false;
+      self->current_state_name = "identify_appliance";
       __attribute__((fallthrough));
 
     case signal_timer_expired:
@@ -447,6 +448,7 @@ static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_
   mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
 
   if(signal == tiny_hsm_signal_entry) {
+    self->current_state_name = "add_common_erds";
     self->next_discovery_state = state_add_energy_erds;
     self->appliance_erd_list = commonErds;
     self->appliance_erd_list_count = commonErdCount;
@@ -465,6 +467,7 @@ static tiny_hsm_result_t state_add_energy_erds(tiny_hsm_t* hsm, tiny_hsm_signal_
   mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
 
   if(signal == tiny_hsm_signal_entry) {
+    self->current_state_name = "add_energy_erds";
     self->next_discovery_state = state_add_appliance_erds;
     self->appliance_erd_list = energyErds;
     self->appliance_erd_list_count = energyErdCount;
@@ -485,6 +488,7 @@ static tiny_hsm_result_t state_add_appliance_erds(tiny_hsm_t* hsm, tiny_hsm_sign
     if(self->appliance_type >= maximumApplianceType) {
       self->appliance_type = 0;
     }
+    self->current_state_name = "add_appliance_erds";
     self->next_discovery_state = state_polling;
     self->appliance_erd_list = applianceTypeToErdGroupTranslation[self->appliance_type].erdList;
     self->appliance_erd_list_count = applianceTypeToErdGroupTranslation[self->appliance_type].erdCount;
@@ -532,6 +536,7 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
       }
       arm_polling_timer(self, self->polling_interval_ms);
       self->polling_list_complete = true;
+      self->current_state_name = "polling";
       __attribute__((fallthrough));
 
     case signal_timer_expired:

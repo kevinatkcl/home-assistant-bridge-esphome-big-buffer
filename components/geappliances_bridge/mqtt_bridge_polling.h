@@ -41,6 +41,10 @@ typedef struct {
   // discovery phases have completed). Reset to false on appliance loss/
   // reconnect. Used externally to gate HA discovery until polling is steady.
   bool polling_list_complete;
+  // Updated at each state entry with a human-readable name of the current HSM
+  // state. Initialized to nullptr; callers may watch this for changes to emit
+  // debug log messages without coupling mqtt_bridge.cpp to ESP logging headers.
+  const char* current_state_name;
   // Optional pre-populated polling list from appliance API parsing.
   // When non-NULL, discovery states are skipped and this list is polled directly.
   const tiny_erd_t* api_parsed_list;

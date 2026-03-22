@@ -292,6 +292,20 @@ void GeappliancesBridge::loop() {
     this->check_subscription_activity_();
   }
 
+  // Debug: log polling bridge state machine transitions.
+  if (this->mqtt_bridge_initialized_) {
+    bool is_poll_mode = !((this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                          (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_));
+    if (is_poll_mode) {
+      const char* new_state = this->mqtt_bridge_polling_.current_state_name;
+      if (new_state != nullptr && new_state != this->last_logged_poll_state_) {
+        ESP_LOGD(TAG, "Polling bridge state: %s (ERDs registered: %zu)",
+                 new_state, this->ha_registered_erds_.size());
+        this->last_logged_poll_state_ = new_state;
+      }
+    }
+  }
+
   // Deferred HA discovery: wait for the 10 s quiet window, then publish entities
   // one at a time across successive loop() calls to avoid large heap allocations
   // that would trigger an OOM panic or watchdog reset on ESP32.

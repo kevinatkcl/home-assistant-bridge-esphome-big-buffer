@@ -208,6 +208,7 @@ class GeappliancesBridge : public Component {
   bool ha_discovery_published_{false};
   bool ha_discovery_publish_in_progress_{false};
   uint32_t ha_discovery_last_activity_{0};         // millis() of last NEW ERD registered/seen (subscription mode)
+  const char* last_logged_poll_state_{nullptr};    // tracks current_state_name to detect transitions for debug logging
   // ERD IDs received via subscription that have been seen at least once.
   // The quiet window is only reset when a NEW ERD ID arrives; repeated value
   // updates for already-known ERDs do not extend the wait.
