@@ -1089,7 +1089,15 @@ void GeappliancesBridge::publish_ha_discovery_() {
            this->ha_registered_erds_.size());
 
   // Stack size 12 KB – enough for HTTPS + cJSON on ESP32.
-  xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 12288, this, 5, &this->ha_fetch_task_handle_);
+  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 12288, this, 5,
+                              &this->ha_fetch_task_handle_);
+  if (rc != pdPASS) {
+    ESP_LOGE(TAG, "HA discovery: failed to create fetch task (rc=%d)", (int)rc);
+    vQueueDelete(this->ha_discovery_queue_);
+    this->ha_discovery_queue_                 = nullptr;
+    this->ha_fetch_task_handle_               = nullptr;
+    this->ha_discovery_publish_in_progress_   = false;
+  }
 #else
   // Non-ESP32 build (e.g. tests): nothing to do.
   this->ha_discovery_pending_           = false;
