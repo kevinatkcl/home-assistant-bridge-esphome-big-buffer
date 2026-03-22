@@ -207,9 +207,7 @@ class GeappliancesBridge : public Component {
   bool ha_discovery_pending_{false};
   bool ha_discovery_published_{false};
   bool ha_discovery_publish_in_progress_{false};
-  uint32_t ha_discovery_timer_start_{0};           // millis() when the 10-s window opened
-  uint32_t ha_discovery_last_activity_{0};         // millis() of last NEW ERD registered/seen
-  size_t ha_registered_erds_last_count_{0};        // tracks growth of ha_registered_erds_ in loop()
+  uint32_t ha_discovery_last_activity_{0};         // millis() of last NEW ERD registered/seen (subscription mode)
   // ERD IDs received via subscription that have been seen at least once.
   // The quiet window is only reset when a NEW ERD ID arrives; repeated value
   // updates for already-known ERDs do not extend the wait.
@@ -221,8 +219,7 @@ class GeappliancesBridge : public Component {
   // Set of string-type ERD IDs built from ha_discovery_config.h at bridge init.
   // Passed to the MQTT adapter so it can publish ASCII text instead of hex.
   std::set<tiny_erd_t> ha_string_erds_set_;
-  static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;  // 10 s quiet period
-  static constexpr uint32_t HA_DISCOVERY_MAX_WAIT_MS = 30000;  // max 30 s from bridge init
+  static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;  // 10 s quiet period (subscription mode)
 
   // --- Runtime HA-discovery fetch state ------------------------------------
   // Entity definitions are downloaded at runtime from compact JSONL files

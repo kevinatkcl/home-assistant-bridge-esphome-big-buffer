@@ -296,32 +296,33 @@ void GeappliancesBridge::loop() {
   // one at a time across successive loop() calls to avoid large heap allocations
   // that would trigger an OOM panic or watchdog reset on ESP32.
   //
-  // In subscription mode, ha_discovery_last_activity_ is already reset whenever
-  // a new ERD subscription publication is received (see handle_erd_client_activity_).
-  // In polling mode, we detect new ERD registrations by watching ha_registered_erds_
-  // grow, and reset the timer the same way.  This ensures discovery never fires
-  // while the polling bridge is still discovering/registering ERDs.
-  if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
-    bool is_poll_mode = !((this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
-                          (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_));
-    if (is_poll_mode) {
-      size_t current_erd_count = this->ha_registered_erds_.size();
-      if (current_erd_count != this->ha_registered_erds_last_count_) {
-        this->ha_registered_erds_last_count_ = current_erd_count;
-        this->ha_discovery_last_activity_ = millis();
-      }
-    }
-  }
+  // In subscription mode: ha_discovery_last_activity_ is reset whenever a new
+  // ERD subscription publication is received; discovery fires after 10 s of
+  // quiet (no new ERDs seen).
+  //
+  // In polling mode: the polling bridge has its own state machine that walks
+  // through identify_appliance → add_common_erds → add_energy_erds →
+  // add_appliance_erds → state_polling.  Discovery must not fire until
+  // state_polling is entered (polling_list_complete flag set), because ERD
+  // reads during the discovery phase can be separated by multi-second gaps
+  // when the appliance does not respond and retries are needed.
 
   if (this->ha_discovery_pending_ && !this->ha_discovery_publish_in_progress_) {
-    uint32_t now = millis();
-    uint32_t since_activity = now - this->ha_discovery_last_activity_;
-    uint32_t since_start = now - this->ha_discovery_timer_start_;
-    // Fire discovery after 10 s of quiet (no new ERDs registered/seen) in all
-    // modes.  The 30 s cap from bridge init prevents indefinite delays when the
-    // appliance keeps registering ERDs or the quiet window never expires.
-    bool ready = (since_activity >= HA_DISCOVERY_QUIET_MS ||
-                  since_start   >= HA_DISCOVERY_MAX_WAIT_MS);
+    bool is_poll_mode = !((this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                          (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_));
+
+    bool ready = false;
+    if (is_poll_mode) {
+      // Wait until the polling state machine has completed ERD discovery and
+      // entered state_polling — that flag is the definitive signal.
+      ready = this->mqtt_bridge_polling_.polling_list_complete;
+    } else {
+      // Subscription mode: use the 10 s quiet window.
+      uint32_t now = millis();
+      uint32_t since_activity = now - this->ha_discovery_last_activity_;
+      ready = (since_activity >= HA_DISCOVERY_QUIET_MS);
+    }
+
     if (ready) {
       this->publish_ha_discovery_();
     }
@@ -1085,14 +1086,14 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
   ESP_LOGI(TAG, "MQTT bridge initialized successfully");
 
   // Defer publishing the HA device discovery payload until ERD registration has
-  // settled (10 s quiet window, tracked per-loop in loop()). Enabled by default;
-  // can be disabled by setting generate_device_config: false in YAML.
+  // settled. In subscription mode: 10 s quiet window after the last ERD is seen.
+  // In polling mode: waits for the polling HSM to enter state_polling (all ERD
+  // discovery phases complete), tracked via polling_list_complete flag.
   if (this->generate_device_config_) {
     this->ha_discovery_pending_ = true;
-    this->ha_discovery_timer_start_ = millis();
     this->ha_discovery_last_activity_ = millis();
-    this->ha_registered_erds_last_count_ = 0;
-    ESP_LOGI(TAG, "HA discovery deferred: will publish after %u s quiet window",
+    ESP_LOGI(TAG, "HA discovery deferred: will publish after ERD discovery completes "
+                  "(polling mode) or %u s quiet window (subscription mode)",
              HA_DISCOVERY_QUIET_MS / 1000);
   }
 }
@@ -1602,13 +1603,12 @@ void GeappliancesBridge::check_subscription_activity_() {
     // Mark that we're no longer in subscription mode
     this->subscription_mode_active_ = false;
 
-    // Reset the HA-discovery quiet timer so the polling bridge has a full
-    // HA_DISCOVERY_QUIET_MS window to register ERDs before the fetch fires.
-    // Without this the ready-check in loop() sees since_start >= QUIET_MS
-    // (already 30+ s elapsed) and fires immediately with an empty registered-
-    // ERD set, causing all common entities to be published with no filter.
+    // In polling mode, HA discovery is now gated on polling_list_complete
+    // (set when the polling HSM enters state_polling), so no timer reset
+    // is needed here.  The ha_discovery_last_activity_ reset is kept only
+    // as a conservative safety net for the subscription-mode quiet check in
+    // case this bridge is later reconfigured.
     if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
-      this->ha_discovery_timer_start_ = millis();
       this->ha_discovery_last_activity_ = millis();
     }
 

@@ -37,6 +37,10 @@ typedef struct {
   uint16_t erd_index;
   uint16_t polling_retries;
   bool only_publish_on_change;
+  // Set to true once the HSM transitions into state_polling (all ERD
+  // discovery phases have completed). Reset to false on appliance loss/
+  // reconnect. Used externally to gate HA discovery until polling is steady.
+  bool polling_list_complete;
   // Optional pre-populated polling list from appliance API parsing.
   // When non-NULL, discovery states are skipped and this list is polled directly.
   const tiny_erd_t* api_parsed_list;

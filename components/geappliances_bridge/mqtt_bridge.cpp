@@ -346,6 +346,7 @@ static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_sign
   switch(signal) {
     case tiny_hsm_signal_entry:
       self->erd_host_address = tiny_gea_broadcast_address;
+      self->polling_list_complete = false;
       __attribute__((fallthrough));
 
     case signal_timer_expired:
@@ -530,6 +531,7 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
         }
       }
       arm_polling_timer(self, self->polling_interval_ms);
+      self->polling_list_complete = true;
       __attribute__((fallthrough));
 
     case signal_timer_expired:
