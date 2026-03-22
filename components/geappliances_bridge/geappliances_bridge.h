@@ -54,6 +54,7 @@ class GeappliancesBridge : public Component {
   void set_appliance_api_parsing(bool appliance_api_parsing) { this->appliance_api_parsing_ = appliance_api_parsing; }
   void set_generate_device_config(bool generate_device_config) { this->generate_device_config_ = generate_device_config; }
   void add_custom_erd(uint16_t erd) { this->custom_erds_vec_.push_back(static_cast<tiny_erd_t>(erd)); }
+  void set_ha_discovery_base_url(const std::string& url) { this->ha_discovery_base_url_ = url; }
 
  protected:
   void on_mqtt_connected_();
@@ -243,8 +244,6 @@ class GeappliancesBridge : public Component {
 
   QueueHandle_t ha_discovery_queue_{nullptr};   // carries HaDiscoveryItem* (nullptr = sentinel)
   TaskHandle_t  ha_fetch_task_handle_{nullptr};
-
-  void set_ha_discovery_base_url(const std::string& url) { this->ha_discovery_base_url_ = url; }
 
   static void ha_fetch_task_fn_(void* param);
   void        fetch_ha_definitions_();
