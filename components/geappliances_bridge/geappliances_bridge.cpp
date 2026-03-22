@@ -1117,6 +1117,11 @@ void GeappliancesBridge::publish_next_ha_discovery_entity_() {
   device_json += "}";
 
   std::string unique_id = device_id + "_" + erd_id_str;
+  // For sub-field entities, append the field slug so each has a unique ID.
+  if (cfg.field_id && cfg.field_id[0] != '\0') {
+    unique_id += "_";
+    unique_id += cfg.field_id;
+  }
   std::string payload;
 
   // Appends an optional JSON string field; also used for Jinja2 template strings.
@@ -1196,12 +1201,19 @@ void GeappliancesBridge::publish_next_ha_discovery_entity_() {
     return;
   }
 
+  // Build the discovery topic key: erd_id_str plus optional field_id suffix
+  // so sub-field entities each get their own unique discovery topic.
+  std::string topic_key = erd_id_str;
+  if (cfg.field_id && cfg.field_id[0] != '\0') {
+    topic_key += "_";
+    topic_key += cfg.field_id;
+  }
   std::string discovery_topic = "homeassistant/" + std::string(cfg.ha_domain)
-                                 + "/" + device_id + "/" + erd_id_str + "/config";
+                                 + "/" + device_id + "/" + topic_key + "/config";
   mqtt_client->publish(discovery_topic, payload, 1, true);  // QoS 1, retain
-  ESP_LOGD(TAG, "HA discovery [%u/%u]: ERD 0x%04X (%s) as %s",
+  ESP_LOGD(TAG, "HA discovery [%u/%u]: ERD 0x%04X field '%s' (%s) as %s",
            this->ha_discovery_publish_index_ + 1, (unsigned)ha_erd_discovery_config_count,
-           cfg.erd_id, cfg.name, cfg.ha_domain);
+           cfg.erd_id, cfg.field_id ? cfg.field_id : "", cfg.name, cfg.ha_domain);
 
   this->ha_discovery_publish_index_++;
 }

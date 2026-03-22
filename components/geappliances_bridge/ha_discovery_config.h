@@ -25,231 +25,392 @@ typedef struct {
   const char* value_template;        /* Jinja2 template for state values; "" if none */
   const char* command_template;      /* Jinja2 template for command payloads; "" if none */
   const char* options_json;          /* JSON array of select options; "" if not select */
+  const char* field_id;              /* "" for single-field ERDs; slug for sub-field entities */
 } ha_erd_discovery_config_t;
 
 static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
   /* 0x0001 Model Number */
-  {0x0001, "Model Number", "sensor", "", "", "", 1, 32, 0x0000, "", "", "", ""},
+  {0x0001, "Model Number", "sensor", "", "", "", 1, 32, 0x0000, "", "", "", "", ""},
   /* 0x0002 Serial Number */
-  {0x0002, "Serial Number", "sensor", "", "", "", 1, 32, 0x0000, "", "", "", ""},
+  {0x0002, "Serial Number", "sensor", "", "", "", 1, 32, 0x0000, "", "", "", "", ""},
   /* 0x0008 Appliance Type */
-  {0x0008, "Appliance Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Water Heater', '01': 'Clothes Dryer', '02': 'Clothes Washer', '03': 'Refrigerator', '04': 'Microwave', '05': 'Advantium', '06': 'Dishwasher', '07': 'Oven', '08': 'Electric Range', '09': 'Gas Range', '0a': 'Thermostat/RAC', '0b': 'Electric Cooktop', '0c': 'Pizza Oven', '0d': 'Gas Cooktop', '0e': 'Split / DFS (Duct-Free Split) AC', '0f': 'Hood', '10': 'Point of Entry Water Filter', '11': 'Induction Cooktop', '12': 'Delivery Box', '13': 'Kitchen Hub Vent Hood', '14': 'Zoneline/PTAC', '15': 'Water Softener', '16': 'Portable AC', '17': 'Combination Washer Dryer', '18': 'Dual Zone Wine Chiller', '19': 'Beverage Center', '1a': 'Coffee Brewer', '1b': 'Opal Nugget Ice Maker', '1c': 'In-Home Grower', '1d': 'Dehumidifer', '1e': 'Under Counter Ice Maker', '1f': 'Through Wall AC', '20': 'F&P DishDrawer', '21': 'Espresso Coffee Maker', '22': 'Toaster Oven', '23': 'Zoneline/Vertical', '24': 'Central DFS (Duct-Free Split) Controller', '25': 'BLE Mesh Gateway', '26': 'Stand Mixer', '27': 'Fisher & Paykel Cooktop', '28': 'F&P Cooktop Teppanyaki', '29': 'F&P Ventilation Downdraft', '2a': 'Smart Plug', '2b': 'Smoker', '2c': 'Air Handler VRF', '2d': 'Fabric Care Cabinet Closet', '2e': 'Laundry Center', '2f': 'Grill', '30': 'Freezer', '31': 'Warming Drawer', '32': 'Vacuum Seal Drawer', '33': 'Wine Cabinet', '34': 'Central AC', '35': 'Soft Starter', '36': 'Hearth Pizza Oven', '37': 'Sourdough Starter', '38': 'Thermostat', 'ff': 'Unknown'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x0008, "Appliance Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Water Heater', '01': 'Clothes Dryer', '02': 'Clothes Washer', '03': 'Refrigerator', '04': 'Microwave', '05': 'Advantium', '06': 'Dishwasher', '07': 'Oven', '08': 'Electric Range', '09': 'Gas Range', '0a': 'Thermostat/RAC', '0b': 'Electric Cooktop', '0c': 'Pizza Oven', '0d': 'Gas Cooktop', '0e': 'Split / DFS (Duct-Free Split) AC', '0f': 'Hood', '10': 'Point of Entry Water Filter', '11': 'Induction Cooktop', '12': 'Delivery Box', '13': 'Kitchen Hub Vent Hood', '14': 'Zoneline/PTAC', '15': 'Water Softener', '16': 'Portable AC', '17': 'Combination Washer Dryer', '18': 'Dual Zone Wine Chiller', '19': 'Beverage Center', '1a': 'Coffee Brewer', '1b': 'Opal Nugget Ice Maker', '1c': 'In-Home Grower', '1d': 'Dehumidifer', '1e': 'Under Counter Ice Maker', '1f': 'Through Wall AC', '20': 'F&P DishDrawer', '21': 'Espresso Coffee Maker', '22': 'Toaster Oven', '23': 'Zoneline/Vertical', '24': 'Central DFS (Duct-Free Split) Controller', '25': 'BLE Mesh Gateway', '26': 'Stand Mixer', '27': 'Fisher & Paykel Cooktop', '28': 'F&P Cooktop Teppanyaki', '29': 'F&P Ventilation Downdraft', '2a': 'Smart Plug', '2b': 'Smoker', '2c': 'Air Handler VRF', '2d': 'Fabric Care Cabinet Closet', '2e': 'Laundry Center', '2f': 'Grill', '30': 'Freezer', '31': 'Warming Drawer', '32': 'Vacuum Seal Drawer', '33': 'Wine Cabinet', '34': 'Central AC', '35': 'Soft Starter', '36': 'Hearth Pizza Oven', '37': 'Sourdough Starter', '38': 'Thermostat', 'ff': 'Unknown'}.get(value[:2], 'Unknown') }}", "", "", ""},
   /* 0x0030 Ready to Enter Boot Loader */
-  {0x0030, "Ready to Enter Boot Loader", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "", "", ""},
+  {0x0030, "Ready to Enter Boot Loader", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "", "", "", ""},
   /* 0x0035 Personality (32-bit) */
-  {0x0035, "Personality (32-bit)", "button", "", "restart", "", 1, 4, 0x0000, "", "", "", ""},
-  /* 0x003a Application Version */
-  {0x003a, "Application Version", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
-  /* 0x003b Parametric Version */
-  {0x003b, "Parametric Version", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
-  /* 0x003c Auxiliary Version */
-  {0x003c, "Auxiliary Version", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x0035, "Personality (32-bit)", "button", "", "restart", "", 1, 4, 0x0000, "", "", "", "", ""},
+  /* 0x003a Application Version - Critical Major */
+  {0x003a, "Application Version - Critical Major", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[0:2] | int(base=16) }}", "", "", ""},
+  /* 0x003a Application Version - Critical Minor */
+  {0x003a, "Application Version - Critical Minor", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[2:4] | int(base=16) }}", "", "", "critical_minor"},
+  /* 0x003a Application Version - Non-Critical Major */
+  {0x003a, "Application Version - Non-Critical Major", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[4:6] | int(base=16) }}", "", "", "non_critical_major"},
+  /* 0x003a Application Version - Non-Critical Minor */
+  {0x003a, "Application Version - Non-Critical Minor", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[6:8] | int(base=16) }}", "", "", "non_critical_minor"},
+  /* 0x003b Parametric Version - Critical Major */
+  {0x003b, "Parametric Version - Critical Major", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[0:2] | int(base=16) }}", "", "", ""},
+  /* 0x003b Parametric Version - Critical Minor */
+  {0x003b, "Parametric Version - Critical Minor", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[2:4] | int(base=16) }}", "", "", "critical_minor"},
+  /* 0x003b Parametric Version - Non-Critical Major */
+  {0x003b, "Parametric Version - Non-Critical Major", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[4:6] | int(base=16) }}", "", "", "non_critical_major"},
+  /* 0x003b Parametric Version - Non-Critical Minor */
+  {0x003b, "Parametric Version - Non-Critical Minor", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[6:8] | int(base=16) }}", "", "", "non_critical_minor"},
+  /* 0x003c Auxiliary Version - Critical Major */
+  {0x003c, "Auxiliary Version - Critical Major", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[0:2] | int(base=16) }}", "", "", ""},
+  /* 0x003c Auxiliary Version - Critical Minor */
+  {0x003c, "Auxiliary Version - Critical Minor", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[2:4] | int(base=16) }}", "", "", "critical_minor"},
+  /* 0x003c Auxiliary Version - Non-Critical Major */
+  {0x003c, "Auxiliary Version - Non-Critical Major", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[4:6] | int(base=16) }}", "", "", "non_critical_major"},
+  /* 0x003c Auxiliary Version - Non-Critical Minor */
+  {0x003c, "Auxiliary Version - Non-Critical Minor", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value[6:8] | int(base=16) }}", "", "", "non_critical_minor"},
   /* 0x0700 Reset Count */
-  {0x0700, "Reset Count", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
-  /* 0x0701 Reset Reason */
-  {0x0701, "Reset Reason", "sensor", "", "enum", "", 1, 2, 0x0000, "", "{{ {'00': 'Software', '01': 'Watchdog', '02': 'PowerOn', '03': 'Unknown'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x0700, "Reset Count", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
+  /* 0x0701 Reset Reason - Reset Source */
+  {0x0701, "Reset Reason - Reset Source", "sensor", "", "enum", "", 1, 2, 0x0000, "", "{{ {'00': 'Software', '01': 'Watchdog', '02': 'PowerOn', '03': 'Unknown'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x0701 Reset Reason - Application-specific Metadata */
+  {0x0701, "Reset Reason - Application-specific Metadata", "sensor", "", "", "", 1, 2, 0x0000, "", "{{ value[2:4] | int(base=16) }}", "", "", "application_specific_metadata"},
   /* 0x0703 Program Counter of Last Failed Assertion */
-  {0x0703, "Program Counter of Last Failed Assertion", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
-  /* 0x7010 Relay Status */
-  {0x7010, "Relay Status", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ value[:2] }}", "", ""},
+  {0x0703, "Program Counter of Last Failed Assertion", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
+  /* 0x7010 Relay Status - Heat 3 */
+  {0x7010, "Relay Status - Heat 3", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 8) & 1 else '00' }}", "", "", "heat_3"},
+  /* 0x7010 Relay Status - Heat 2 */
+  {0x7010, "Relay Status - Heat 2", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 9) & 1 else '00' }}", "", "", "heat_2"},
+  /* 0x7010 Relay Status - Heat 1 */
+  {0x7010, "Relay Status - Heat 1", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 10) & 1 else '00' }}", "", "", "heat_1"},
+  /* 0x7010 Relay Status - Compressor */
+  {0x7010, "Relay Status - Compressor", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 11) & 1 else '00' }}", "", "", "compressor"},
+  /* 0x7010 Relay Status - Reverse Valve */
+  {0x7010, "Relay Status - Reverse Valve", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 12) & 1 else '00' }}", "", "", "reverse_valve"},
+  /* 0x7010 Relay Status - ICR Pump */
+  {0x7010, "Relay Status - ICR Pump", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 13) & 1 else '00' }}", "", "", "icr_pump"},
+  /* 0x7010 Relay Status - DLB */
+  {0x7010, "Relay Status - DLB", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 14) & 1 else '00' }}", "", "", "dlb"},
+  /* 0x7010 Relay Status - External Fan */
+  {0x7010, "Relay Status - External Fan", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 15) & 1 else '00' }}", "", "", "external_fan"},
+  /* 0x7010 Relay Status - Auxiliary */
+  {0x7010, "Relay Status - Auxiliary", "binary_sensor", "", "", "", 1, 2, 0x0000, "", "{{ '01' if ((value[0:4] | int(base=16)) >> 0) & 1 else '00' }}", "", "", "auxiliary"},
   /* 0x7100 Inside ambient temperature */
-  {0x7100, "Inside ambient temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7100, "Inside ambient temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7101 Inside coil temperature */
-  {0x7101, "Inside coil temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7101, "Inside coil temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7102 Outside ambient temperature */
-  {0x7102, "Outside ambient temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7102, "Outside ambient temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7103 Outside coil temperature */
-  {0x7103, "Outside coil temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7103, "Outside coil temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7104 Processed Inside ambient temperature */
-  {0x7104, "Processed Inside ambient temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7104, "Processed Inside ambient temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7106 Indoor Outlet temperature */
-  {0x7106, "Indoor Outlet temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7106, "Indoor Outlet temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7107 Processed Outside Ambient Temperature */
-  {0x7107, "Processed Outside Ambient Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7107, "Processed Outside Ambient Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7108 Indoor Coil Vapor Temperature */
-  {0x7108, "Indoor Coil Vapor Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7108, "Indoor Coil Vapor Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x710a Outdoor Coil Vapor Temperature */
-  {0x710a, "Outdoor Coil Vapor Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x710a, "Outdoor Coil Vapor Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x710b Humidity Percentage */
-  {0x710b, "Humidity Percentage", "sensor", "%", "humidity", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x710b, "Humidity Percentage", "sensor", "%", "humidity", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x710c Suction Temperature */
-  {0x710c, "Suction Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x710c, "Suction Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x710d Outdoor Coil Liquid temperature */
-  {0x710d, "Outdoor Coil Liquid temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x710d, "Outdoor Coil Liquid temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7114 Processed indoor ambient temperature (rounded) */
-  {0x7114, "Processed indoor ambient temperature (rounded)", "sensor", "°F", "temperature", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7114, "Processed indoor ambient temperature (rounded)", "sensor", "°F", "temperature", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7115 Processed outdoor ambient temperature (rounded) */
-  {0x7115, "Processed outdoor ambient temperature (rounded)", "sensor", "°F", "temperature", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7115, "Processed outdoor ambient temperature (rounded)", "sensor", "°F", "temperature", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7116 Estimated External Thermostat Target Setpoint Temperature */
-  {0x7116, "Estimated External Thermostat Target Setpoint Temperature", "sensor", "°F", "temperature", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7116, "Estimated External Thermostat Target Setpoint Temperature", "sensor", "°F", "temperature", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7117 Target Dew Point temperature */
-  {0x7117, "Target Dew Point temperature", "sensor", "°F", "temperature", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7117, "Target Dew Point temperature", "sensor", "°F", "temperature", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7118 Measured Dew Point temperature */
-  {0x7118, "Measured Dew Point temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
-  /* 0x7120 External control input state */
-  {0x7120, "External control input state", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "", "", ""},
-  /* 0x7121 External control input override */
-  {0x7121, "External control input override", "sensor", "", "", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7118, "Measured Dew Point temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
+  /* 0x7120 External control input state - CDC */
+  {0x7120, "External control input state - CDC", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}", "", "", "cdc"},
+  /* 0x7120 External control input state - GH (Fan Hi) */
+  {0x7120, "External control input state - GH (Fan Hi)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}", "", "", "gh_fan_hi"},
+  /* 0x7120 External control input state - GL (Fan Lo) */
+  {0x7120, "External control input state - GL (Fan Lo)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 2) & 1 else '00' }}", "", "", "gl_fan_lo"},
+  /* 0x7120 External control input state - B (Reverse valve) */
+  {0x7120, "External control input state - B (Reverse valve)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 3) & 1 else '00' }}", "", "", "b_reverse_valve"},
+  /* 0x7120 External control input state - Y (Compressor) */
+  {0x7120, "External control input state - Y (Compressor)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 4) & 1 else '00' }}", "", "", "y_compressor"},
+  /* 0x7120 External control input state - W (Heater) */
+  {0x7120, "External control input state - W (Heater)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 5) & 1 else '00' }}", "", "", "w_heater"},
+  /* 0x7120 External control input state - Y2 (Compressor Stage 2) */
+  {0x7120, "External control input state - Y2 (Compressor Stage 2)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 6) & 1 else '00' }}", "", "", "y2_compressor_stage_2"},
+  /* 0x7121 External control input override - CDC */
+  {0x7121, "External control input override - CDC", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}", "", "", "cdc"},
+  /* 0x7121 External control input override - GH (Fan Hi) */
+  {0x7121, "External control input override - GH (Fan Hi)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}", "", "", "gh_fan_hi"},
+  /* 0x7121 External control input override - GL (Fan Lo) */
+  {0x7121, "External control input override - GL (Fan Lo)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 2) & 1 else '00' }}", "", "", "gl_fan_lo"},
+  /* 0x7121 External control input override - B (Reverse valve) */
+  {0x7121, "External control input override - B (Reverse valve)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 3) & 1 else '00' }}", "", "", "b_reverse_valve"},
+  /* 0x7121 External control input override - Y (Compressor) */
+  {0x7121, "External control input override - Y (Compressor)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 4) & 1 else '00' }}", "", "", "y_compressor"},
+  /* 0x7121 External control input override - W (Heater) */
+  {0x7121, "External control input override - W (Heater)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 5) & 1 else '00' }}", "", "", "w_heater"},
+  /* 0x7121 External control input override - Y2 (Compressor Stage 2) */
+  {0x7121, "External control input override - Y2 (Compressor Stage 2)", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "{{ '01' if ((value[0:2] | int(base=16)) >> 6) & 1 else '00' }}", "", "", "y2_compressor_stage_2"},
   /* 0x7122 Central desk control */
-  {0x7122, "Central desk control", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "", "", ""},
+  {0x7122, "Central desk control", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "", "", "", ""},
   /* 0x7123 External Thermostat Mode */
-  {0x7123, "External Thermostat Mode", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Stop', '01': 'Heat', '02': 'Fan', '03': 'Cool', '04': 'Parameter Set', '05': 'Forced Run', '06': 'External Thermostat', '07': 'Fault Code Display', '08': 'Factory Test', '09': 'Engineering Digit Entry'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x7123, "External Thermostat Mode", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Stop', '01': 'Heat', '02': 'Fan', '03': 'Cool', '04': 'Parameter Set', '05': 'Forced Run', '06': 'External Thermostat', '07': 'Fault Code Display', '08': 'Factory Test', '09': 'Engineering Digit Entry'}.get(value[:2], 'Unknown') }}", "", "", ""},
   /* 0x712f Outdoor Fan Count */
-  {0x712f, "Outdoor Fan Count", "sensor", "", "", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x712f, "Outdoor Fan Count", "sensor", "", "", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7130 Inside fan speed */
-  {0x7130, "Inside fan speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7130, "Inside fan speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7131 Outside fan speed */
-  {0x7131, "Outside fan speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7131, "Outside fan speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7132 Inside target fan speed */
-  {0x7132, "Inside target fan speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7132, "Inside target fan speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7133 Outside target fan speed */
-  {0x7133, "Outside target fan speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7133, "Outside target fan speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7134 Inside fan PWM */
-  {0x7134, "Inside fan PWM", "sensor", "%", "", "", 100, 2, 0x0000, "", "{{ (value | int(base=16)) / 100 | round(2) }}", "", ""},
+  {0x7134, "Inside fan PWM", "sensor", "%", "", "", 100, 2, 0x0000, "", "{{ (value | int(base=16)) / 100 | round(2) }}", "", "", ""},
   /* 0x7135 Outside fan PWM */
-  {0x7135, "Outside fan PWM", "sensor", "%", "", "", 100, 2, 0x0000, "", "{{ (value | int(base=16)) / 100 | round(2) }}", "", ""},
+  {0x7135, "Outside fan PWM", "sensor", "%", "", "", 100, 2, 0x0000, "", "{{ (value | int(base=16)) / 100 | round(2) }}", "", "", ""},
   /* 0x7136 Outdoor Fan 2 Speed */
-  {0x7136, "Outdoor Fan 2 Speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7136, "Outdoor Fan 2 Speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7137 Outdoor Fan 2 Target Speed */
-  {0x7137, "Outdoor Fan 2 Target Speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7137, "Outdoor Fan 2 Target Speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7450 Fan Configuration in Cooling Status */
-  {0x7450, "Fan Configuration in Cooling", "sensor", "", "enum", "", 1, 5, 0x7451, "status", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x7450, "Fan Configuration in Cooling", "sensor", "", "enum", "", 1, 5, 0x7451, "status", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x7450 Fan Configuration in Cooling Status - Cyclic Supported */
+  {0x7450, "Fan Configuration in Cooling - Cyclic Supported", "binary_sensor", "", "", "", 1, 5, 0x7451, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "cyclic_supported"},
+  /* 0x7450 Fan Configuration in Cooling Status - Continuous Supported */
+  {0x7450, "Fan Configuration in Cooling - Continuous Supported", "binary_sensor", "", "", "", 1, 5, 0x7451, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "continuous_supported"},
   /* 0x7451 Fan Configuration in Cooling Request */
-  {0x7451, "Fan Configuration in Cooling", "select", "", "", "", 1, 1, 0x7450, "request", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "{{ {'Cyclic': '00', 'Continuous': '01'}[value] }}", "[\"Cyclic\", \"Continuous\"]"},
+  {0x7451, "Fan Configuration in Cooling", "select", "", "", "", 1, 1, 0x7450, "request", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "{{ {'Cyclic': '00', 'Continuous': '01'}[value] }}", "[\"Cyclic\", \"Continuous\"]", ""},
   /* 0x7452 Fan Configuration in Heating Status */
-  {0x7452, "Fan Configuration in Heating", "sensor", "", "enum", "", 1, 5, 0x7453, "status", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x7452, "Fan Configuration in Heating", "sensor", "", "enum", "", 1, 5, 0x7453, "status", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x7452 Fan Configuration in Heating Status - Cyclic Supported */
+  {0x7452, "Fan Configuration in Heating - Cyclic Supported", "binary_sensor", "", "", "", 1, 5, 0x7453, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "cyclic_supported"},
+  /* 0x7452 Fan Configuration in Heating Status - Continuous Supported */
+  {0x7452, "Fan Configuration in Heating - Continuous Supported", "binary_sensor", "", "", "", 1, 5, 0x7453, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "continuous_supported"},
   /* 0x7453 Fan Configuration in Heating Request */
-  {0x7453, "Fan Configuration in Heating", "select", "", "", "", 1, 1, 0x7452, "request", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "{{ {'Cyclic': '00', 'Continuous': '01'}[value] }}", "[\"Cyclic\", \"Continuous\"]"},
+  {0x7453, "Fan Configuration in Heating", "select", "", "", "", 1, 1, 0x7452, "request", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "{{ {'Cyclic': '00', 'Continuous': '01'}[value] }}", "[\"Cyclic\", \"Continuous\"]", ""},
   /* 0x7454 Freeze Sentinel Status */
-  {0x7454, "Freeze Sentinel", "binary_sensor", "", "", "", 1, 5, 0x7455, "status", "{{ value[:2] }}", "", ""},
+  {0x7454, "Freeze Sentinel", "binary_sensor", "", "enum", "", 1, 5, 0x7455, "status", "{{ {'00': 'Disabled', '01': 'Enabled'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x7454 Freeze Sentinel Status - Disabled Supported */
+  {0x7454, "Freeze Sentinel - Disabled Supported", "binary_sensor", "", "", "", 1, 5, 0x7455, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "disabled_supported"},
+  /* 0x7454 Freeze Sentinel Status - Enabled Supported */
+  {0x7454, "Freeze Sentinel - Enabled Supported", "binary_sensor", "", "", "", 1, 5, 0x7455, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "enabled_supported"},
   /* 0x7455 Freeze Sentinel Request */
-  {0x7455, "Freeze Sentinel", "switch", "", "", "", 1, 1, 0x7454, "request", "{{ value[:2] }}", "", ""},
+  {0x7455, "Freeze Sentinel", "switch", "", "", "", 1, 1, 0x7454, "request", "{{ value[:2] }}", "", "", ""},
   /* 0x7456 Heat Sentinel Status */
-  {0x7456, "Heat Sentinel", "binary_sensor", "", "", "", 1, 5, 0x7457, "status", "{{ value[:2] }}", "", ""},
+  {0x7456, "Heat Sentinel", "binary_sensor", "", "enum", "", 1, 5, 0x7457, "status", "{{ {'00': 'Disabled', '01': 'Enabled'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x7456 Heat Sentinel Status - Disabled Supported */
+  {0x7456, "Heat Sentinel - Disabled Supported", "binary_sensor", "", "", "", 1, 5, 0x7457, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "disabled_supported"},
+  /* 0x7456 Heat Sentinel Status - Enabled Supported */
+  {0x7456, "Heat Sentinel - Enabled Supported", "binary_sensor", "", "", "", 1, 5, 0x7457, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "enabled_supported"},
   /* 0x7457 Heat Sentinel Request */
-  {0x7457, "Heat Sentinel", "switch", "", "", "", 1, 1, 0x7456, "request", "{{ value[:2] }}", "", ""},
+  {0x7457, "Heat Sentinel", "switch", "", "", "", 1, 1, 0x7456, "request", "{{ value[:2] }}", "", "", ""},
   /* 0x7458 Constant Fan Status */
-  {0x7458, "Constant Fan", "binary_sensor", "", "", "", 1, 5, 0x7459, "status", "{{ value[:2] }}", "", ""},
+  {0x7458, "Constant Fan", "binary_sensor", "", "enum", "", 1, 5, 0x7459, "status", "{{ {'00': 'Disabled', '01': 'Enabled'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x7458 Constant Fan Status - Disabled Supported */
+  {0x7458, "Constant Fan - Disabled Supported", "binary_sensor", "", "", "", 1, 5, 0x7459, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "disabled_supported"},
+  /* 0x7458 Constant Fan Status - Enabled Supported */
+  {0x7458, "Constant Fan - Enabled Supported", "binary_sensor", "", "", "", 1, 5, 0x7459, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "enabled_supported"},
   /* 0x7459 Constant Fan Request */
-  {0x7459, "Constant Fan", "switch", "", "", "", 1, 1, 0x7458, "request", "{{ value[:2] }}", "", ""},
+  {0x7459, "Constant Fan", "switch", "", "", "", 1, 1, 0x7458, "request", "{{ value[:2] }}", "", "", ""},
   /* 0x745a 24V External Thermostat Status */
-  {0x745a, "24V External Thermostat", "binary_sensor", "", "", "", 1, 5, 0x745b, "status", "{{ value[:2] }}", "", ""},
+  {0x745a, "24V External Thermostat", "binary_sensor", "", "enum", "", 1, 5, 0x745b, "status", "{{ {'00': 'Disabled', '01': 'Enabled'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x745a 24V External Thermostat Status - Disabled Supported */
+  {0x745a, "24V External Thermostat - Disabled Supported", "binary_sensor", "", "", "", 1, 5, 0x745b, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "disabled_supported"},
+  /* 0x745a 24V External Thermostat Status - Enabled Supported */
+  {0x745a, "24V External Thermostat - Enabled Supported", "binary_sensor", "", "", "", 1, 5, 0x745b, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "enabled_supported"},
   /* 0x745b 24V External Thermostat Request */
-  {0x745b, "24V External Thermostat", "switch", "", "", "", 1, 1, 0x745a, "request", "{{ value[:2] }}", "", ""},
+  {0x745b, "24V External Thermostat", "switch", "", "", "", 1, 1, 0x745a, "request", "{{ value[:2] }}", "", "", ""},
   /* 0x745c Fan Boost Status */
-  {0x745c, "Fan Boost", "binary_sensor", "", "", "", 1, 5, 0x745d, "status", "{{ value[:2] }}", "", ""},
+  {0x745c, "Fan Boost", "binary_sensor", "", "enum", "", 1, 5, 0x745d, "status", "{{ {'00': 'Disabled', '01': 'Enabled'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x745c Fan Boost Status - Disabled Supported */
+  {0x745c, "Fan Boost - Disabled Supported", "binary_sensor", "", "", "", 1, 5, 0x745d, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "disabled_supported"},
+  /* 0x745c Fan Boost Status - Enabled Supported */
+  {0x745c, "Fan Boost - Enabled Supported", "binary_sensor", "", "", "", 1, 5, 0x745d, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "enabled_supported"},
   /* 0x745d Fan Boost Request */
-  {0x745d, "Fan Boost", "switch", "", "", "", 1, 1, 0x745c, "request", "{{ value[:2] }}", "", ""},
+  {0x745d, "Fan Boost", "switch", "", "", "", 1, 1, 0x745c, "request", "{{ value[:2] }}", "", "", ""},
   /* 0x745e Heat Selector Status */
-  {0x745e, "Heat Selector", "sensor", "", "enum", "", 1, 5, 0x745f, "status", "{{ {'00': 'Electric Heat Only', '01': 'High Demand', '02': 'Hybrid', '03': 'Boost Heat Pump Allowed', '04': 'Heat Pump Only'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x745e, "Heat Selector", "sensor", "", "enum", "", 1, 5, 0x745f, "status", "{{ {'00': 'Electric Heat Only', '01': 'High Demand', '02': 'Hybrid', '03': 'Boost Heat Pump Allowed', '04': 'Heat Pump Only'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x745e Heat Selector Status - Electric Heat Only Present */
+  {0x745e, "Heat Selector - Electric Heat Only Present", "binary_sensor", "", "", "", 1, 5, 0x745f, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "electric_heat_only_present"},
+  /* 0x745e Heat Selector Status - High Demand Present */
+  {0x745e, "Heat Selector - High Demand Present", "binary_sensor", "", "", "", 1, 5, 0x745f, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "high_demand_present"},
+  /* 0x745e Heat Selector Status - Hybrid Present */
+  {0x745e, "Heat Selector - Hybrid Present", "binary_sensor", "", "", "", 1, 5, 0x745f, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 26) & 1 else '00' }}", "", "", "hybrid_present"},
+  /* 0x745e Heat Selector Status - Boost Heat Pump Allowed Present */
+  {0x745e, "Heat Selector - Boost Heat Pump Allowed Present", "binary_sensor", "", "", "", 1, 5, 0x745f, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 27) & 1 else '00' }}", "", "", "boost_heat_pump_allowed_present"},
+  /* 0x745e Heat Selector Status - Heat Pump Only Present */
+  {0x745e, "Heat Selector - Heat Pump Only Present", "binary_sensor", "", "", "", 1, 5, 0x745f, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 28) & 1 else '00' }}", "", "", "heat_pump_only_present"},
   /* 0x745f Heat Selector Request */
-  {0x745f, "Heat Selector", "select", "", "", "", 1, 1, 0x745e, "request", "{{ {'00': 'Electric Heat Only', '01': 'High Demand', '02': 'Hybrid', '03': 'Boost Heat Pump Allowed', '04': 'Heat Pump Only'}.get(value[:2], 'Unknown') }}", "{{ {'Electric Heat Only': '00', 'High Demand': '01', 'Hybrid': '02', 'Boost Heat Pump Allowed': '03', 'Heat Pump Only': '04'}[value] }}", "[\"Electric Heat Only\", \"High Demand\", \"Hybrid\", \"Boost Heat Pump Allowed\", \"Heat Pump Only\"]"},
+  {0x745f, "Heat Selector", "select", "", "", "", 1, 1, 0x745e, "request", "{{ {'00': 'Electric Heat Only', '01': 'High Demand', '02': 'Hybrid', '03': 'Boost Heat Pump Allowed', '04': 'Heat Pump Only'}.get(value[:2], 'Unknown') }}", "{{ {'Electric Heat Only': '00', 'High Demand': '01', 'Hybrid': '02', 'Boost Heat Pump Allowed': '03', 'Heat Pump Only': '04'}[value] }}", "[\"Electric Heat Only\", \"High Demand\", \"Hybrid\", \"Boost Heat Pump Allowed\", \"Heat Pump Only\"]", ""},
   /* 0x7460 Heat Selector Strict Status */
-  {0x7460, "Heat Selector Strict Status", "binary_sensor", "", "", "", 1, 5, 0x0000, "", "{{ value[:2] }}", "", ""},
-  /* 0x7464 Make-up Air Fan Cfm Status */
-  {0x7464, "Make-up Air Fan Cfm", "sensor", "CFM", "", "", 1, 8, 0x7465, "status", "", "", ""},
+  {0x7460, "Heat Selector Strict Status", "binary_sensor", "", "enum", "", 1, 5, 0x0000, "", "{{ {'00': 'Disabled', '01': 'Enabled'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x7460 Heat Selector Strict Status - Disabled Supported */
+  {0x7460, "Heat Selector Strict Status - Disabled Supported", "binary_sensor", "", "", "", 1, 5, 0x0000, "", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "disabled_supported"},
+  /* 0x7460 Heat Selector Strict Status - Enabled Supported */
+  {0x7460, "Heat Selector Strict Status - Enabled Supported", "binary_sensor", "", "", "", 1, 5, 0x0000, "", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "enabled_supported"},
+  /* 0x7464 Make-up Air Fan Cfm Status - Make-up Air Fan Cfm Status */
+  {0x7464, "Make-up Air Fan Cfm Status", "sensor", "CFM", "", "", 1, 8, 0x7465, "status", "{{ value[0:4] | int(base=16) }}", "", "", ""},
+  /* 0x7464 Make-up Air Fan Cfm Status - Minimum Allowed Cfm */
+  {0x7464, "Make-up Air Fan Cfm - Minimum Allowed Cfm", "sensor", "CFM", "", "", 1, 8, 0x7465, "status", "{{ value[4:8] | int(base=16) }}", "", "", "minimum_allowed_cfm"},
+  /* 0x7464 Make-up Air Fan Cfm Status - Maximum Allowed Cfm */
+  {0x7464, "Make-up Air Fan Cfm - Maximum Allowed Cfm", "sensor", "CFM", "", "", 1, 8, 0x7465, "status", "{{ value[8:12] | int(base=16) }}", "", "", "maximum_allowed_cfm"},
+  /* 0x7464 Make-up Air Fan Cfm Status - Cfm Step Size */
+  {0x7464, "Make-up Air Fan Cfm - Cfm Step Size", "sensor", "CFM", "", "", 1, 8, 0x7465, "status", "{{ value[12:14] | int(base=16) }}", "", "", "cfm_step_size"},
   /* 0x7465 Make-up Air Fan Cfm Request */
-  {0x7465, "Make-up Air Fan Cfm", "number", "CFM", "", "", 1, 2, 0x7464, "request", "{{ value | int(base=16) }}", "{{ '%04x' % (value | int) }}", ""},
+  {0x7465, "Make-up Air Fan Cfm", "number", "CFM", "", "", 1, 2, 0x7464, "request", "{{ value[0:4] | int(base=16) }}", "{{ '%04x' % (value | int) }}", "", ""},
   /* 0x7466 Make-up Air Filter Type Status */
-  {0x7466, "Make-up Air Filter Type", "sensor", "", "enum", "", 1, 5, 0x7467, "status", "{{ {'00': 'No Filter', '01': 'MERV 13 Filter'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x7466, "Make-up Air Filter Type", "sensor", "", "enum", "", 1, 5, 0x7467, "status", "{{ {'00': 'No Filter', '01': 'MERV 13 Filter'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x7466 Make-up Air Filter Type Status - No Filter Option Present */
+  {0x7466, "Make-up Air Filter Type - No Filter Option Present", "binary_sensor", "", "", "", 1, 5, 0x7467, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "no_filter_option_present"},
+  /* 0x7466 Make-up Air Filter Type Status - MERV13 Filter Option Present */
+  {0x7466, "Make-up Air Filter Type - MERV13 Filter Option Present", "binary_sensor", "", "", "", 1, 5, 0x7467, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "merv13_filter_option_present"},
   /* 0x7467 Make-up Air Filter Type Request */
-  {0x7467, "Make-up Air Filter Type", "select", "", "", "", 1, 1, 0x7466, "request", "{{ {'00': 'No Filter', '01': 'MERV13 Filter'}.get(value[:2], 'Unknown') }}", "{{ {'No Filter': '00', 'MERV13 Filter': '01'}[value] }}", "[\"No Filter\", \"MERV13 Filter\"]"},
+  {0x7467, "Make-up Air Filter Type", "select", "", "", "", 1, 1, 0x7466, "request", "{{ {'00': 'No Filter', '01': 'MERV13 Filter'}.get(value[:2], 'Unknown') }}", "{{ {'No Filter': '00', 'MERV13 Filter': '01'}[value] }}", "[\"No Filter\", \"MERV13 Filter\"]", ""},
   /* 0x7468 Make-up Air Occupancy Control Status */
-  {0x7468, "Make-up Air Occupancy Control", "binary_sensor", "", "", "", 1, 5, 0x7469, "status", "{{ value[:2] }}", "", ""},
+  {0x7468, "Make-up Air Occupancy Control", "binary_sensor", "", "enum", "", 1, 5, 0x7469, "status", "{{ {'00': 'Disabled', '01': 'Enabled'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x7468 Make-up Air Occupancy Control Status - Disabled Supported */
+  {0x7468, "Make-up Air Occupancy Control - Disabled Supported", "binary_sensor", "", "", "", 1, 5, 0x7469, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "disabled_supported"},
+  /* 0x7468 Make-up Air Occupancy Control Status - Enabled Supported */
+  {0x7468, "Make-up Air Occupancy Control - Enabled Supported", "binary_sensor", "", "", "", 1, 5, 0x7469, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "enabled_supported"},
   /* 0x7469 Make-up Air Occupancy Control Request */
-  {0x7469, "Make-up Air Occupancy Control", "switch", "", "", "", 1, 1, 0x7468, "request", "{{ value[:2] }}", "", ""},
+  {0x7469, "Make-up Air Occupancy Control", "switch", "", "", "", 1, 1, 0x7468, "request", "{{ value[:2] }}", "", "", ""},
   /* 0x746a Dehumidification Mode Status */
-  {0x746a, "Dehumidification Mode", "sensor", "", "enum", "", 1, 5, 0x746b, "status", "{{ {'00': 'Off', '01': 'Low', '02': 'Standard', '03': 'High'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x746a, "Dehumidification Mode", "sensor", "", "enum", "", 1, 5, 0x746b, "status", "{{ {'00': 'Off', '01': 'Low', '02': 'Standard', '03': 'High'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x746a Dehumidification Mode Status - Off Present */
+  {0x746a, "Dehumidification Mode - Off Present", "binary_sensor", "", "", "", 1, 5, 0x746b, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "off_present"},
+  /* 0x746a Dehumidification Mode Status - Low Present */
+  {0x746a, "Dehumidification Mode - Low Present", "binary_sensor", "", "", "", 1, 5, 0x746b, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "low_present"},
+  /* 0x746a Dehumidification Mode Status - Standard Present */
+  {0x746a, "Dehumidification Mode - Standard Present", "binary_sensor", "", "", "", 1, 5, 0x746b, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 26) & 1 else '00' }}", "", "", "standard_present"},
+  /* 0x746a Dehumidification Mode Status - High Present */
+  {0x746a, "Dehumidification Mode - High Present", "binary_sensor", "", "", "", 1, 5, 0x746b, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 27) & 1 else '00' }}", "", "", "high_present"},
   /* 0x746b Dehumidification Mode Request */
-  {0x746b, "Dehumidification Mode", "select", "", "", "", 1, 1, 0x746a, "request", "{{ {'00': 'Off', '01': 'Low', '02': 'Standard', '03': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Off': '00', 'Low': '01', 'Standard': '02', 'High': '03'}[value] }}", "[\"Off\", \"Low\", \"Standard\", \"High\"]"},
+  {0x746b, "Dehumidification Mode", "select", "", "", "", 1, 1, 0x746a, "request", "{{ {'00': 'Off', '01': 'Low', '02': 'Standard', '03': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Off': '00', 'Low': '01', 'Standard': '02', 'High': '03'}[value] }}", "[\"Off\", \"Low\", \"Standard\", \"High\"]", ""},
   /* 0x746c Auxiliary 24V Input Status */
-  {0x746c, "Auxiliary 24V Input", "sensor", "", "enum", "", 1, 5, 0x746d, "status", "{{ {'00': 'Central Desk Control', '01': 'Occupancy Control'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x746c, "Auxiliary 24V Input", "sensor", "", "enum", "", 1, 5, 0x746d, "status", "{{ {'00': 'Central Desk Control', '01': 'Occupancy Control'}.get(value[0:2], 'Unknown') }}", "", "", ""},
+  /* 0x746c Auxiliary 24V Input Status - Central Desk Control Present */
+  {0x746c, "Auxiliary 24V Input - Central Desk Control Present", "binary_sensor", "", "", "", 1, 5, 0x746d, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "central_desk_control_present"},
+  /* 0x746c Auxiliary 24V Input Status - Occupancy Present */
+  {0x746c, "Auxiliary 24V Input - Occupancy Present", "binary_sensor", "", "", "", 1, 5, 0x746d, "status", "{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "occupancy_present"},
   /* 0x746d Auxiliary 24V Configuration Request */
-  {0x746d, "Auxiliary 24V Configuration", "select", "", "", "", 1, 1, 0x746c, "request", "{{ {'00': 'Central Desk Control', '01': 'Occupancy Control'}.get(value[:2], 'Unknown') }}", "{{ {'Central Desk Control': '00', 'Occupancy Control': '01'}[value] }}", "[\"Central Desk Control\", \"Occupancy Control\"]"},
+  {0x746d, "Auxiliary 24V Configuration", "select", "", "", "", 1, 1, 0x746c, "request", "{{ {'00': 'Central Desk Control', '01': 'Occupancy Control'}.get(value[:2], 'Unknown') }}", "{{ {'Central Desk Control': '00', 'Occupancy Control': '01'}[value] }}", "[\"Central Desk Control\", \"Occupancy Control\"]", ""},
   /* 0x750b Make-up Air fan 1 actual speed */
-  {0x750b, "Make-up Air fan 1 actual speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x750b, "Make-up Air fan 1 actual speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7511 EEV Control Type */
-  {0x7511, "EEV Control Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Idle', '01': 'Linear Control', '02': 'Constant Control', '03': 'PI Control', '04': 'High-gain PI Control'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x7511, "EEV Control Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Idle', '01': 'Linear Control', '02': 'Constant Control', '03': 'PI Control', '04': 'High-gain PI Control'}.get(value[:2], 'Unknown') }}", "", "", ""},
   /* 0x7512 EEV1 Desired Position */
-  {0x7512, "EEV1 Desired Position", "sensor", "steps", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7512, "EEV1 Desired Position", "sensor", "steps", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7514 EEV1 Actual Position */
-  {0x7514, "EEV1 Actual Position", "sensor", "steps", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7514, "EEV1 Actual Position", "sensor", "steps", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7516 Target Superheat Temperature */
-  {0x7516, "Target Superheat Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7516, "Target Superheat Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7517 Current Superheat Temperature */
-  {0x7517, "Current Superheat Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7517, "Current Superheat Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7600 Compressor Control Type */
-  {0x7600, "Compressor Control Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Idle', '01': 'Linear Control', '02': 'Constant Control', '03': 'PI Control', '04': 'High-gain PI Control'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x7600, "Compressor Control Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Idle', '01': 'Linear Control', '02': 'Constant Control', '03': 'PI Control', '04': 'High-gain PI Control'}.get(value[:2], 'Unknown') }}", "", "", ""},
   /* 0x7601 Inverter Actual Speed RPM */
-  {0x7601, "Inverter Actual Speed RPM", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7601, "Inverter Actual Speed RPM", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7602 Inverter Desired Speed */
-  {0x7602, "Inverter Desired Speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7602, "Inverter Desired Speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7610 Inverter IGBT Power */
-  {0x7610, "Inverter IGBT Power", "sensor", "W", "power", "measurement", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7610, "Inverter IGBT Power", "sensor", "W", "power", "measurement", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", "", ""},
   /* 0x7612 Inverter IGBT Temperature */
-  {0x7612, "Inverter IGBT Temperature", "sensor", "°C", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7612, "Inverter IGBT Temperature", "sensor", "°C", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7700 Power Status */
-  {0x7700, "Power", "binary_sensor", "", "", "", 1, 1, 0x7701, "status", "", "", ""},
+  {0x7700, "Power", "binary_sensor", "", "", "", 1, 1, 0x7701, "status", "", "", "", ""},
   /* 0x7701 Power Request */
-  {0x7701, "Power", "switch", "", "", "", 1, 1, 0x7700, "request", "", "", ""},
+  {0x7701, "Power", "switch", "", "", "", 1, 1, 0x7700, "request", "", "", "", ""},
   /* 0x7702 System Mode Status */
-  {0x7702, "System Mode", "sensor", "", "enum", "", 1, 1, 0x7703, "status", "{{ {'00': 'Auto', '01': 'Heat', '02': 'Fan', '03': 'Cool'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x7702, "System Mode", "sensor", "", "enum", "", 1, 1, 0x7703, "status", "{{ {'00': 'Auto', '01': 'Heat', '02': 'Fan', '03': 'Cool'}.get(value[:2], 'Unknown') }}", "", "", ""},
   /* 0x7703 System Mode Request */
-  {0x7703, "System Mode", "select", "", "", "", 1, 1, 0x7702, "request", "{{ {'00': 'Auto', '01': 'Heat', '02': 'Fan', '03': 'Cool'}.get(value[:2], 'Unknown') }}", "{{ {'Auto': '00', 'Heat': '01', 'Fan': '02', 'Cool': '03'}[value] }}", "[\"Auto\", \"Heat\", \"Fan\", \"Cool\"]"},
-  /* 0x7704 System Mode Allowed */
-  {0x7704, "System Mode Allowed", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
-  /* 0x7705 Temperature Setpoint Step Size Status */
-  {0x7705, "Temperature Setpoint Step Size Status", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7703, "System Mode", "select", "", "", "", 1, 1, 0x7702, "request", "{{ {'00': 'Auto', '01': 'Heat', '02': 'Fan', '03': 'Cool'}.get(value[:2], 'Unknown') }}", "{{ {'Auto': '00', 'Heat': '01', 'Fan': '02', 'Cool': '03'}[value] }}", "[\"Auto\", \"Heat\", \"Fan\", \"Cool\"]", ""},
+  /* 0x7704 System Mode Allowed - System Mode Auto Present */
+  {0x7704, "System Mode Allowed - System Mode Auto Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "system_mode_auto_present"},
+  /* 0x7704 System Mode Allowed - System Mode Heat Present */
+  {0x7704, "System Mode Allowed - System Mode Heat Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "system_mode_heat_present"},
+  /* 0x7704 System Mode Allowed - System Mode Fan Present */
+  {0x7704, "System Mode Allowed - System Mode Fan Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 26) & 1 else '00' }}", "", "", "system_mode_fan_present"},
+  /* 0x7704 System Mode Allowed - System Mode Cool Present */
+  {0x7704, "System Mode Allowed - System Mode Cool Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 27) & 1 else '00' }}", "", "", "system_mode_cool_present"},
+  /* 0x7705 Temperature Setpoint Step Size Status - Minimum Step Size in Fahrenheit operation in Fahrenheit x 10 */
+  {0x7705, "Temperature Setpoint Step Size Status - Minimum Step Size in Fahrenheit operation in Fahrenheit x 10", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value[0:2] | int(base=16)) / 10 | round(1) }}", "", "", ""},
+  /* 0x7705 Temperature Setpoint Step Size Status - Minimum Step Size in Celsius operation in Celsius x 10 */
+  {0x7705, "Temperature Setpoint Step Size Status - Minimum Step Size in Celsius operation in Celsius x 10", "sensor", "°C", "", "", 10, 2, 0x0000, "", "{{ (value[2:4] | int(base=16)) / 10 | round(1) }}", "", "", "minimum_step_size_in_celsius_operation_in_celsius_x_10"},
   /* 0x7706 User Heating Setpoint Status */
-  {0x7706, "User Heating Setpoint", "sensor", "°F", "temperature", "", 10, 2, 0x7707, "status", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7706, "User Heating Setpoint", "sensor", "°F", "temperature", "", 10, 2, 0x7707, "status", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x7707 User Heating Setpoint Request */
-  {0x7707, "User Heating Setpoint", "number", "°F", "temperature", "", 10, 2, 0x7706, "request", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
-  /* 0x7708 User Heating Setpoint Configured Range */
-  {0x7708, "User Heating Setpoint Configured Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7707, "User Heating Setpoint", "number", "°F", "temperature", "", 10, 2, 0x7706, "request", "{{ (value[0:4] | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", "", ""},
+  /* 0x7708 User Heating Setpoint Configured Range - User Heating Minimum Allowed Setpoint in Fahrenheit x 10 */
+  {0x7708, "User Heating Setpoint Configured Range - User Heating Minimum Allowed Setpoint in Fahrenheit x 10", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value[0:4] | int(base=16)) / 10 | round(1) }}", "", "", ""},
+  /* 0x7708 User Heating Setpoint Configured Range - User Heating Maximum Allowed Setpoint in Fahrenheit x 10 */
+  {0x7708, "User Heating Setpoint Configured Range - User Heating Maximum Allowed Setpoint in Fahrenheit x 10", "sensor", "°F", "", "", 10, 4, 0x0000, "", "{{ (value[4:8] | int(base=16)) / 10 | round(1) }}", "", "", "user_heating_maximum_allowed_setpoint_in_fahrenheit_x_10"},
   /* 0x7709 User Cooling Setpoint Status */
-  {0x7709, "User Cooling Setpoint", "sensor", "°F", "temperature", "", 10, 2, 0x770a, "status", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7709, "User Cooling Setpoint", "sensor", "°F", "temperature", "", 10, 2, 0x770a, "status", "{{ (value | int(base=16)) / 10 | round(1) }}", "", "", ""},
   /* 0x770a User Cooling Setpoint Request */
-  {0x770a, "User Cooling Setpoint", "number", "°F", "temperature", "", 10, 2, 0x7709, "request", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
-  /* 0x770b User Cooling Setpoint Configured Range */
-  {0x770b, "User Cooling Setpoint Configured Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
-  /* 0x770c User Temperature Setpoint Limit Configurable Bitmap */
-  {0x770c, "User Temperature Setpoint Limit Configurable Bitmap", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x770a, "User Cooling Setpoint", "number", "°F", "temperature", "", 10, 2, 0x7709, "request", "{{ (value[0:4] | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", "", ""},
+  /* 0x770b User Cooling Setpoint Configured Range - User Cooling Minimum Allowed Setpoint in Fahrenheit x 10 */
+  {0x770b, "User Cooling Setpoint Configured Range - User Cooling Minimum Allowed Setpoint in Fahrenheit x 10", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value[0:4] | int(base=16)) / 10 | round(1) }}", "", "", ""},
+  /* 0x770b User Cooling Setpoint Configured Range - User Cooling Maximum Allowed Setpoint in Fahrenheit x 10 */
+  {0x770b, "User Cooling Setpoint Configured Range - User Cooling Maximum Allowed Setpoint in Fahrenheit x 10", "sensor", "°F", "", "", 10, 4, 0x0000, "", "{{ (value[4:8] | int(base=16)) / 10 | round(1) }}", "", "", "user_cooling_maximum_allowed_setpoint_in_fahrenheit_x_10"},
+  /* 0x770c User Temperature Setpoint Limit Configurable Bitmap - User Heating Setpoint Minimum Limit is Configurable */
+  {0x770c, "User Temperature Setpoint Limit Configurable Bitmap - User Heating Setpoint Minimum Limit is Configurable", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "user_heating_setpoint_minimum_limit_is_configurable"},
+  /* 0x770c User Temperature Setpoint Limit Configurable Bitmap - User Heating Setpoint Maximum Limit is Configurable */
+  {0x770c, "User Temperature Setpoint Limit Configurable Bitmap - User Heating Setpoint Maximum Limit is Configurable", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "user_heating_setpoint_maximum_limit_is_configurable"},
+  /* 0x770c User Temperature Setpoint Limit Configurable Bitmap - User Cooling Setpoint Minimum Limit is Configurable */
+  {0x770c, "User Temperature Setpoint Limit Configurable Bitmap - User Cooling Setpoint Minimum Limit is Configurable", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 26) & 1 else '00' }}", "", "", "user_cooling_setpoint_minimum_limit_is_configurable"},
+  /* 0x770c User Temperature Setpoint Limit Configurable Bitmap - User Cooling Setpoint Maximum Limit is Configurable */
+  {0x770c, "User Temperature Setpoint Limit Configurable Bitmap - User Cooling Setpoint Maximum Limit is Configurable", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 27) & 1 else '00' }}", "", "", "user_cooling_setpoint_maximum_limit_is_configurable"},
   /* 0x770d User Heating Setpoint Minimum Limit Request */
-  {0x770d, "User Heating Setpoint Minimum Limit Request", "number", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
-  /* 0x770e User Heating Setpoint Minimum Limit Allowed Range */
-  {0x770e, "User Heating Setpoint Minimum Limit Allowed Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x770d, "User Heating Setpoint Minimum Limit Request", "number", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", "", ""},
+  /* 0x770e User Heating Setpoint Minimum Limit Allowed Range - User Heating Setpoint Minimum Limit - Minimum Allowed Value in Fahrenheit x 10 */
+  {0x770e, "User Heating Setpoint Minimum Limit Allowed Range - User Heating Setpoint Minimum Limit - Minimum Allowed Value in Fahrenheit x 10", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value[0:4] | int(base=16)) / 10 | round(1) }}", "", "", ""},
+  /* 0x770e User Heating Setpoint Minimum Limit Allowed Range - User Heating Setpoint Minimum Limit - Maximum Allowed Value in Fahrenheit x 10 */
+  {0x770e, "User Heating Setpoint Minimum Limit Allowed Range - User Heating Setpoint Minimum Limit - Maximum Allowed Value in Fahrenheit x 10", "sensor", "°F", "", "", 10, 4, 0x0000, "", "{{ (value[4:8] | int(base=16)) / 10 | round(1) }}", "", "", "user_heating_setpoint_minimum_limit_maximum_allowed_value_in_fah"},
   /* 0x770f User Heating Setpoint Maximum Limit Request */
-  {0x770f, "User Heating Setpoint Maximum Limit Request", "number", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
-  /* 0x7710 User Heating Setpoint Maximum Limit Allowed Range */
-  {0x7710, "User Heating Setpoint Maximum Limit Allowed Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x770f, "User Heating Setpoint Maximum Limit Request", "number", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", "", ""},
+  /* 0x7710 User Heating Setpoint Maximum Limit Allowed Range - User Heating Setpoint Maximum Limit - Minimum Allowed Value in Fahrenheit x 10 */
+  {0x7710, "User Heating Setpoint Maximum Limit Allowed Range - User Heating Setpoint Maximum Limit - Minimum Allowed Value in Fahrenheit x 10", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value[0:4] | int(base=16)) / 10 | round(1) }}", "", "", ""},
+  /* 0x7710 User Heating Setpoint Maximum Limit Allowed Range - User Heating Setpoint Maximum Limit - Maximum Allowed Value in Fahrenheit x 10 */
+  {0x7710, "User Heating Setpoint Maximum Limit Allowed Range - User Heating Setpoint Maximum Limit - Maximum Allowed Value in Fahrenheit x 10", "sensor", "°F", "", "", 10, 4, 0x0000, "", "{{ (value[4:8] | int(base=16)) / 10 | round(1) }}", "", "", "user_heating_setpoint_maximum_limit_maximum_allowed_value_in_fah"},
   /* 0x7711 User Cooling Setpoint Minimum Limit Request */
-  {0x7711, "User Cooling Setpoint Minimum Limit Request", "number", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
-  /* 0x7712 User Cooling Setpoint Minimum Limit Allowed Range */
-  {0x7712, "User Cooling Setpoint Minimum Limit Allowed Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7711, "User Cooling Setpoint Minimum Limit Request", "number", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", "", ""},
+  /* 0x7712 User Cooling Setpoint Minimum Limit Allowed Range - User Cooling Setpoint Minimum Limit - Minimum Allowed Value in Fahrenheit x 10 */
+  {0x7712, "User Cooling Setpoint Minimum Limit Allowed Range - User Cooling Setpoint Minimum Limit - Minimum Allowed Value in Fahrenheit x 10", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value[0:4] | int(base=16)) / 10 | round(1) }}", "", "", ""},
+  /* 0x7712 User Cooling Setpoint Minimum Limit Allowed Range - User Cooling Setpoint Minimum Limit - Maximum Allowed Value in Fahrenheit x 10 */
+  {0x7712, "User Cooling Setpoint Minimum Limit Allowed Range - User Cooling Setpoint Minimum Limit - Maximum Allowed Value in Fahrenheit x 10", "sensor", "°F", "", "", 10, 4, 0x0000, "", "{{ (value[4:8] | int(base=16)) / 10 | round(1) }}", "", "", "user_cooling_setpoint_minimum_limit_maximum_allowed_value_in_fah"},
   /* 0x7713 User Cooling Setpoint Maximum Limit Request */
-  {0x7713, "User Cooling Setpoint Maximum Limit Request", "number", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
-  /* 0x7714 User Cooling Setpoint Maximum Limit Allowed Range */
-  {0x7714, "User Cooling Setpoint Maximum Limit Allowed Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7713, "User Cooling Setpoint Maximum Limit Request", "number", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", "", ""},
+  /* 0x7714 User Cooling Setpoint Maximum Limit Allowed Range - User Cooling Setpoint Maximum Limit - Minimum Allowed Value in Fahrenheit x 10 */
+  {0x7714, "User Cooling Setpoint Maximum Limit Allowed Range - User Cooling Setpoint Maximum Limit - Minimum Allowed Value in Fahrenheit x 10", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value[0:4] | int(base=16)) / 10 | round(1) }}", "", "", ""},
+  /* 0x7714 User Cooling Setpoint Maximum Limit Allowed Range - User Cooling Setpoint Maximum Limit - Maximum Allowed Value in Fahrenheit x 10 */
+  {0x7714, "User Cooling Setpoint Maximum Limit Allowed Range - User Cooling Setpoint Maximum Limit - Maximum Allowed Value in Fahrenheit x 10", "sensor", "°F", "", "", 10, 4, 0x0000, "", "{{ (value[4:8] | int(base=16)) / 10 | round(1) }}", "", "", "user_cooling_setpoint_maximum_limit_maximum_allowed_value_in_fah"},
   /* 0x7718 Heat System Mode Fan Setting Status */
-  {0x7718, "Heat System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x7719, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x7718, "Heat System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x7719, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", "", ""},
   /* 0x7719 Heat System Mode Fan Setting Request */
-  {0x7719, "Heat System Mode Fan Setting", "select", "", "", "", 1, 1, 0x7718, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
-  /* 0x771a Heat System Mode Available Fan Settings */
-  {0x771a, "Heat System Mode Available Fan Settings", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7719, "Heat System Mode Fan Setting", "select", "", "", "", 1, 1, 0x7718, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]", ""},
+  /* 0x771a Heat System Mode Available Fan Settings - Fan Setting Low Present */
+  {0x771a, "Heat System Mode Available Fan Settings - Fan Setting Low Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "fan_setting_low_present"},
+  /* 0x771a Heat System Mode Available Fan Settings - Fan Setting High Present */
+  {0x771a, "Heat System Mode Available Fan Settings - Fan Setting High Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "fan_setting_high_present"},
   /* 0x771b Fan System Mode Fan Setting Status */
-  {0x771b, "Fan System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x771c, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x771b, "Fan System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x771c, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", "", ""},
   /* 0x771c Fan System Mode Fan Setting Request */
-  {0x771c, "Fan System Mode Fan Setting", "select", "", "", "", 1, 1, 0x771b, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
-  /* 0x771d Fan System Mode Available Fan Settings */
-  {0x771d, "Fan System Mode Available Fan Settings", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x771c, "Fan System Mode Fan Setting", "select", "", "", "", 1, 1, 0x771b, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]", ""},
+  /* 0x771d Fan System Mode Available Fan Settings - Fan Setting Low Present */
+  {0x771d, "Fan System Mode Available Fan Settings - Fan Setting Low Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "fan_setting_low_present"},
+  /* 0x771d Fan System Mode Available Fan Settings - Fan Setting High Present */
+  {0x771d, "Fan System Mode Available Fan Settings - Fan Setting High Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "fan_setting_high_present"},
   /* 0x771e Cool System Mode Fan Setting Status */
-  {0x771e, "Cool System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x771f, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", ""},
+  {0x771e, "Cool System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x771f, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", "", ""},
   /* 0x771f Cool System Mode Fan Setting Request */
-  {0x771f, "Cool System Mode Fan Setting", "select", "", "", "", 1, 1, 0x771e, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
-  /* 0x7720 Cool System Mode Available Fan Settings */
-  {0x7720, "Cool System Mode Available Fan Settings", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x771f, "Cool System Mode Fan Setting", "select", "", "", "", 1, 1, 0x771e, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]", ""},
+  /* 0x7720 Cool System Mode Available Fan Settings - Fan Setting Low Present */
+  {0x7720, "Cool System Mode Available Fan Settings - Fan Setting Low Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 24) & 1 else '00' }}", "", "", "fan_setting_low_present"},
+  /* 0x7720 Cool System Mode Available Fan Settings - Fan Setting High Present */
+  {0x7720, "Cool System Mode Available Fan Settings - Fan Setting High Present", "binary_sensor", "", "", "", 1, 4, 0x0000, "", "{{ '01' if ((value[0:8] | int(base=16)) >> 25) & 1 else '00' }}", "", "", "fan_setting_high_present"},
   /* 0xd030 Appliance Cumulative Energy */
-  {0xd030, "Appliance Cumulative Energy", "sensor", "kWh", "energy", "total", 1000, 4, 0x0000, "", "{{ (value | int(base=16)) / 1000 | round(3) }}", "", ""},
+  {0xd030, "Appliance Cumulative Energy", "sensor", "kWh", "energy", "total", 1000, 4, 0x0000, "", "{{ (value | int(base=16)) / 1000 | round(3) }}", "", "", ""},
 };
 
 static const uint16_t ha_erd_discovery_config_count =
