@@ -1034,8 +1034,8 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
   ESP_LOGI(TAG, "MQTT bridge initialized successfully");
 
   // Defer publishing the HA device discovery payload until ERD values have settled
-  // (10 s quiet window, tracked per-loop in loop()). Only enabled when
-  // generate_device_config is set to true in the YAML configuration.
+  // (10 s quiet window, tracked per-loop in loop()). Enabled by default; can be
+  // disabled by setting generate_device_config: false in the YAML configuration.
   if (this->generate_device_config_) {
     this->ha_discovery_pending_ = true;
     this->ha_discovery_timer_start_ = millis();

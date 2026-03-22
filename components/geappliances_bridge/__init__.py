@@ -278,7 +278,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_POLLING_INTERVAL, default=10000): cv.positive_int,
         cv.Optional(CONF_POLLING_ONLY_PUBLISH_ON_CHANGE, default=False): cv.boolean,
         cv.Optional(CONF_APPLIANCE_API_PARSING, default=False): cv.boolean,
-        cv.Optional(CONF_GENERATE_DEVICE_CONFIG, default=False): cv.boolean,
+        cv.Optional(CONF_GENERATE_DEVICE_CONFIG, default=True): cv.boolean,
         cv.Optional(CONF_CUSTOM_ERDS, default=[]): cv.ensure_list(
             cv.int_range(min=0, max=0xFFFF)
         ),
