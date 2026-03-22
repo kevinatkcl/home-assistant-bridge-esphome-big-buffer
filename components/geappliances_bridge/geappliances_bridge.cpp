@@ -1223,8 +1223,8 @@ bool GeappliancesBridge::fetch_category_(const std::string& url,
   esp_http_client_fetch_headers(client);
   int status = esp_http_client_get_status_code(client);
   if (status == 404) {
-    // Category file not present – not an error, just skip.
-    ESP_LOGD(TAG, "HA fetch: %s not found (404), skipping", url.c_str());
+    // Category file not present on the configured base URL.
+    ESP_LOGW(TAG, "HA fetch: %s not found (404) — check ha_discovery_base_url", url.c_str());
     esp_http_client_cleanup(client);
     return true;
   }

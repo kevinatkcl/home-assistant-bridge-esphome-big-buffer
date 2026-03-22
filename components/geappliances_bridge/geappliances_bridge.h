@@ -239,7 +239,7 @@ class GeappliancesBridge : public Component {
   // Can be overridden in YAML via ha_discovery_base_url.
   std::string ha_discovery_base_url_{
     "https://raw.githubusercontent.com/joshualongenecker/"
-    "home-assistant-bridge-esphome/main/ha_discovery"
+    "home-assistant-bridge-esphome/copilot/implement-goal-2-autodiscovery/ha_discovery"
   };
 
   QueueHandle_t ha_discovery_queue_{nullptr};   // carries HaDiscoveryItem* (nullptr = sentinel)
