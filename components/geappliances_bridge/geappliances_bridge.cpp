@@ -997,12 +997,15 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
   ESP_LOGI(TAG, "MQTT bridge initialized successfully");
 
   // Defer publishing the HA device discovery payload until ERD values have settled
-  // (10 s quiet window, tracked per-loop in loop()).
-  this->ha_discovery_pending_ = true;
-  this->ha_discovery_timer_start_ = millis();
-  this->ha_discovery_last_activity_ = millis();
-  ESP_LOGI(TAG, "HA discovery deferred: will publish after %u s quiet window",
-           HA_DISCOVERY_QUIET_MS / 1000);
+  // (10 s quiet window, tracked per-loop in loop()). Only enabled when
+  // generate_device_config is set to true in the YAML configuration.
+  if (this->generate_device_config_) {
+    this->ha_discovery_pending_ = true;
+    this->ha_discovery_timer_start_ = millis();
+    this->ha_discovery_last_activity_ = millis();
+    ESP_LOGI(TAG, "HA discovery deferred: will publish after %u s quiet window",
+             HA_DISCOVERY_QUIET_MS / 1000);
+  }
 }
 
 // Escape a string value for embedding inside a JSON string literal.

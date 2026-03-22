@@ -52,6 +52,7 @@ class GeappliancesBridge : public Component {
   void set_polling_interval(uint32_t polling_interval) { this->polling_interval_ms_ = polling_interval; }
   void set_polling_only_publish_on_change(bool only_publish_on_change) { this->polling_only_publish_on_change_ = only_publish_on_change; }
   void set_appliance_api_parsing(bool appliance_api_parsing) { this->appliance_api_parsing_ = appliance_api_parsing; }
+  void set_generate_device_config(bool generate_device_config) { this->generate_device_config_ = generate_device_config; }
   void add_custom_erd(uint16_t erd) { this->custom_erds_vec_.push_back(static_cast<tiny_erd_t>(erd)); }
 
  protected:
@@ -142,6 +143,7 @@ class GeappliancesBridge : public Component {
   uint32_t polling_interval_ms_{10000};
   bool polling_only_publish_on_change_{false};
   bool appliance_api_parsing_{false};
+  bool generate_device_config_{false};
   // User-configured custom ERDs to poll in addition to the standard list.
   // Populated by add_custom_erd() calls generated from the YAML custom_erds option.
   std::vector<tiny_erd_t> custom_erds_vec_;

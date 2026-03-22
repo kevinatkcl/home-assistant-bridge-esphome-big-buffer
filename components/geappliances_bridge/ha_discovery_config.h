@@ -33,7 +33,7 @@ static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
   /* 0x0002 Serial Number */
   {0x0002, "Serial Number", "sensor", "", "", "", 1, 32, 0x0000, "", "", "", ""},
   /* 0x0008 Appliance Type */
-  {0x0008, "Appliance Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x0008, "Appliance Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Water Heater', '01': 'Clothes Dryer', '02': 'Clothes Washer', '03': 'Refrigerator', '04': 'Microwave', '05': 'Advantium', '06': 'Dishwasher', '07': 'Oven', '08': 'Electric Range', '09': 'Gas Range', '0a': 'Thermostat/RAC', '0b': 'Electric Cooktop', '0c': 'Pizza Oven', '0d': 'Gas Cooktop', '0e': 'Split / DFS (Duct-Free Split) AC', '0f': 'Hood', '10': 'Point of Entry Water Filter', '11': 'Induction Cooktop', '12': 'Delivery Box', '13': 'Kitchen Hub Vent Hood', '14': 'Zoneline/PTAC', '15': 'Water Softener', '16': 'Portable AC', '17': 'Combination Washer Dryer', '18': 'Dual Zone Wine Chiller', '19': 'Beverage Center', '1a': 'Coffee Brewer', '1b': 'Opal Nugget Ice Maker', '1c': 'In-Home Grower', '1d': 'Dehumidifer', '1e': 'Under Counter Ice Maker', '1f': 'Through Wall AC', '20': 'F&P DishDrawer', '21': 'Espresso Coffee Maker', '22': 'Toaster Oven', '23': 'Zoneline/Vertical', '24': 'Central DFS (Duct-Free Split) Controller', '25': 'BLE Mesh Gateway', '26': 'Stand Mixer', '27': 'Fisher & Paykel Cooktop', '28': 'F&P Cooktop Teppanyaki', '29': 'F&P Ventilation Downdraft', '2a': 'Smart Plug', '2b': 'Smoker', '2c': 'Air Handler VRF', '2d': 'Fabric Care Cabinet Closet', '2e': 'Laundry Center', '2f': 'Grill', '30': 'Freezer', '31': 'Warming Drawer', '32': 'Vacuum Seal Drawer', '33': 'Wine Cabinet', '34': 'Central AC', '35': 'Soft Starter', '36': 'Hearth Pizza Oven', '37': 'Sourdough Starter', '38': 'Thermostat', 'ff': 'Unknown'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x0030 Ready to Enter Boot Loader */
   {0x0030, "Ready to Enter Boot Loader", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "", "", ""},
   /* 0x0035 Personality (32-bit) */
@@ -47,7 +47,7 @@ static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
   /* 0x0700 Reset Count */
   {0x0700, "Reset Count", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x0701 Reset Reason */
-  {0x0701, "Reset Reason", "sensor", "", "enum", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x0701, "Reset Reason", "sensor", "", "enum", "", 1, 2, 0x0000, "", "{{ {'00': 'Software', '01': 'Watchdog', '02': 'PowerOn', '03': 'Unknown'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x0703 Program Counter of Last Failed Assertion */
   {0x0703, "Program Counter of Last Failed Assertion", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x7010 Relay Status */
@@ -93,7 +93,7 @@ static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
   /* 0x7122 Central desk control */
   {0x7122, "Central desk control", "binary_sensor", "", "", "", 1, 1, 0x0000, "", "", "", ""},
   /* 0x7123 External Thermostat Mode */
-  {0x7123, "External Thermostat Mode", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7123, "External Thermostat Mode", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Stop', '01': 'Heat', '02': 'Fan', '03': 'Cool', '04': 'Parameter Set', '05': 'Forced Run', '06': 'External Thermostat', '07': 'Fault Code Display', '08': 'Factory Test', '09': 'Engineering Digit Entry'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x712f Outdoor Fan Count */
   {0x712f, "Outdoor Fan Count", "sensor", "", "", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x7130 Inside fan speed */
@@ -113,63 +113,63 @@ static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
   /* 0x7137 Outdoor Fan 2 Target Speed */
   {0x7137, "Outdoor Fan 2 Target Speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x7450 Fan Configuration in Cooling Status */
-  {0x7450, "Fan Configuration in Cooling Status", "sensor", "", "enum", "", 1, 5, 0x7451, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x7450, "Fan Configuration in Cooling", "sensor", "", "enum", "", 1, 5, 0x7451, "status", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x7451 Fan Configuration in Cooling Request */
-  {0x7451, "Fan Configuration in Cooling Request", "select", "", "", "", 1, 1, 0x7450, "request", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "{{ {'Cyclic': '00', 'Continuous': '01'}[value] }}", "[\"Cyclic\", \"Continuous\"]"},
+  {0x7451, "Fan Configuration in Cooling", "select", "", "", "", 1, 1, 0x7450, "request", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "{{ {'Cyclic': '00', 'Continuous': '01'}[value] }}", "[\"Cyclic\", \"Continuous\"]"},
   /* 0x7452 Fan Configuration in Heating Status */
-  {0x7452, "Fan Configuration in Heating Status", "sensor", "", "enum", "", 1, 5, 0x7453, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x7452, "Fan Configuration in Heating", "sensor", "", "enum", "", 1, 5, 0x7453, "status", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x7453 Fan Configuration in Heating Request */
-  {0x7453, "Fan Configuration in Heating Request", "select", "", "", "", 1, 1, 0x7452, "request", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "{{ {'Cyclic': '00', 'Continuous': '01'}[value] }}", "[\"Cyclic\", \"Continuous\"]"},
+  {0x7453, "Fan Configuration in Heating", "select", "", "", "", 1, 1, 0x7452, "request", "{{ {'00': 'Cyclic', '01': 'Continuous'}.get(value[:2], 'Unknown') }}", "{{ {'Cyclic': '00', 'Continuous': '01'}[value] }}", "[\"Cyclic\", \"Continuous\"]"},
   /* 0x7454 Freeze Sentinel Status */
-  {0x7454, "Freeze Sentinel Status", "binary_sensor", "", "", "", 1, 5, 0x7455, "status", "{{ value[:2] }}", "", ""},
+  {0x7454, "Freeze Sentinel", "binary_sensor", "", "", "", 1, 5, 0x7455, "status", "{{ value[:2] }}", "", ""},
   /* 0x7455 Freeze Sentinel Request */
-  {0x7455, "Freeze Sentinel Request", "switch", "", "", "", 1, 1, 0x7454, "request", "{{ value[:2] }}", "", ""},
+  {0x7455, "Freeze Sentinel", "switch", "", "", "", 1, 1, 0x7454, "request", "{{ value[:2] }}", "", ""},
   /* 0x7456 Heat Sentinel Status */
-  {0x7456, "Heat Sentinel Status", "binary_sensor", "", "", "", 1, 5, 0x7457, "status", "{{ value[:2] }}", "", ""},
+  {0x7456, "Heat Sentinel", "binary_sensor", "", "", "", 1, 5, 0x7457, "status", "{{ value[:2] }}", "", ""},
   /* 0x7457 Heat Sentinel Request */
-  {0x7457, "Heat Sentinel Request", "switch", "", "", "", 1, 1, 0x7456, "request", "{{ value[:2] }}", "", ""},
+  {0x7457, "Heat Sentinel", "switch", "", "", "", 1, 1, 0x7456, "request", "{{ value[:2] }}", "", ""},
   /* 0x7458 Constant Fan Status */
-  {0x7458, "Constant Fan Status", "binary_sensor", "", "", "", 1, 5, 0x7459, "status", "{{ value[:2] }}", "", ""},
+  {0x7458, "Constant Fan", "binary_sensor", "", "", "", 1, 5, 0x7459, "status", "{{ value[:2] }}", "", ""},
   /* 0x7459 Constant Fan Request */
-  {0x7459, "Constant Fan Request", "switch", "", "", "", 1, 1, 0x7458, "request", "{{ value[:2] }}", "", ""},
+  {0x7459, "Constant Fan", "switch", "", "", "", 1, 1, 0x7458, "request", "{{ value[:2] }}", "", ""},
   /* 0x745a 24V External Thermostat Status */
-  {0x745a, "24V External Thermostat Status", "binary_sensor", "", "", "", 1, 5, 0x745b, "status", "{{ value[:2] }}", "", ""},
+  {0x745a, "24V External Thermostat", "binary_sensor", "", "", "", 1, 5, 0x745b, "status", "{{ value[:2] }}", "", ""},
   /* 0x745b 24V External Thermostat Request */
-  {0x745b, "24V External Thermostat Request", "switch", "", "", "", 1, 1, 0x745a, "request", "{{ value[:2] }}", "", ""},
+  {0x745b, "24V External Thermostat", "switch", "", "", "", 1, 1, 0x745a, "request", "{{ value[:2] }}", "", ""},
   /* 0x745c Fan Boost Status */
-  {0x745c, "Fan Boost Status", "binary_sensor", "", "", "", 1, 5, 0x745d, "status", "{{ value[:2] }}", "", ""},
+  {0x745c, "Fan Boost", "binary_sensor", "", "", "", 1, 5, 0x745d, "status", "{{ value[:2] }}", "", ""},
   /* 0x745d Fan Boost Request */
-  {0x745d, "Fan Boost Request", "switch", "", "", "", 1, 1, 0x745c, "request", "{{ value[:2] }}", "", ""},
+  {0x745d, "Fan Boost", "switch", "", "", "", 1, 1, 0x745c, "request", "{{ value[:2] }}", "", ""},
   /* 0x745e Heat Selector Status */
-  {0x745e, "Heat Selector Status", "sensor", "", "enum", "", 1, 5, 0x745f, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x745e, "Heat Selector", "sensor", "", "enum", "", 1, 5, 0x745f, "status", "{{ {'00': 'Electric Heat Only', '01': 'High Demand', '02': 'Hybrid', '03': 'Boost Heat Pump Allowed', '04': 'Heat Pump Only'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x745f Heat Selector Request */
-  {0x745f, "Heat Selector Request", "select", "", "", "", 1, 1, 0x745e, "request", "{{ {'00': 'Electric Heat Only', '01': 'High Demand', '02': 'Hybrid', '03': 'Boost Heat Pump Allowed', '04': 'Heat Pump Only'}.get(value[:2], 'Unknown') }}", "{{ {'Electric Heat Only': '00', 'High Demand': '01', 'Hybrid': '02', 'Boost Heat Pump Allowed': '03', 'Heat Pump Only': '04'}[value] }}", "[\"Electric Heat Only\", \"High Demand\", \"Hybrid\", \"Boost Heat Pump Allowed\", \"Heat Pump Only\"]"},
+  {0x745f, "Heat Selector", "select", "", "", "", 1, 1, 0x745e, "request", "{{ {'00': 'Electric Heat Only', '01': 'High Demand', '02': 'Hybrid', '03': 'Boost Heat Pump Allowed', '04': 'Heat Pump Only'}.get(value[:2], 'Unknown') }}", "{{ {'Electric Heat Only': '00', 'High Demand': '01', 'Hybrid': '02', 'Boost Heat Pump Allowed': '03', 'Heat Pump Only': '04'}[value] }}", "[\"Electric Heat Only\", \"High Demand\", \"Hybrid\", \"Boost Heat Pump Allowed\", \"Heat Pump Only\"]"},
   /* 0x7460 Heat Selector Strict Status */
   {0x7460, "Heat Selector Strict Status", "binary_sensor", "", "", "", 1, 5, 0x0000, "", "{{ value[:2] }}", "", ""},
   /* 0x7464 Make-up Air Fan Cfm Status */
-  {0x7464, "Make-up Air Fan Cfm Status", "sensor", "CFM", "", "", 1, 8, 0x7465, "status", "", "", ""},
+  {0x7464, "Make-up Air Fan Cfm", "sensor", "CFM", "", "", 1, 8, 0x7465, "status", "", "", ""},
   /* 0x7465 Make-up Air Fan Cfm Request */
-  {0x7465, "Make-up Air Fan Cfm Request", "number", "CFM", "", "", 1, 2, 0x7464, "request", "{{ value | int(base=16) }}", "{{ '%04x' % (value | int) }}", ""},
+  {0x7465, "Make-up Air Fan Cfm", "number", "CFM", "", "", 1, 2, 0x7464, "request", "{{ value | int(base=16) }}", "{{ '%04x' % (value | int) }}", ""},
   /* 0x7466 Make-up Air Filter Type Status */
-  {0x7466, "Make-up Air Filter Type Status", "sensor", "", "enum", "", 1, 5, 0x7467, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x7466, "Make-up Air Filter Type", "sensor", "", "enum", "", 1, 5, 0x7467, "status", "{{ {'00': 'No Filter', '01': 'MERV 13 Filter'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x7467 Make-up Air Filter Type Request */
-  {0x7467, "Make-up Air Filter Type Request", "select", "", "", "", 1, 1, 0x7466, "request", "{{ {'00': 'No Filter', '01': 'MERV13 Filter'}.get(value[:2], 'Unknown') }}", "{{ {'No Filter': '00', 'MERV13 Filter': '01'}[value] }}", "[\"No Filter\", \"MERV13 Filter\"]"},
+  {0x7467, "Make-up Air Filter Type", "select", "", "", "", 1, 1, 0x7466, "request", "{{ {'00': 'No Filter', '01': 'MERV13 Filter'}.get(value[:2], 'Unknown') }}", "{{ {'No Filter': '00', 'MERV13 Filter': '01'}[value] }}", "[\"No Filter\", \"MERV13 Filter\"]"},
   /* 0x7468 Make-up Air Occupancy Control Status */
-  {0x7468, "Make-up Air Occupancy Control Status", "binary_sensor", "", "", "", 1, 5, 0x7469, "status", "{{ value[:2] }}", "", ""},
+  {0x7468, "Make-up Air Occupancy Control", "binary_sensor", "", "", "", 1, 5, 0x7469, "status", "{{ value[:2] }}", "", ""},
   /* 0x7469 Make-up Air Occupancy Control Request */
-  {0x7469, "Make-up Air Occupancy Control Request", "switch", "", "", "", 1, 1, 0x7468, "request", "{{ value[:2] }}", "", ""},
+  {0x7469, "Make-up Air Occupancy Control", "switch", "", "", "", 1, 1, 0x7468, "request", "{{ value[:2] }}", "", ""},
   /* 0x746a Dehumidification Mode Status */
-  {0x746a, "Dehumidification Mode Status", "sensor", "", "enum", "", 1, 5, 0x746b, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x746a, "Dehumidification Mode", "sensor", "", "enum", "", 1, 5, 0x746b, "status", "{{ {'00': 'Off', '01': 'Low', '02': 'Standard', '03': 'High'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x746b Dehumidification Mode Request */
-  {0x746b, "Dehumidification Mode Request", "select", "", "", "", 1, 1, 0x746a, "request", "{{ {'00': 'Off', '01': 'Low', '02': 'Standard', '03': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Off': '00', 'Low': '01', 'Standard': '02', 'High': '03'}[value] }}", "[\"Off\", \"Low\", \"Standard\", \"High\"]"},
+  {0x746b, "Dehumidification Mode", "select", "", "", "", 1, 1, 0x746a, "request", "{{ {'00': 'Off', '01': 'Low', '02': 'Standard', '03': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Off': '00', 'Low': '01', 'Standard': '02', 'High': '03'}[value] }}", "[\"Off\", \"Low\", \"Standard\", \"High\"]"},
   /* 0x746c Auxiliary 24V Input Status */
-  {0x746c, "Auxiliary 24V Input Status", "sensor", "", "enum", "", 1, 5, 0x746d, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x746c, "Auxiliary 24V Input", "sensor", "", "enum", "", 1, 5, 0x746d, "status", "{{ {'00': 'Central Desk Control', '01': 'Occupancy Control'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x746d Auxiliary 24V Configuration Request */
-  {0x746d, "Auxiliary 24V Configuration Request", "select", "", "", "", 1, 1, 0x746c, "request", "{{ {'00': 'Central Desk Control', '01': 'Occupancy Control'}.get(value[:2], 'Unknown') }}", "{{ {'Central Desk Control': '00', 'Occupancy Control': '01'}[value] }}", "[\"Central Desk Control\", \"Occupancy Control\"]"},
+  {0x746d, "Auxiliary 24V Configuration", "select", "", "", "", 1, 1, 0x746c, "request", "{{ {'00': 'Central Desk Control', '01': 'Occupancy Control'}.get(value[:2], 'Unknown') }}", "{{ {'Central Desk Control': '00', 'Occupancy Control': '01'}[value] }}", "[\"Central Desk Control\", \"Occupancy Control\"]"},
   /* 0x750b Make-up Air fan 1 actual speed */
   {0x750b, "Make-up Air fan 1 actual speed", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x7511 EEV Control Type */
-  {0x7511, "EEV Control Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7511, "EEV Control Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Idle', '01': 'Linear Control', '02': 'Constant Control', '03': 'PI Control', '04': 'High-gain PI Control'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x7512 EEV1 Desired Position */
   {0x7512, "EEV1 Desired Position", "sensor", "steps", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x7514 EEV1 Actual Position */
@@ -179,7 +179,7 @@ static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
   /* 0x7517 Current Superheat Temperature */
   {0x7517, "Current Superheat Temperature", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
   /* 0x7600 Compressor Control Type */
-  {0x7600, "Compressor Control Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
+  {0x7600, "Compressor Control Type", "sensor", "", "enum", "", 1, 1, 0x0000, "", "{{ {'00': 'Idle', '01': 'Linear Control', '02': 'Constant Control', '03': 'PI Control', '04': 'High-gain PI Control'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x7601 Inverter Actual Speed RPM */
   {0x7601, "Inverter Actual Speed RPM", "sensor", "rpm", "", "", 1, 2, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x7602 Inverter Desired Speed */
@@ -189,27 +189,27 @@ static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
   /* 0x7612 Inverter IGBT Temperature */
   {0x7612, "Inverter IGBT Temperature", "sensor", "°C", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
   /* 0x7700 Power Status */
-  {0x7700, "Power Status", "binary_sensor", "", "", "", 1, 1, 0x7701, "status", "", "", ""},
+  {0x7700, "Power", "binary_sensor", "", "", "", 1, 1, 0x7701, "status", "", "", ""},
   /* 0x7701 Power Request */
-  {0x7701, "Power Request", "switch", "", "", "", 1, 1, 0x7700, "request", "", "", ""},
+  {0x7701, "Power", "switch", "", "", "", 1, 1, 0x7700, "request", "", "", ""},
   /* 0x7702 System Mode Status */
-  {0x7702, "System Mode Status", "sensor", "", "enum", "", 1, 1, 0x7703, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x7702, "System Mode", "sensor", "", "enum", "", 1, 1, 0x7703, "status", "{{ {'00': 'Auto', '01': 'Heat', '02': 'Fan', '03': 'Cool'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x7703 System Mode Request */
-  {0x7703, "System Mode Request", "select", "", "", "", 1, 1, 0x7702, "request", "{{ {'00': 'Auto', '01': 'Heat', '02': 'Fan', '03': 'Cool'}.get(value[:2], 'Unknown') }}", "{{ {'Auto': '00', 'Heat': '01', 'Fan': '02', 'Cool': '03'}[value] }}", "[\"Auto\", \"Heat\", \"Fan\", \"Cool\"]"},
+  {0x7703, "System Mode", "select", "", "", "", 1, 1, 0x7702, "request", "{{ {'00': 'Auto', '01': 'Heat', '02': 'Fan', '03': 'Cool'}.get(value[:2], 'Unknown') }}", "{{ {'Auto': '00', 'Heat': '01', 'Fan': '02', 'Cool': '03'}[value] }}", "[\"Auto\", \"Heat\", \"Fan\", \"Cool\"]"},
   /* 0x7704 System Mode Allowed */
   {0x7704, "System Mode Allowed", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x7705 Temperature Setpoint Step Size Status */
   {0x7705, "Temperature Setpoint Step Size Status", "sensor", "°F", "temperature", "", 10, 2, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
   /* 0x7706 User Heating Setpoint Status */
-  {0x7706, "User Heating Setpoint Status", "sensor", "°F", "temperature", "", 10, 2, 0x7707, "status", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7706, "User Heating Setpoint", "sensor", "°F", "temperature", "", 10, 2, 0x7707, "status", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
   /* 0x7707 User Heating Setpoint Request */
-  {0x7707, "User Heating Setpoint Request", "number", "°F", "temperature", "", 10, 2, 0x7706, "request", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
+  {0x7707, "User Heating Setpoint", "number", "°F", "temperature", "", 10, 2, 0x7706, "request", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
   /* 0x7708 User Heating Setpoint Configured Range */
   {0x7708, "User Heating Setpoint Configured Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
   /* 0x7709 User Cooling Setpoint Status */
-  {0x7709, "User Cooling Setpoint Status", "sensor", "°F", "temperature", "", 10, 2, 0x770a, "status", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
+  {0x7709, "User Cooling Setpoint", "sensor", "°F", "temperature", "", 10, 2, 0x770a, "status", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
   /* 0x770a User Cooling Setpoint Request */
-  {0x770a, "User Cooling Setpoint Request", "number", "°F", "temperature", "", 10, 2, 0x7709, "request", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
+  {0x770a, "User Cooling Setpoint", "number", "°F", "temperature", "", 10, 2, 0x7709, "request", "{{ (value | int(base=16)) / 10 | round(1) }}", "{{ '%04x' % ((value | float) * 10 | int) }}", ""},
   /* 0x770b User Cooling Setpoint Configured Range */
   {0x770b, "User Cooling Setpoint Configured Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
   /* 0x770c User Temperature Setpoint Limit Configurable Bitmap */
@@ -231,21 +231,21 @@ static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
   /* 0x7714 User Cooling Setpoint Maximum Limit Allowed Range */
   {0x7714, "User Cooling Setpoint Maximum Limit Allowed Range", "sensor", "°F", "temperature", "", 10, 4, 0x0000, "", "{{ (value | int(base=16)) / 10 | round(1) }}", "", ""},
   /* 0x7718 Heat System Mode Fan Setting Status */
-  {0x7718, "Heat System Mode Fan Setting Status", "sensor", "", "enum", "", 1, 1, 0x7719, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x7718, "Heat System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x7719, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x7719 Heat System Mode Fan Setting Request */
-  {0x7719, "Heat System Mode Fan Setting Request", "select", "", "", "", 1, 1, 0x7718, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
+  {0x7719, "Heat System Mode Fan Setting", "select", "", "", "", 1, 1, 0x7718, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
   /* 0x771a Heat System Mode Available Fan Settings */
   {0x771a, "Heat System Mode Available Fan Settings", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x771b Fan System Mode Fan Setting Status */
-  {0x771b, "Fan System Mode Fan Setting Status", "sensor", "", "enum", "", 1, 1, 0x771c, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x771b, "Fan System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x771c, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x771c Fan System Mode Fan Setting Request */
-  {0x771c, "Fan System Mode Fan Setting Request", "select", "", "", "", 1, 1, 0x771b, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
+  {0x771c, "Fan System Mode Fan Setting", "select", "", "", "", 1, 1, 0x771b, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
   /* 0x771d Fan System Mode Available Fan Settings */
   {0x771d, "Fan System Mode Available Fan Settings", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0x771e Cool System Mode Fan Setting Status */
-  {0x771e, "Cool System Mode Fan Setting Status", "sensor", "", "enum", "", 1, 1, 0x771f, "status", "{{ value | int(base=16) }}", "", ""},
+  {0x771e, "Cool System Mode Fan Setting", "sensor", "", "enum", "", 1, 1, 0x771f, "status", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "", ""},
   /* 0x771f Cool System Mode Fan Setting Request */
-  {0x771f, "Cool System Mode Fan Setting Request", "select", "", "", "", 1, 1, 0x771e, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
+  {0x771f, "Cool System Mode Fan Setting", "select", "", "", "", 1, 1, 0x771e, "request", "{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}", "{{ {'Low': '00', 'High': '01'}[value] }}", "[\"Low\", \"High\"]"},
   /* 0x7720 Cool System Mode Available Fan Settings */
   {0x7720, "Cool System Mode Available Fan Settings", "sensor", "", "", "", 1, 4, 0x0000, "", "{{ value | int(base=16) }}", "", ""},
   /* 0xd030 Appliance Cumulative Energy */

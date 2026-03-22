@@ -30,6 +30,7 @@ CONF_POLLING_INTERVAL = "polling_interval"
 CONF_POLLING_ONLY_PUBLISH_ON_CHANGE = "polling_onlypublish_onchange"
 CONF_APPLIANCE_API_PARSING = "appliance_api_parsing"
 CONF_CUSTOM_ERDS = "custom_erds"
+CONF_GENERATE_DEVICE_CONFIG = "generate_device_config"
 
 # Bridge mode options (polling vs subscriptions)
 MODE_POLL = "poll"
@@ -270,6 +271,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_POLLING_INTERVAL, default=10000): cv.positive_int,
         cv.Optional(CONF_POLLING_ONLY_PUBLISH_ON_CHANGE, default=False): cv.boolean,
         cv.Optional(CONF_APPLIANCE_API_PARSING, default=False): cv.boolean,
+        cv.Optional(CONF_GENERATE_DEVICE_CONFIG, default=False): cv.boolean,
         cv.Optional(CONF_CUSTOM_ERDS, default=[]): cv.ensure_list(
             cv.int_range(min=0, max=0xFFFF)
         ),
@@ -309,6 +311,7 @@ async def to_code(config):
     cg.add(var.set_polling_interval(config[CONF_POLLING_INTERVAL]))
     cg.add(var.set_polling_only_publish_on_change(config[CONF_POLLING_ONLY_PUBLISH_ON_CHANGE]))
     cg.add(var.set_appliance_api_parsing(config[CONF_APPLIANCE_API_PARSING]))
+    cg.add(var.set_generate_device_config(config[CONF_GENERATE_DEVICE_CONFIG]))
     
     # Register any user-configured custom ERDs
     for erd in config[CONF_CUSTOM_ERDS]:

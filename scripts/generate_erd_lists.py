@@ -432,6 +432,19 @@ def get_first_enum_values(erd_data: List[Dict]) -> Dict[str, str]:
     return {}
 
 
+def _get_first_enum_field_info(erd_data: List[Dict]):
+    """Return (values_dict, field_size) for the first enum-typed data field.
+
+    field_size is the byte width of the enum field (used to build the hex
+    extraction slice in value templates).  Falls back to ({}, 1) when no
+    enum field is present.
+    """
+    for d in erd_data:
+        if d.get('type') == 'enum':
+            return d.get('values', {}), max(1, d.get('size', 1))
+    return {}, 1
+
+
 def _unit_to_ha(unit: str) -> str:
     """Convert an API unit string to the Home Assistant display unit."""
     return {'degF': '\u00b0F', 'degC': '\u00b0C'}.get(unit, unit)
@@ -501,6 +514,43 @@ def _select_options_and_templates(enum_values: Dict[str, str], data_size: int):
     return (options_json, value_template, command_template)
 
 
+def _enum_sensor_value_template(enum_values: Dict[str, str], field_size: int) -> str:
+    """Build value_template for a read-only enum sensor.
+
+    Maps hex byte values to their human-readable label.  Works the same as the
+    select value_template but without options or command_template.
+    'Request Consumed' (255) is excluded.
+    Falls back to showing the raw first-byte hex string when no valid mappings
+    exist.
+    """
+    valid_pairs = sorted(
+        [(int(k), v) for k, v in enum_values.items() if v != 'Request Consumed'],
+        key=lambda x: x[0]
+    )
+    if not valid_pairs:
+        return '{{ value[:2] }}'
+
+    hex_chars = field_size * 2
+    hex_to_name = ', '.join(
+        f"'{k:0{hex_chars}x}': '{v}'" for k, v in valid_pairs
+    )
+    return f"{{{{ {{{hex_to_name}}}.get(value[:{hex_chars}], 'Unknown') }}}}"
+
+
+def _strip_pair_role_word(name: str) -> str:
+    """Remove trailing or standalone 'Status'/'Request' words from a paired-ERD name.
+
+    Examples:
+        'Fan Configuration in Cooling Status'  -> 'Fan Configuration in Cooling'
+        'Freeze Sentinel Request'               -> 'Freeze Sentinel'
+    """
+    # Strip the word wherever it appears as a complete word (word boundaries)
+    result = re.sub(r'\b(?:Status|Request)\b', '', name, flags=re.IGNORECASE)
+    # Collapse multiple spaces and strip surrounding whitespace
+    result = re.sub(r'\s+', ' ', result).strip()
+    return result
+
+
 def _number_command_template(data_size: int, scaling_factor: int) -> str:
     """Return command_template for a number entity."""
     hex_chars = data_size * 2
@@ -565,6 +615,11 @@ def generate_ha_discovery_header(erds: List[Dict]) -> str:
         paired_erd_str = erd.get('paired_erd') or ''
         paired_erd_id = parse_erd_id(paired_erd_str) if paired_erd_str else 0
 
+        # Strip "Status"/"Request" role words from names on paired ERDs so both
+        # sides of a pair share a clean base name (e.g. "Fan Configuration in
+        # Cooling" instead of "Fan Configuration in Cooling Status/Request").
+        display_name = _strip_pair_role_word(name) if pair_role else name
+
         erd_data = erd.get('data', [])
         data_size = get_erd_byte_size(erd_data)
         if data_size == 0:
@@ -577,7 +632,10 @@ def generate_ha_discovery_header(erds: List[Dict]) -> str:
 
         if ha_domain == 'sensor':
             if device_class == 'enum':
-                value_template = '{{ value | int(base=16) }}'
+                # Build a text-label mapping so HA shows human-readable names
+                # instead of a raw decimal number.
+                enum_field_values, field_size = _get_first_enum_field_info(erd_data)
+                value_template = _enum_sensor_value_template(enum_field_values, field_size)
             elif scaling_factor > 1 or (data_size <= 4 and device_class != ''):
                 value_template = _compute_sensor_value_template(scaling_factor, data_size)
             elif data_size <= 4:
@@ -618,7 +676,7 @@ def generate_ha_discovery_header(erds: List[Dict]) -> str:
         # Format the struct initialiser
         fields = [
             f'0x{erd_id_int:04x}',
-            _c_str(name),
+            _c_str(display_name),
             _c_str(ha_domain),
             _c_str(unit),
             _c_str(device_class),
