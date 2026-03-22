@@ -205,7 +205,6 @@ class GeappliancesBridge : public Component {
   bool ha_discovery_pending_{false};
   bool ha_discovery_published_{false};
   bool ha_discovery_publish_in_progress_{false};
-  uint16_t ha_discovery_publish_index_{0};         // next entity index to publish
   uint32_t ha_discovery_timer_start_{0};           // millis() when the 10-s window opened
   uint32_t ha_discovery_last_activity_{0};         // millis() of last NEW ERD seen (subscription mode)
   // ERD IDs received via subscription that have been seen at least once.
@@ -221,6 +220,41 @@ class GeappliancesBridge : public Component {
   std::set<tiny_erd_t> ha_string_erds_set_;
   static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;  // 10 s quiet period
   static constexpr uint32_t HA_DISCOVERY_MAX_WAIT_MS = 30000;  // max 30 s from bridge init
+
+  // --- Runtime HA-discovery fetch state ------------------------------------
+  // Entity definitions are downloaded at runtime from compact JSONL files
+  // rather than stored in flash.  A FreeRTOS background task performs the
+  // HTTPS fetch; each discovered entity is sent to a queue that the main
+  // loop() drains one publish per iteration (preserving the existing
+  // rate-limiting behaviour).
+
+  // A (topic, payload) pair ready to be published via MQTT.
+  struct HaDiscoveryItem {
+    std::string topic;
+    std::string payload;
+  };
+
+  // Base URL for the per-category JSONL files.
+  // Can be overridden in YAML via ha_discovery_base_url.
+  std::string ha_discovery_base_url_{
+    "https://raw.githubusercontent.com/joshualongenecker/"
+    "home-assistant-bridge-esphome/main/ha_discovery"
+  };
+
+  QueueHandle_t ha_discovery_queue_{nullptr};   // carries HaDiscoveryItem* (nullptr = sentinel)
+  TaskHandle_t  ha_fetch_task_handle_{nullptr};
+
+  void set_ha_discovery_base_url(const std::string& url) { this->ha_discovery_base_url_ = url; }
+
+  static void ha_fetch_task_fn_(void* param);
+  void        fetch_ha_definitions_();
+  bool        fetch_category_(const std::string& url,
+                              const std::string& device_id,
+                              const std::string& device_json);
+  bool        process_jsonl_line_(const char* line,
+                                  const std::string& device_id,
+                                  const std::string& device_json);
+
 
   // Autodiscovery state machine
   AutodiscoveryState autodiscovery_state_{AUTODISCOVERY_WAITING_FOR_MQTT};

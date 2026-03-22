@@ -4,6 +4,17 @@
 #include "esphome/core/log.h"
 #include "esphome_time_source.h"
 #include <cstring>
+#include <inttypes.h>
+
+// Runtime HA-discovery: HTTP fetch + JSON parsing on ESP-IDF targets.
+#ifdef USE_ESP_IDF
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#endif  // USE_ESP_IDF
 
 namespace esphome {
 namespace geappliances_bridge {
@@ -1062,194 +1073,351 @@ void GeappliancesBridge::publish_ha_discovery_() {
     return;
   }
 
-  // Start the per-entity publishing sequence.  Entities are published one per
-  // loop() call by publish_next_ha_discovery_entity_() to avoid building a
-  // single large JSON string that would exhaust heap on ESP32.
-  // If MQTT disconnects mid-sequence, publish_next_ha_discovery_entity_() will
-  // pause (ha_discovery_publish_in_progress_ stays true) and resume automatically
-  // on the next loop() call once MQTT reconnects.
+#ifdef USE_ESP_IDF
+  // Create a queue for passing (topic, payload) pairs from the background
+  // HTTP-fetch task to the main loop.  Queue depth = 20 so the task can run
+  // ahead of the main loop without blocking excessively.
+  this->ha_discovery_queue_ = xQueueCreate(20, sizeof(HaDiscoveryItem*));
+  if (!this->ha_discovery_queue_) {
+    ESP_LOGE(TAG, "HA discovery: failed to create queue (OOM)");
+    return;
+  }
+
   this->ha_discovery_pending_ = false;
-  this->ha_discovery_publish_index_ = 0;
   this->ha_discovery_publish_in_progress_ = true;
-  ESP_LOGI(TAG, "HA discovery: starting — %zu ERDs registered by device, "
-           "entities for unregistered ERDs will be skipped",
+  ESP_LOGI(TAG, "HA discovery: starting — %zu ERDs registered, launching fetch task",
            this->ha_registered_erds_.size());
+
+  // Stack size 12 KB – enough for HTTPS + cJSON on ESP32.
+  xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 12288, this, 5, &this->ha_fetch_task_handle_);
+#else
+  // Non-ESP32 build (e.g. tests): nothing to do.
+  this->ha_discovery_pending_           = false;
+  this->ha_discovery_publish_in_progress_ = false;
+  this->ha_discovery_published_          = true;
+#endif
 }
 
 void GeappliancesBridge::publish_next_ha_discovery_entity_() {
+#ifdef USE_ESP_IDF
+  if (!this->ha_discovery_queue_) return;
+
   auto* mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client == nullptr || !mqtt_client->is_connected()) {
-    // MQTT dropped mid-sequence; leave in_progress so we resume on reconnect
+    // MQTT dropped mid-sequence; leave in_progress so we resume on reconnect.
     return;
   }
 
-  if (this->ha_discovery_publish_index_ >= ha_erd_discovery_config_count) {
-    this->ha_discovery_publish_in_progress_ = false;
-    this->ha_discovery_published_ = true;
-    ESP_LOGI(TAG, "HA discovery: complete (scanned %u config entries, published only registered-ERD entities)",
-             ha_erd_discovery_config_count);
-    return;
-  }
-
-  const ha_erd_discovery_config_t& cfg =
-    ha_erd_discovery_configs[this->ha_discovery_publish_index_];
-  const std::string& device_id = this->final_device_id_;
-
-  // Only publish discovery for ERDs that the device has actually registered.
-  // For request-role entities (select/number/switch/button) check the paired
-  // status ERD because that is what the device registers for reading.
-  // If the set is empty (e.g. very early bridge init race), skip no entities.
-  if (!this->ha_registered_erds_.empty()) {
-    // Determine the relevant ERD to check: status ERD for request entities,
-    // the ERD itself otherwise.
-    bool is_request_entity = (cfg.pair_role != nullptr && cfg.pair_role[0] == 'r');
-    bool registered;
-    if (is_request_entity && cfg.paired_erd_id != 0) {
-      // For request entities check if either the request ERD or its paired status
-      // ERD was registered — if the device registered either, it supports the feature.
-      registered = (this->ha_registered_erds_.find(cfg.erd_id) != this->ha_registered_erds_.end())
-                || (this->ha_registered_erds_.find(cfg.paired_erd_id) != this->ha_registered_erds_.end());
+  HaDiscoveryItem* item = nullptr;
+  if (xQueueReceive(this->ha_discovery_queue_, &item, 0) == pdTRUE) {
+    if (item == nullptr) {
+      // Sentinel: the fetch task has finished.
+      ESP_LOGI(TAG, "HA discovery: complete — all entities published");
+      this->ha_discovery_publish_in_progress_ = false;
+      this->ha_discovery_published_           = true;
+      vQueueDelete(this->ha_discovery_queue_);
+      this->ha_discovery_queue_       = nullptr;
+      this->ha_fetch_task_handle_     = nullptr;
     } else {
-      registered = (this->ha_registered_erds_.find(cfg.erd_id) != this->ha_registered_erds_.end());
+      mqtt_client->publish(item->topic, item->payload, 1, true);  // QoS 1, retain
+      ESP_LOGD(TAG, "HA discovery: published %s", item->topic.c_str());
+      delete item;
     }
-    if (!registered) {
-      ESP_LOGD(TAG, "HA discovery: skipping ERD 0x%04X ('%s') — not registered by device",
-               cfg.erd_id, cfg.name);
-      this->ha_discovery_publish_index_++;
-      return;
+  }
+  // else: queue empty, fetch task still running – nothing to do this loop.
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// Background task: HTTP fetch + JSONL parse
+// (compiled only when building for ESP-IDF / ESP32)
+// ---------------------------------------------------------------------------
+#ifdef USE_ESP_IDF
+
+/*static*/ void GeappliancesBridge::ha_fetch_task_fn_(void* param) {
+  auto* self = static_cast<GeappliancesBridge*>(param);
+  self->fetch_ha_definitions_();
+
+  // Send nullptr sentinel so the main loop knows we are done.
+  HaDiscoveryItem* sentinel = nullptr;
+  xQueueSend(self->ha_discovery_queue_, &sentinel, portMAX_DELAY);
+
+  vTaskDelete(nullptr);
+}
+
+void GeappliancesBridge::fetch_ha_definitions_() {
+  // Determine which category files are needed based on registered ERD ranges.
+  struct Category { const char* name; uint16_t lo; uint16_t hi; };
+  static const Category CATS[] = {
+    {"common",          0x0000, 0x0FFF},
+    {"refrigeration",   0x1000, 0x1FFF},
+    {"laundry",         0x2000, 0x2FFF},
+    {"dishwasher",      0x3000, 0x3FFF},
+    {"waterheater",     0x4000, 0x4FFF},
+    {"range",           0x5000, 0x5FFF},
+    {"airconditioning", 0x7000, 0x7FFF},
+    {"waterfilter",     0x8000, 0x8FFF},
+    {"smallappliance",  0x9000, 0x9FFF},
+    {"energy",          0xD000, 0xDFFF},
+  };
+
+  // Build a bitmask of needed categories.
+  bool need[10] = {};
+  need[0] = true;  // common – always needed
+  for (uint16_t erd : this->ha_registered_erds_) {
+    for (int i = 1; i < 10; ++i) {
+      if (erd >= CATS[i].lo && erd <= CATS[i].hi) { need[i] = true; break; }
     }
   }
 
-  char erd_id_str[5];
-  snprintf(erd_id_str, sizeof(erd_id_str), "%04x", cfg.erd_id);
-
-  bool is_request = (cfg.pair_role[0] == 'r');
-  std::string state_topic;
-  std::string command_topic;
-  if (is_request && cfg.paired_erd_id != 0) {
-    char paired_id_str[5];
-    snprintf(paired_id_str, sizeof(paired_id_str), "%04x", cfg.paired_erd_id);
-    state_topic = "geappliances/" + device_id + "/erd/0x" + paired_id_str + "/value";
-    command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
-  } else {
-    state_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/value";
-    command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
-  }
-
-  // Device info is included in every message so HA correctly groups all entities
-  // under one device regardless of publish order.
+  // Build device JSON once (reused for all entities in this fetch run).
+  const std::string& device_id = this->final_device_id_;
   std::string device_json = "{\"identifiers\":[\"" + device_id + "\"]";
   device_json += ",\"name\":\"" + escape_json_str(device_id) + "\"";
   device_json += ",\"manufacturer\":\"GE Appliances\"";
-  if (!this->model_number_.empty()) {
+  if (!this->model_number_.empty())
     device_json += ",\"model\":\"" + escape_json_str(this->model_number_) + "\"";
-  }
-  if (!this->serial_number_.empty()) {
+  if (!this->serial_number_.empty())
     device_json += ",\"serial_number\":\"" + escape_json_str(this->serial_number_) + "\"";
-  }
   device_json += "}";
 
-  std::string unique_id = device_id + "_" + erd_id_str;
-  // For sub-field entities, append the field slug so each has a unique ID.
-  if (cfg.field_id && cfg.field_id[0] != '\0') {
-    unique_id += "_";
-    unique_id += cfg.field_id;
+  for (int i = 0; i < 10; ++i) {
+    if (!need[i]) continue;
+    std::string url = this->ha_discovery_base_url_ + "/" + CATS[i].name + ".jsonl";
+    ESP_LOGI(TAG, "HA fetch: downloading %s", url.c_str());
+    fetch_category_(url, device_id, device_json);
+    vTaskDelay(pdMS_TO_TICKS(50));  // brief yield between requests
   }
-  std::string payload;
+}
 
-  // Appends an optional JSON string field; also used for Jinja2 template strings.
-  auto add_field = [&](const char* key, const char* val) {
-    if (val && val[0] != '\0') {
-      payload += ",\"" + std::string(key) + "\":\"" + escape_json_str(std::string(val)) + "\"";
+bool GeappliancesBridge::fetch_category_(const std::string& url,
+                                         const std::string& device_id,
+                                         const std::string& device_json) {
+  esp_http_client_config_t cfg = {};
+  cfg.url                 = url.c_str();
+  cfg.crt_bundle_attach   = esp_crt_bundle_attach;
+  cfg.timeout_ms          = 20000;
+  cfg.max_redirection_count = 5;
+
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  if (!client) {
+    ESP_LOGE(TAG, "HA fetch: esp_http_client_init failed for %s", url.c_str());
+    return false;
+  }
+
+  esp_err_t err = esp_http_client_open(client, 0);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "HA fetch: open failed for %s: %s", url.c_str(), esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return false;
+  }
+
+  esp_http_client_fetch_headers(client);
+  int status = esp_http_client_get_status_code(client);
+  if (status == 404) {
+    // Category file not present – not an error, just skip.
+    ESP_LOGD(TAG, "HA fetch: %s not found (404), skipping", url.c_str());
+    esp_http_client_cleanup(client);
+    return true;
+  }
+  if (status != 200) {
+    ESP_LOGW(TAG, "HA fetch: HTTP %d for %s", status, url.c_str());
+    esp_http_client_cleanup(client);
+    return false;
+  }
+
+  // Read response body line by line.  Each JSONL line is one entity.
+  // We use a modest stack-allocated read buffer and a heap-allocated line
+  // accumulator (lines can be several KB for complex value templates).
+  static constexpr int READ_BUF  = 512;
+  static constexpr int LINE_BUF  = 4096;
+  char  read_buf[READ_BUF];
+  char* line_buf = static_cast<char*>(malloc(LINE_BUF));
+  if (!line_buf) {
+    ESP_LOGE(TAG, "HA fetch: OOM allocating line buffer");
+    esp_http_client_cleanup(client);
+    return false;
+  }
+
+  int line_pos = 0;
+  int entities = 0;
+  int read_len;
+  while ((read_len = esp_http_client_read(client, read_buf, READ_BUF - 1)) > 0) {
+    for (int i = 0; i < read_len; ++i) {
+      char c = read_buf[i];
+      if (c == '\n' || c == '\r') {
+        if (line_pos > 2) {
+          line_buf[line_pos] = '\0';
+          if (process_jsonl_line_(line_buf, device_id, device_json))
+            ++entities;
+        }
+        line_pos = 0;
+      } else if (line_pos < LINE_BUF - 1) {
+        line_buf[line_pos++] = c;
+      }
+      // Lines longer than LINE_BUF are silently truncated – they won't parse.
     }
+  }
+  if (line_pos > 2) {
+    line_buf[line_pos] = '\0';
+    if (process_jsonl_line_(line_buf, device_id, device_json))
+      ++entities;
+  }
+
+  free(line_buf);
+  esp_http_client_cleanup(client);
+  ESP_LOGI(TAG, "HA fetch: %s → %d entities queued", url.c_str(), entities);
+  return true;
+}
+
+bool GeappliancesBridge::process_jsonl_line_(const char* line,
+                                              const std::string& device_id,
+                                              const std::string& device_json) {
+  cJSON* root = cJSON_Parse(line);
+  if (!root) return false;
+
+  // Helper: safely get a string field value (empty string if absent/wrong type).
+  auto get_str = [&](const char* key) -> const char* {
+    cJSON* item = cJSON_GetObjectItemCaseSensitive(root, key);
+    return (item && cJSON_IsString(item) && item->valuestring) ? item->valuestring : "";
   };
 
-  if (strcmp(cfg.ha_domain, "sensor") == 0) {
-    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-    payload += ",\"state_topic\":\"" + state_topic + "\"";
-    payload += ",\"unique_id\":\"" + unique_id + "\"";
-    add_field("value_template", cfg.value_template);
-    add_field("unit_of_measurement", cfg.unit_of_measurement);
-    add_field("device_class", cfg.device_class);
-    add_field("state_class", cfg.state_class);
-    payload += ",\"device\":" + device_json + "}";
+  const char* erd_hex = get_str("i");
+  if (erd_hex[0] == '\0') { cJSON_Delete(root); return false; }
 
-  } else if (strcmp(cfg.ha_domain, "binary_sensor") == 0) {
-    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-    payload += ",\"state_topic\":\"" + state_topic + "\"";
-    payload += ",\"unique_id\":\"" + unique_id + "\"";
-    add_field("value_template", cfg.value_template);
-    payload += ",\"payload_on\":\"01\"";
-    payload += ",\"payload_off\":\"00\"";
-    add_field("device_class", cfg.device_class);
-    payload += ",\"device\":" + device_json + "}";
+  uint16_t erd_id    = static_cast<uint16_t>(strtol(erd_hex, nullptr, 16));
+  const char* domain = get_str("d");
+  const char* name   = get_str("n");
+  const char* role   = get_str("r");
+  const char* paired = get_str("p");
 
-  } else if (strcmp(cfg.ha_domain, "switch") == 0) {
-    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-    payload += ",\"state_topic\":\"" + state_topic + "\"";
-    payload += ",\"command_topic\":\"" + command_topic + "\"";
-    payload += ",\"unique_id\":\"" + unique_id + "\"";
-    add_field("value_template", cfg.value_template);
-    payload += ",\"state_on\":\"01\"";
-    payload += ",\"state_off\":\"00\"";
-    payload += ",\"payload_on\":\"01\"";
-    payload += ",\"payload_off\":\"00\"";
-    payload += ",\"device\":" + device_json + "}";
-
-  } else if (strcmp(cfg.ha_domain, "select") == 0) {
-    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
-    payload += ",\"state_topic\":\"" + state_topic + "\"";
-    payload += ",\"command_topic\":\"" + command_topic + "\"";
-    payload += ",\"unique_id\":\"" + unique_id + "\"";
-    add_field("value_template", cfg.value_template);
-    add_field("command_template", cfg.command_template);
-    if (cfg.options_json && cfg.options_json[0] != '\0') {
-      payload += ",\"options\":" + std::string(cfg.options_json);
+  // Filter: only publish entities for ERDs the device actually registered.
+  if (!this->ha_registered_erds_.empty()) {
+    bool registered = this->ha_registered_erds_.count(erd_id) > 0;
+    if (!registered && role[0] == 'r' && paired[0] != '\0') {
+      uint16_t paired_id = static_cast<uint16_t>(strtol(paired, nullptr, 16));
+      if (paired_id)
+        registered = this->ha_registered_erds_.count(paired_id) > 0
+                  || this->ha_registered_erds_.count(erd_id) > 0;
     }
+    if (!registered) { cJSON_Delete(root); return false; }
+  }
+
+  char erd_id_str[5];
+  snprintf(erd_id_str, sizeof(erd_id_str), "%04x", erd_id);
+
+  // Build state / command topic URLs.
+  bool is_request = (role[0] == 'r');
+  std::string state_topic, command_topic;
+  if (is_request && paired[0] != '\0') {
+    state_topic   = "geappliances/" + device_id + "/erd/0x" + std::string(paired) + "/value";
+    command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
+  } else {
+    state_topic   = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/value";
+    command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
+  }
+
+  const char* field_id = get_str("fi");
+  std::string unique_id = device_id + "_" + erd_id_str;
+  if (field_id[0] != '\0') { unique_id += "_"; unique_id += field_id; }
+
+  const char* vt   = get_str("vt");
+  const char* ct   = get_str("ct");
+  const char* opts = get_str("o");
+  const char* unit = get_str("u");
+  const char* dc   = get_str("dc");
+  const char* sc   = get_str("sc");
+
+  // Appends an optional JSON string field to *payload*.
+  std::string payload;
+  auto add_field = [&](const char* key, const char* val) {
+    if (val && val[0] != '\0')
+      payload += ",\"" + std::string(key) + "\":\"" + escape_json_str(std::string(val)) + "\"";
+  };
+
+  if (strcmp(domain, "sensor") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    add_field("unit_of_measurement", unit);
+    add_field("device_class", dc);
+    add_field("state_class", sc);
     payload += ",\"device\":" + device_json + "}";
 
-  } else if (strcmp(cfg.ha_domain, "number") == 0) {
-    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
+  } else if (strcmp(domain, "binary_sensor") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    payload += ",\"payload_on\":\"01\",\"payload_off\":\"00\"";
+    add_field("device_class", dc);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(domain, "switch") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
     payload += ",\"state_topic\":\"" + state_topic + "\"";
     payload += ",\"command_topic\":\"" + command_topic + "\"";
     payload += ",\"unique_id\":\"" + unique_id + "\"";
-    add_field("value_template", cfg.value_template);
-    add_field("command_template", cfg.command_template);
-    add_field("unit_of_measurement", cfg.unit_of_measurement);
-    add_field("device_class", cfg.device_class);
+    add_field("value_template", vt);
+    payload += ",\"state_on\":\"01\",\"state_off\":\"00\"";
+    payload += ",\"payload_on\":\"01\",\"payload_off\":\"00\"";
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(domain, "select") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    add_field("command_template", ct);
+    if (opts[0] != '\0') payload += ",\"options\":" + std::string(opts);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(domain, "number") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    add_field("command_template", ct);
+    add_field("unit_of_measurement", unit);
+    add_field("device_class", dc);
     payload += ",\"mode\":\"box\"";
     payload += ",\"device\":" + device_json + "}";
 
-  } else if (strcmp(cfg.ha_domain, "button") == 0) {
-    payload  = "{\"name\":\"" + escape_json_str(std::string(cfg.name)) + "\"";
+  } else if (strcmp(domain, "button") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
     payload += ",\"command_topic\":\"" + command_topic + "\"";
     payload += ",\"unique_id\":\"" + unique_id + "\"";
     payload += ",\"payload_press\":\"01\"";
-    add_field("device_class", cfg.device_class);
+    add_field("device_class", dc);
     payload += ",\"device\":" + device_json + "}";
 
   } else {
-    // Unknown domain – skip this entry
-    this->ha_discovery_publish_index_++;
-    return;
+    cJSON_Delete(root);
+    return false;
   }
 
-  // Build the discovery topic key: erd_id_str plus optional field_id suffix
-  // so sub-field entities each get their own unique discovery topic.
+  // Build the per-entity discovery topic (erd_id + optional field_id suffix).
   std::string topic_key = erd_id_str;
-  if (cfg.field_id && cfg.field_id[0] != '\0') {
-    topic_key += "_";
-    topic_key += cfg.field_id;
-  }
-  std::string discovery_topic = "homeassistant/" + std::string(cfg.ha_domain)
-                                 + "/" + device_id + "/" + topic_key + "/config";
-  mqtt_client->publish(discovery_topic, payload, 1, true);  // QoS 1, retain
-  ESP_LOGD(TAG, "HA discovery [%u/%u]: ERD 0x%04X field '%s' (%s) as %s",
-           this->ha_discovery_publish_index_ + 1, (unsigned)ha_erd_discovery_config_count,
-           cfg.erd_id, cfg.field_id ? cfg.field_id : "", cfg.name, cfg.ha_domain);
+  if (field_id[0] != '\0') { topic_key += "_"; topic_key += field_id; }
+  std::string topic = "homeassistant/" + std::string(domain)
+                       + "/" + device_id + "/" + topic_key + "/config";
 
-  this->ha_discovery_publish_index_++;
+  cJSON_Delete(root);
+
+  // Allocate and enqueue; the main loop deletes after publish.
+  auto* item = new (std::nothrow) HaDiscoveryItem{std::move(topic), std::move(payload)};
+  if (!item) return false;
+  if (xQueueSend(this->ha_discovery_queue_, &item, portMAX_DELAY) != pdTRUE) {
+    delete item;
+    return false;
+  }
+  return true;
 }
+
+#endif  // USE_ESP_IDF
 
 void GeappliancesBridge::configure_polling_optional_lists_() {
   // Set the API-parsed list AFTER init but before any events fire.
