@@ -1079,7 +1079,7 @@ void GeappliancesBridge::publish_next_ha_discovery_entity_() {
   // Device info is included in every message so HA correctly groups all entities
   // under one device regardless of publish order.
   std::string device_json = "{\"identifiers\":[\"" + device_id + "\"]";
-  device_json += ",\"name\":\"" + escape_json_str(appliance_type_to_string(this->appliance_type_)) + "\"";
+  device_json += ",\"name\":\"" + escape_json_str(device_id) + "\"";
   device_json += ",\"manufacturer\":\"GE Appliances\"";
   if (!this->model_number_.empty()) {
     device_json += ",\"model\":\"" + escape_json_str(this->model_number_) + "\"";
