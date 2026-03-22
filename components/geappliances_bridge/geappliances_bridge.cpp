@@ -868,6 +868,8 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
 }
 
 void GeappliancesBridge::process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size) {
+  // Successful response — reset the per-ERD response-failure counter.
+  this->device_id_response_retries_ = 0;
   if (erd == ERD_APPLIANCE_TYPE) {
     if (size < 1) return;
     this->appliance_type_ = data[0];
@@ -914,12 +916,49 @@ void GeappliancesBridge::process_device_id_erd_response_(tiny_erd_t erd, const u
 }
 
 void GeappliancesBridge::handle_device_id_read_failure_(tiny_erd_t erd) {
+  this->device_id_response_retries_++;
+  if (this->device_id_response_retries_ < MAX_DEVICE_ID_RESPONSE_RETRIES) {
+    // Retry — requeue the same ERD.
+    if (erd == ERD_APPLIANCE_TYPE) {
+      this->device_id_state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
+    } else if (erd == ERD_MODEL_NUMBER) {
+      this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
+    } else if (erd == ERD_SERIAL_NUMBER) {
+      this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
+    }
+    return;
+  }
+
+  // Too many failures — use a fallback value and advance to the next ERD so
+  // device ID generation can always complete even on appliances that do not
+  // support the standard identification ERDs (0x0008 / 0x0001 / 0x0002).
+  this->device_id_response_retries_ = 0;
+  ESP_LOGW(TAG, "ERD 0x%04X unreadable after %u attempts, using fallback for device ID",
+           erd, MAX_DEVICE_ID_RESPONSE_RETRIES);
+
   if (erd == ERD_APPLIANCE_TYPE) {
-    this->device_id_state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
-  } else if (erd == ERD_MODEL_NUMBER) {
+    this->appliance_type_ = 0;  // Unknown
     this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
-  } else if (erd == ERD_SERIAL_NUMBER) {
+  } else if (erd == ERD_MODEL_NUMBER) {
+    this->model_number_ = "";  // empty — will be omitted from device ID
     this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
+  } else if (erd == ERD_SERIAL_NUMBER) {
+    // Use the appliance bus address as a serial-number substitute so the
+    // generated device ID is still unique per appliance on the local bus.
+    // host_address_ is uint8_t so "%02X" produces at most 2 hex digits + NUL.
+    char addr_str[8];
+    snprintf(addr_str, sizeof(addr_str), "%02X", this->host_address_);
+    this->serial_number_ = std::string("busaddr") + addr_str;
+
+    std::string appliance_type_name = appliance_type_to_string(this->appliance_type_);
+    this->generated_device_id_ = appliance_type_name + "_" +
+                                 this->sanitize_for_mqtt_topic_(this->model_number_) + "_" +
+                                 this->sanitize_for_mqtt_topic_(this->serial_number_);
+    this->final_device_id_ = this->generated_device_id_;
+    ESP_LOGI(TAG, "Generated device ID (with fallback): %s", this->final_device_id_.c_str());
+
+    this->device_id_state_ = DEVICE_ID_STATE_COMPLETE;
+    this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
   }
 }
 
@@ -1099,7 +1138,11 @@ void GeappliancesBridge::publish_ha_discovery_() {
     this->ha_discovery_publish_in_progress_   = false;
   }
 #else
-  // Non-ESP32 build (e.g. tests): nothing to do.
+  // HA entity discovery requires the ESP-IDF framework (esp_http_client +
+  // FreeRTOS tasks).  On Arduino or other non-IDF builds, log a warning so
+  // users know why no fetch messages appear, then mark discovery as done.
+  ESP_LOGW(TAG, "Home Assistant discovery is only available with the ESP-IDF framework. "
+                "Add 'framework:\\n  type: esp-idf' to your esp32: section to enable it.");
   this->ha_discovery_pending_           = false;
   this->ha_discovery_publish_in_progress_ = false;
   this->ha_discovery_published_          = true;
@@ -1545,7 +1588,17 @@ void GeappliancesBridge::check_subscription_activity_() {
     
     // Mark that we're no longer in subscription mode
     this->subscription_mode_active_ = false;
-    
+
+    // Reset the HA-discovery quiet timer so the polling bridge has a full
+    // HA_DISCOVERY_QUIET_MS window to register ERDs before the fetch fires.
+    // Without this the ready-check in loop() sees since_start >= QUIET_MS
+    // (already 30+ s elapsed) and fires immediately with an empty registered-
+    // ERD set, causing all common entities to be published with no filter.
+    if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
+      this->ha_discovery_timer_start_ = millis();
+      this->ha_discovery_last_activity_ = millis();
+    }
+
     ESP_LOGI(TAG, "Successfully switched to polling mode");
   }
 }

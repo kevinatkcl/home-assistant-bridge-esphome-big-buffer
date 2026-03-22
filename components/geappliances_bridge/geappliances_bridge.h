@@ -270,6 +270,12 @@ class GeappliancesBridge : public Component {
   uint32_t read_retry_count_{0};
   static constexpr uint32_t LOG_EVERY_N_RETRIES = 50; // Log retry attempts periodically
   static constexpr uint32_t MAX_READ_RETRIES = 1000; // Maximum retries before giving up (about 10 seconds at loop rate)
+  // Counts consecutive READ-RESPONSE failures for the current device-ID ERD.
+  // Separate from read_retry_count_ which counts queue failures.  When this
+  // reaches MAX_DEVICE_ID_RESPONSE_RETRIES the ERD is skipped and a fallback
+  // value is used so device ID generation can always complete.
+  uint32_t device_id_response_retries_{0};
+  static constexpr uint32_t MAX_DEVICE_ID_RESPONSE_RETRIES = 3;
 
   tiny_timer_group_t timer_group_;
 
