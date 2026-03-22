@@ -288,8 +288,14 @@ void GeappliancesBridge::loop() {
     uint32_t now = millis();
     uint32_t since_activity = now - this->ha_discovery_last_activity_;
     uint32_t since_start = now - this->ha_discovery_timer_start_;
-    // Start publishing once 10 s of quiet has passed (ERDs settled) or 10 s since init
-    if (since_activity >= HA_DISCOVERY_QUIET_MS || since_start >= HA_DISCOVERY_QUIET_MS) {
+    // In subscription modes (AUTO with subscription active, or SUBSCRIBE), only
+    // fire after 10 s of ERD silence so all subscribed ERDs have been seen first.
+    // In polling mode, fire 10 s after bridge init (first poll cycle is done by then).
+    bool is_sub_mode = (this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                       (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_);
+    bool ready = is_sub_mode ? (since_activity >= HA_DISCOVERY_QUIET_MS)
+                             : (since_start >= HA_DISCOVERY_QUIET_MS);
+    if (ready) {
       this->publish_ha_discovery_();
     }
   }
@@ -763,6 +769,17 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
     }
   }
 
+  // Also reset the HA discovery quiet window for BRIDGE_MODE_SUBSCRIBE so the
+  // same 10-s-of-silence logic applies regardless of which subscription mode is used.
+  if (this->mode_ == BRIDGE_MODE_SUBSCRIBE &&
+      this->mqtt_bridge_initialized_ &&
+      args->address == this->host_address_ &&
+      args->type == tiny_gea3_erd_client_activity_type_subscription_publication_received) {
+    if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
+      this->ha_discovery_last_activity_ = millis();
+    }
+  }
+
   // Handle autodiscovery: first responder on GEA3 or GEA2 broadcast
   bool in_gea3_discovery = (this->autodiscovery_state_ == AUTODISCOVERY_GEA3_BROADCAST_WAITING);
   bool in_gea2_discovery = (this->autodiscovery_state_ == AUTODISCOVERY_GEA2_BROADCAST_WAITING);
@@ -946,17 +963,7 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
       &this->mqtt_client_adapter_.interface,
       this->polling_interval_ms_,
       this->polling_only_publish_on_change_);
-    // Set the API-parsed list AFTER init but before any events fire.
-    // state_identify_appliance only checks api_parsed_list in signal_read_completed,
-    // so setting it here (synchronously, before any events) is safe.
-    if (this->appliance_api_parsing_ && this->appliance_api_valid_list_ready_ &&
-        !this->appliance_api_valid_erds_vec_.empty()) {
-      this->mqtt_bridge_polling_.api_parsed_list = this->appliance_api_valid_erds_vec_.data();
-      this->mqtt_bridge_polling_.api_parsed_list_count =
-        static_cast<uint16_t>(this->appliance_api_valid_erds_vec_.size());
-      ESP_LOGI(TAG, "Polling with API-parsed list of %u ERDs (discovery skipped)",
-               this->mqtt_bridge_polling_.api_parsed_list_count);
-    }
+    this->configure_polling_optional_lists_();
   } else {
     mqtt_bridge_init(
       &this->mqtt_bridge_,
@@ -964,6 +971,22 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
       this->active_erd_client_,
       &this->mqtt_client_adapter_.interface,
       this->host_address_);
+    // Custom ERDs must be polled even in subscribe mode.
+    if (!this->custom_erds_vec_.empty()) {
+      mqtt_bridge_polling_init(
+        &this->custom_erd_bridge_,
+        &this->timer_group_,
+        this->active_erd_client_,
+        &this->mqtt_client_adapter_.interface,
+        this->polling_interval_ms_,
+        this->polling_only_publish_on_change_);
+      this->custom_erd_bridge_.api_parsed_list = this->custom_erds_vec_.data();
+      this->custom_erd_bridge_.api_parsed_list_count =
+        static_cast<uint16_t>(this->custom_erds_vec_.size());
+      this->custom_erd_polling_active_ = true;
+      ESP_LOGI(TAG, "Custom ERD polling enabled alongside subscription mode: %zu ERD(s)",
+               this->custom_erds_vec_.size());
+    }
   }
 
   this->mqtt_bridge_initialized_ = true;
@@ -1156,6 +1179,28 @@ void GeappliancesBridge::publish_next_ha_discovery_entity_() {
   this->ha_discovery_publish_index_++;
 }
 
+void GeappliancesBridge::configure_polling_optional_lists_() {
+  // Set the API-parsed list AFTER init but before any events fire.
+  // state_identify_appliance only checks api_parsed_list in signal_read_completed,
+  // so setting it here (synchronously, before any events) is safe.
+  if (this->appliance_api_parsing_ && this->appliance_api_valid_list_ready_ &&
+      !this->appliance_api_valid_erds_vec_.empty()) {
+    this->mqtt_bridge_polling_.api_parsed_list = this->appliance_api_valid_erds_vec_.data();
+    this->mqtt_bridge_polling_.api_parsed_list_count =
+      static_cast<uint16_t>(this->appliance_api_valid_erds_vec_.size());
+    ESP_LOGI(TAG, "Polling with API-parsed list of %u ERDs (discovery skipped)",
+             this->mqtt_bridge_polling_.api_parsed_list_count);
+  }
+  // Set custom ERD list AFTER init. Custom ERDs are added to the polling list
+  // when state_polling is entered, in addition to the standard or API-parsed list.
+  if (!this->custom_erds_vec_.empty()) {
+    this->mqtt_bridge_polling_.custom_erd_list = this->custom_erds_vec_.data();
+    this->mqtt_bridge_polling_.custom_erd_list_count =
+      static_cast<uint16_t>(this->custom_erds_vec_.size());
+    ESP_LOGI(TAG, "Polling with %u custom ERD(s)", this->mqtt_bridge_polling_.custom_erd_list_count);
+  }
+}
+
 std::string GeappliancesBridge::bytes_to_string_(const uint8_t* data, size_t size) {
   // Validate input
   if (data == nullptr || size == 0) {
@@ -1232,7 +1277,15 @@ void GeappliancesBridge::check_subscription_activity_() {
     
     // Destroy the subscription bridge
     mqtt_bridge_destroy(&this->mqtt_bridge_);
-    
+
+    // Destroy the custom ERD polling bridge (if it was active alongside subscription).
+    // The full polling bridge initialized below will poll custom ERDs via
+    // configure_polling_optional_lists_(), so it does not need to stay active.
+    if (this->custom_erd_polling_active_) {
+      mqtt_bridge_polling_destroy(&this->custom_erd_bridge_);
+      this->custom_erd_polling_active_ = false;
+    }
+
     mqtt_bridge_polling_init(
       &this->mqtt_bridge_polling_,
       &this->timer_group_,
@@ -1240,13 +1293,7 @@ void GeappliancesBridge::check_subscription_activity_() {
       &this->mqtt_client_adapter_.interface,
       this->polling_interval_ms_,
       this->polling_only_publish_on_change_);
-    // Set API-parsed list AFTER init (see initialize_mqtt_bridge_ for rationale)
-    if (this->appliance_api_parsing_ && this->appliance_api_valid_list_ready_ &&
-        !this->appliance_api_valid_erds_vec_.empty()) {
-      this->mqtt_bridge_polling_.api_parsed_list = this->appliance_api_valid_erds_vec_.data();
-      this->mqtt_bridge_polling_.api_parsed_list_count =
-        static_cast<uint16_t>(this->appliance_api_valid_erds_vec_.size());
-    }
+    this->configure_polling_optional_lists_();
     
     // Mark that we're no longer in subscription mode
     this->subscription_mode_active_ = false;
@@ -1306,6 +1353,9 @@ void GeappliancesBridge::dump_config() {
   ESP_LOGCONFIG(TAG, "  Appliance API Parsing: %s", this->appliance_api_parsing_ ? "enabled" : "disabled");
   if (this->appliance_api_valid_list_ready_) {
     ESP_LOGCONFIG(TAG, "  Appliance API Valid ERDs: %zu", this->appliance_api_valid_erds_.size());
+  }
+  if (!this->custom_erds_vec_.empty()) {
+    ESP_LOGCONFIG(TAG, "  Custom ERDs: %zu configured", this->custom_erds_vec_.size());
   }
 }
 

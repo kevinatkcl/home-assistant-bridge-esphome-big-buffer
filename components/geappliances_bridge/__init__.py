@@ -29,6 +29,7 @@ CONF_MODE = "mode"
 CONF_POLLING_INTERVAL = "polling_interval"
 CONF_POLLING_ONLY_PUBLISH_ON_CHANGE = "polling_onlypublish_onchange"
 CONF_APPLIANCE_API_PARSING = "appliance_api_parsing"
+CONF_CUSTOM_ERDS = "custom_erds"
 
 # Bridge mode options (polling vs subscriptions)
 MODE_POLL = "poll"
@@ -269,6 +270,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_POLLING_INTERVAL, default=10000): cv.positive_int,
         cv.Optional(CONF_POLLING_ONLY_PUBLISH_ON_CHANGE, default=False): cv.boolean,
         cv.Optional(CONF_APPLIANCE_API_PARSING, default=False): cv.boolean,
+        cv.Optional(CONF_CUSTOM_ERDS, default=[]): cv.ensure_list(
+            cv.int_range(min=0, max=0xFFFF)
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 CONFIG_SCHEMA = cv.All(CONFIG_SCHEMA, validate_at_least_one_uart)
@@ -305,6 +309,10 @@ async def to_code(config):
     cg.add(var.set_polling_interval(config[CONF_POLLING_INTERVAL]))
     cg.add(var.set_polling_only_publish_on_change(config[CONF_POLLING_ONLY_PUBLISH_ON_CHANGE]))
     cg.add(var.set_appliance_api_parsing(config[CONF_APPLIANCE_API_PARSING]))
+    
+    # Register any user-configured custom ERDs
+    for erd in config[CONF_CUSTOM_ERDS]:
+        cg.add(var.add_custom_erd(erd))
     
     # Load appliance types from JSON and generate C++ mapping function
     appliance_types = load_appliance_types()
