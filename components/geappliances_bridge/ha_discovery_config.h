@@ -255,4 +255,13 @@ static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {
 static const uint16_t ha_erd_discovery_config_count =
   (uint16_t)(sizeof(ha_erd_discovery_configs) / sizeof(ha_erd_discovery_configs[0]));
 
+// ERDs whose value is a null-terminated ASCII string.
+// The MQTT adapter publishes these as text rather than hex.
+static const uint16_t ha_string_erd_ids[] = {
+  0x0001,  /* Model Number */
+  0x0002,  /* Serial Number */
+};
+static const uint16_t ha_string_erd_count =
+  (uint16_t)(sizeof(ha_string_erd_ids) / sizeof(ha_string_erd_ids[0]));
+
 #endif

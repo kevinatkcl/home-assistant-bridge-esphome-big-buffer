@@ -766,21 +766,30 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
       ESP_LOGI(TAG, "Subscription activity detected - subscription mode is working");
       this->subscription_activity_detected_ = true;
     }
-    // Reset the HA discovery quiet window: don't publish until 10 s after the
-    // last ERD update so that all entities are visible before discovery fires.
+    // Reset the HA discovery quiet window only when a NEW ERD ID is seen for
+    // the first time.  Repeated value updates for already-known ERDs do not
+    // extend the wait (per requirement: "An already registered ERD changing
+    // values is not an issue").
     if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
-      this->ha_discovery_last_activity_ = millis();
+      tiny_erd_t pub_erd = args->subscription_publication_received.erd;
+      if (this->ha_discovery_seen_erds_.find(pub_erd) == this->ha_discovery_seen_erds_.end()) {
+        this->ha_discovery_seen_erds_.insert(pub_erd);
+        this->ha_discovery_last_activity_ = millis();
+      }
     }
   }
 
-  // Also reset the HA discovery quiet window for BRIDGE_MODE_SUBSCRIBE so the
-  // same 10-s-of-silence logic applies regardless of which subscription mode is used.
+  // Also apply the same new-ERD-only quiet-window logic for BRIDGE_MODE_SUBSCRIBE.
   if (this->mode_ == BRIDGE_MODE_SUBSCRIBE &&
       this->mqtt_bridge_initialized_ &&
       args->address == this->host_address_ &&
       args->type == tiny_gea3_erd_client_activity_type_subscription_publication_received) {
     if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
-      this->ha_discovery_last_activity_ = millis();
+      tiny_erd_t pub_erd = args->subscription_publication_received.erd;
+      if (this->ha_discovery_seen_erds_.find(pub_erd) == this->ha_discovery_seen_erds_.end()) {
+        this->ha_discovery_seen_erds_.insert(pub_erd);
+        this->ha_discovery_last_activity_ = millis();
+      }
     }
   }
 
@@ -946,6 +955,17 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
 
   // Initialize MQTT client adapter
   esphome_mqtt_client_adapter_init(&this->mqtt_client_adapter_, this->final_device_id_.c_str());
+
+  // Build the set of string-type ERD IDs from the generated config and tell
+  // the adapter so it can publish ASCII text instead of hex for those ERDs.
+  this->ha_string_erds_set_.clear();
+  for (uint16_t i = 0; i < ha_string_erd_count; i++) {
+    this->ha_string_erds_set_.insert(ha_string_erd_ids[i]);
+  }
+  if (!this->ha_string_erds_set_.empty()) {
+    esphome_mqtt_client_adapter_set_string_erds_filter(
+      &this->mqtt_client_adapter_, &this->ha_string_erds_set_);
+  }
 
   // Apply valid ERD filter if appliance_api_parsing is enabled, the list is ready,
   // and at least one ERD was added to the valid set. An empty set would silently

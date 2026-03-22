@@ -697,6 +697,24 @@ def generate_ha_discovery_header(erds: List[Dict]) -> str:
     lines.append('static const uint16_t ha_erd_discovery_config_count =')
     lines.append('  (uint16_t)(sizeof(ha_erd_discovery_configs) / sizeof(ha_erd_discovery_configs[0]));')
     lines.append('')
+
+    # Generate a compact list of ERD IDs whose raw bytes are a null-terminated
+    # ASCII string (type == "string" in the JSON metadata).  The MQTT adapter
+    # uses this list to publish ASCII text instead of a hex string for those ERDs.
+    string_ha_erds = [
+        e for e in ha_erds
+        if any(d.get('type') == 'string' for d in e.get('data', []))
+    ]
+    lines.append('// ERDs whose value is a null-terminated ASCII string.')
+    lines.append('// The MQTT adapter publishes these as text rather than hex.')
+    lines.append('static const uint16_t ha_string_erd_ids[] = {')
+    for e in string_ha_erds:
+        eid = parse_erd_id(e['id'])
+        lines.append(f'  0x{eid:04x},  /* {e["name"]} */')
+    lines.append('};')
+    lines.append('static const uint16_t ha_string_erd_count =')
+    lines.append('  (uint16_t)(sizeof(ha_string_erd_ids) / sizeof(ha_string_erd_ids[0]));')
+    lines.append('')
     lines.append('#endif')
     lines.append('')
 
