@@ -198,16 +198,18 @@ class GeappliancesBridge : public Component {
   // tight-loop continues processing UART bytes without being stalled by parse_and_log_feature_bits_().
   bool feature_bit_parse_pending_{false};
 
-  // HA device discovery publish: deferred until ERD values have settled.
-  // In subscription mode, publish 10 s after the last ERD activity (or 10 s
-  // after subscription starts if no activity arrives).  In polling mode,
-  // publish after the first full polling cycle (approximated by the same
-  // 10 s window from bridge init).
+  // HA device discovery publish: deferred until ERD registration has settled.
+  // In subscription mode: publish 10 s after the last NEW ERD subscription
+  //   publication is received (or 30 s from bridge init as a safety cap).
+  // In polling mode: publish 10 s after the last ERD is registered by the
+  //   polling bridge (tracked by comparing ha_registered_erds_.size() each
+  //   loop iteration — the same 30 s cap applies).
   bool ha_discovery_pending_{false};
   bool ha_discovery_published_{false};
   bool ha_discovery_publish_in_progress_{false};
   uint32_t ha_discovery_timer_start_{0};           // millis() when the 10-s window opened
-  uint32_t ha_discovery_last_activity_{0};         // millis() of last NEW ERD seen (subscription mode)
+  uint32_t ha_discovery_last_activity_{0};         // millis() of last NEW ERD registered/seen
+  size_t ha_registered_erds_last_count_{0};        // tracks growth of ha_registered_erds_ in loop()
   // ERD IDs received via subscription that have been seen at least once.
   // The quiet window is only reset when a NEW ERD ID arrives; repeated value
   // updates for already-known ERDs do not extend the wait.
