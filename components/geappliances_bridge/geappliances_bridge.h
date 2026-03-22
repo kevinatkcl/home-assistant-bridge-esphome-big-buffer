@@ -207,6 +207,7 @@ class GeappliancesBridge : public Component {
   uint32_t ha_discovery_timer_start_{0};           // millis() when the 10-s window opened
   uint32_t ha_discovery_last_activity_{0};         // millis() of last ERD publish (subscription mode)
   static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;  // 10 s quiet period
+  static constexpr uint32_t HA_DISCOVERY_MAX_WAIT_MS = 30000;  // max 30 s from bridge init
 
   // Autodiscovery state machine
   AutodiscoveryState autodiscovery_state_{AUTODISCOVERY_WAITING_FOR_MQTT};

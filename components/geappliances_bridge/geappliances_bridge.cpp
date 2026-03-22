@@ -290,10 +290,14 @@ void GeappliancesBridge::loop() {
     uint32_t since_start = now - this->ha_discovery_timer_start_;
     // In subscription modes (AUTO with subscription active, or SUBSCRIBE), only
     // fire after 10 s of ERD silence so all subscribed ERDs have been seen first.
+    // If the appliance publishes continuously (e.g. live sensor data), the quiet
+    // window may never expire; fall back to firing after HA_DISCOVERY_MAX_WAIT_MS
+    // from bridge init so discovery is always guaranteed.
     // In polling mode, fire 10 s after bridge init (first poll cycle is done by then).
     bool is_sub_mode = (this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
                        (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_);
-    bool ready = is_sub_mode ? (since_activity >= HA_DISCOVERY_QUIET_MS)
+    bool ready = is_sub_mode ? (since_activity >= HA_DISCOVERY_QUIET_MS ||
+                                since_start   >= HA_DISCOVERY_MAX_WAIT_MS)
                              : (since_start >= HA_DISCOVERY_QUIET_MS);
     if (ready) {
       this->publish_ha_discovery_();
