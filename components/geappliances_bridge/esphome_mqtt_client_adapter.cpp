@@ -26,7 +26,13 @@ static std::string build_topic(esphome_mqtt_client_adapter_t* self, const char* 
 static void register_erd(i_mqtt_client_t* _self, tiny_erd_t erd)
 {
   auto self = reinterpret_cast<esphome_mqtt_client_adapter_t*>(_self);
-  
+
+  // Track which ERDs the device registers so the bridge can filter
+  // HA discovery entities to only those actually supported by the device.
+  if (self->registered_erds_out != nullptr) {
+    self->registered_erds_out->insert(erd);
+  }
+
   char topic_suffix[32];
   snprintf(topic_suffix, sizeof(topic_suffix), "/erd/0x%04x", erd);
   
@@ -211,6 +217,7 @@ extern "C" void esphome_mqtt_client_adapter_init(
   self->pending_updates = new std::deque<PendingErdUpdate>();
   self->valid_erds_filter = nullptr;
   self->string_erds_filter = nullptr;
+  self->registered_erds_out = nullptr;
 
   tiny_event_init(&self->on_write_request_event);
   tiny_event_init(&self->on_mqtt_disconnect_event);
@@ -228,6 +235,13 @@ extern "C" void esphome_mqtt_client_adapter_set_string_erds_filter(
   const std::set<tiny_erd_t>* string_erds_filter)
 {
   self->string_erds_filter = string_erds_filter;
+}
+
+extern "C" void esphome_mqtt_client_adapter_set_registered_erds_out(
+  esphome_mqtt_client_adapter_t* self,
+  std::set<tiny_erd_t>* registered_erds_out)
+{
+  self->registered_erds_out = registered_erds_out;
 }
 
 extern "C" void esphome_mqtt_client_adapter_notify_disconnected(

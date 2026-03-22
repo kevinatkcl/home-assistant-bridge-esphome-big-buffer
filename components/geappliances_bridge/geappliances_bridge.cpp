@@ -956,6 +956,12 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
   // Initialize MQTT client adapter
   esphome_mqtt_client_adapter_init(&this->mqtt_client_adapter_, this->final_device_id_.c_str());
 
+  // Wire up the registered-ERD tracking set so every ERD the device registers
+  // is captured. Used later to filter HA discovery to only supported entities.
+  this->ha_registered_erds_.clear();
+  esphome_mqtt_client_adapter_set_registered_erds_out(
+    &this->mqtt_client_adapter_, &this->ha_registered_erds_);
+
   // Build the set of string-type ERD IDs from the generated config and tell
   // the adapter so it can publish ASCII text instead of hex for those ERDs.
   this->ha_string_erds_set_.clear();
@@ -1065,8 +1071,9 @@ void GeappliancesBridge::publish_ha_discovery_() {
   this->ha_discovery_pending_ = false;
   this->ha_discovery_publish_index_ = 0;
   this->ha_discovery_publish_in_progress_ = true;
-  ESP_LOGI(TAG, "HA discovery: starting, will publish %u entities one per loop()",
-           ha_erd_discovery_config_count);
+  ESP_LOGI(TAG, "HA discovery: starting — %zu ERDs registered by device, "
+           "entities for unregistered ERDs will be skipped",
+           this->ha_registered_erds_.size());
 }
 
 void GeappliancesBridge::publish_next_ha_discovery_entity_() {
@@ -1079,13 +1086,39 @@ void GeappliancesBridge::publish_next_ha_discovery_entity_() {
   if (this->ha_discovery_publish_index_ >= ha_erd_discovery_config_count) {
     this->ha_discovery_publish_in_progress_ = false;
     this->ha_discovery_published_ = true;
-    ESP_LOGI(TAG, "HA discovery: all %u entities published", ha_erd_discovery_config_count);
+    ESP_LOGI(TAG, "HA discovery: complete (scanned %u config entries, published only registered-ERD entities)",
+             ha_erd_discovery_config_count);
     return;
   }
 
   const ha_erd_discovery_config_t& cfg =
     ha_erd_discovery_configs[this->ha_discovery_publish_index_];
   const std::string& device_id = this->final_device_id_;
+
+  // Only publish discovery for ERDs that the device has actually registered.
+  // For request-role entities (select/number/switch/button) check the paired
+  // status ERD because that is what the device registers for reading.
+  // If the set is empty (e.g. very early bridge init race), skip no entities.
+  if (!this->ha_registered_erds_.empty()) {
+    // Determine the relevant ERD to check: status ERD for request entities,
+    // the ERD itself otherwise.
+    bool is_request_entity = (cfg.pair_role != nullptr && cfg.pair_role[0] == 'r');
+    bool registered;
+    if (is_request_entity && cfg.paired_erd_id != 0) {
+      // For request entities check if either the request ERD or its paired status
+      // ERD was registered — if the device registered either, it supports the feature.
+      registered = (this->ha_registered_erds_.find(cfg.erd_id) != this->ha_registered_erds_.end())
+                || (this->ha_registered_erds_.find(cfg.paired_erd_id) != this->ha_registered_erds_.end());
+    } else {
+      registered = (this->ha_registered_erds_.find(cfg.erd_id) != this->ha_registered_erds_.end());
+    }
+    if (!registered) {
+      ESP_LOGD(TAG, "HA discovery: skipping ERD 0x%04X ('%s') — not registered by device",
+               cfg.erd_id, cfg.name);
+      this->ha_discovery_publish_index_++;
+      return;
+    }
+  }
 
   char erd_id_str[5];
   snprintf(erd_id_str, sizeof(erd_id_str), "%04x", cfg.erd_id);
