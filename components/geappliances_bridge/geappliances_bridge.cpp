@@ -342,9 +342,16 @@ void GeappliancesBridge::loop() {
     }
   }
 
-  // One entity per loop() call while publishing is in progress
+  // One entity per rate-limited interval while publishing is in progress.
+  // Publishing on every loop() call (hundreds per second) floods the IDF MQTT
+  // event queue with QoS-1 PUBACKs, causing "Dropped inbound MQTT events".
+  // Throttle to once per HA_ENTITY_PUBLISH_INTERVAL_MS instead.
   if (this->ha_discovery_publish_in_progress_) {
-    this->publish_next_ha_discovery_entity_();
+    uint32_t now = millis();
+    if (now - this->ha_entity_last_publish_ms_ >= HA_ENTITY_PUBLISH_INTERVAL_MS) {
+      this->ha_entity_last_publish_ms_ = now;
+      this->publish_next_ha_discovery_entity_();
+    }
   }
 
   // Feature bit reading: runs after autodiscovery, before device ID generation.

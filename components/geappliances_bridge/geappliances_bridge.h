@@ -208,6 +208,7 @@ class GeappliancesBridge : public Component {
   bool ha_discovery_published_{false};
   bool ha_discovery_publish_in_progress_{false};
   uint32_t ha_discovery_last_activity_{0};         // millis() of last NEW ERD registered/seen (subscription mode)
+  uint32_t ha_entity_last_publish_ms_{0};          // millis() of last HA entity publish (rate-limiter)
   const char* last_logged_poll_state_{nullptr};    // tracks current_state_name to detect transitions for debug logging
   // ERD IDs received via subscription that have been seen at least once.
   // The quiet window is only reset when a NEW ERD ID arrives; repeated value
@@ -221,6 +222,12 @@ class GeappliancesBridge : public Component {
   // Passed to the MQTT adapter so it can publish ASCII text instead of hex.
   std::set<tiny_erd_t> ha_string_erds_set_;
   static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;  // 10 s quiet period (subscription mode)
+  // Minimum interval between successive HA entity publishes. Publishing one QoS-1
+  // MQTT message per loop() call (which runs ~100s of times/sec) floods the IDF
+  // MQTT event queue and causes "Dropped inbound MQTT events" warnings. 50 ms
+  // gives the stack time to send the packet and process the PUBACK before the next
+  // one arrives while keeping total discovery time reasonable (<100 entities × 50 ms = 5 s).
+  static constexpr uint32_t HA_ENTITY_PUBLISH_INTERVAL_MS = 50;
 
   // --- Runtime HA-discovery fetch state ------------------------------------
   // Entity definitions are downloaded at runtime from compact JSONL files
