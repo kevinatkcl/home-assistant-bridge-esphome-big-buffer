@@ -343,9 +343,10 @@ void GeappliancesBridge::loop() {
   }
 
   // One entity per rate-limited interval while publishing is in progress.
-  // Publishing on every loop() call (hundreds per second) floods the IDF MQTT
-  // event queue with QoS-1 PUBACKs, causing "Dropped inbound MQTT events".
-  // Throttle to once per HA_ENTITY_PUBLISH_INTERVAL_MS instead.
+  // Each entity is published QoS 0 (no PUBACK) to avoid generating inbound
+  // MQTT events that can overflow the IDF MQTT event queue.
+  // Still throttle to once per HA_ENTITY_PUBLISH_INTERVAL_MS to avoid back-to-
+  // back outbox fills while MQTT is processing the previous packet.
   if (this->ha_discovery_publish_in_progress_) {
     uint32_t now = millis();
     if (now - this->ha_entity_last_publish_ms_ >= HA_ENTITY_PUBLISH_INTERVAL_MS) {
@@ -1163,7 +1164,9 @@ void GeappliancesBridge::publish_ha_discovery_() {
            this->ha_registered_erds_.size());
 
   // Stack size 12 KB – enough for HTTPS + cJSON on ESP32.
-  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 12288, this, 5,
+  // Priority 1: below IDF MQTT task (5) so MQTT events aren't starved while
+  // the fetch task is actively parsing JSONL lines and filling the queue.
+  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 12288, this, 1,
                               &this->ha_fetch_task_handle_);
   if (rc != pdPASS) {
     ESP_LOGE(TAG, "HA discovery: failed to create fetch task (rc=%d)", (int)rc);
@@ -1205,7 +1208,7 @@ void GeappliancesBridge::publish_next_ha_discovery_entity_() {
       this->ha_discovery_queue_       = nullptr;
       this->ha_fetch_task_handle_     = nullptr;
     } else {
-      mqtt_client->publish(item->topic, item->payload, 1, true);  // QoS 1, retain
+      mqtt_client->publish(item->topic, item->payload, 0, true);  // QoS 0, retain
       ESP_LOGD(TAG, "HA discovery: published %s", item->topic.c_str());
       delete item;
     }
