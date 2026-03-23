@@ -277,9 +277,11 @@ Reserved/padding fields are skipped. Each sub-field entity gets a `field_id` (`f
 | YAML key | Default | Description |
 |----------|---------|-------------|
 | `generate_device_config` | `true` | Enable HA discovery. When `false`, no JSONL fetch occurs and no discovery payloads are published. |
-| `ha_discovery_base_url` | `https://raw.githubusercontent.com/joshualongenecker/home-assistant-bridge-esphome/copilot/implement-goal-2-autodiscovery/ha_discovery` | Base URL for JSONL category files. Override to point at a local server or a different branch. |
+| `ha_discovery_base_url` | `https://raw.githubusercontent.com/joshualongenecker/home-assistant-bridge-esphome/<branch>/ha_discovery` | Base URL for JSONL category files. The default points to the current development branch while this feature is in development; it will be updated to `main` once the PR is merged. Override to point at a local server or a different branch/tag. |
 
-Example override:
+> **Note**: Until this PR is merged into `main`, the default `ha_discovery_base_url` points to the `copilot/implement-goal-2-autodiscovery` branch. After merge, update the default in `__init__.py` and `geappliances_bridge.h` to point to `main`.
+
+Example override (use after merge to main):
 
 ```yaml
 geappliances_bridge:
