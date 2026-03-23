@@ -332,9 +332,22 @@ void GeappliancesBridge::loop() {
       ready = this->mqtt_bridge_polling_.polling_list_complete;
     } else {
       // Subscription mode: use the 10 s quiet window.
-      uint32_t now = millis();
-      uint32_t since_activity = now - this->ha_discovery_last_activity_;
-      ready = (since_activity >= HA_DISCOVERY_QUIET_MS);
+      //
+      // For AUTO mode, the bridge starts in subscription mode but may fall
+      // back to polling if the appliance does not respond with subscription
+      // publications.  Only start the quiet-window countdown once subscription
+      // activity has actually been detected.  If no subscription publications
+      // have arrived yet, the device may not support subscriptions and the
+      // bridge will eventually fall back to polling — discovery must wait for
+      // that transition (polling_list_complete) rather than firing prematurely
+      // when the 10 s timer expires from bridge init.
+      bool subscription_confirmed = (this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                                    this->subscription_activity_detected_;
+      if (subscription_confirmed) {
+        uint32_t now = millis();
+        uint32_t since_activity = now - this->ha_discovery_last_activity_;
+        ready = (since_activity >= HA_DISCOVERY_QUIET_MS);
+      }
     }
 
     if (ready) {
