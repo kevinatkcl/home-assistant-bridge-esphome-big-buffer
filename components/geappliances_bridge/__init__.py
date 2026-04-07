@@ -25,6 +25,7 @@ CONF_GEA3_UART_ID = "gea3_uart_id"
 CONF_GEA2_UART_ID = "gea2_uart_id"
 
 # Bridge (MQTT) configuration keys
+CONF_ADAPTER_ADDRESS = "adapter_address"
 CONF_DEVICE_ID = "device_id"
 CONF_MODE = "mode"
 CONF_POLLING_INTERVAL = "polling_interval"
@@ -267,6 +268,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.GenerateID(): cv.declare_id(GeappliancesBridge),
         cv.Optional(CONF_GEA3_UART_ID): cv.use_id(uart.UARTComponent),
         cv.Optional(CONF_GEA2_UART_ID): cv.use_id(uart.UARTComponent),
+        cv.Optional(CONF_ADAPTER_ADDRESS, default=0xE4): cv.int_range(min=0x00, max=0xFF),
         cv.Optional(CONF_DEVICE_ID): cv.string,
         cv.Optional(CONF_MODE, default=MODE_AUTO): cv.enum(
             {
@@ -323,6 +325,9 @@ async def to_code(config):
     # Set device ID if provided, otherwise it will be auto-generated
     if CONF_DEVICE_ID in config:
         cg.add(var.set_device_id(config[CONF_DEVICE_ID]))
+
+    # Set adapter address (defaults to 0xE4)
+    cg.add(var.set_client_address(config[CONF_ADAPTER_ADDRESS]))
 
     # Set bridge mode configuration (config[CONF_MODE] is now an integer from cv.enum)
     cg.add(var.set_mode(config[CONF_MODE]))
