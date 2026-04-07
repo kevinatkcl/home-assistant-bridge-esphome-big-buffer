@@ -2,7 +2,7 @@
 """
 Script to generate C header files from the public-appliance-api-documentation library.
 
-Generates two files:
+Generates the following files:
   1. erd_lists.h (from appliance_api_erd_definitions.json):
      ERD lists organized by appliance type for the polling bridge discovery
      phase, plus the POLLING_LIST_MAX_SIZE constant.
@@ -11,6 +11,17 @@ Generates two files:
      Feature API descriptors that map feature bits in ERDs 0x0092-0x0097 and 0x0109-0x010D to
      the associated ERD lists. Used at runtime to build the valid ERD set when
      appliance_api_parsing is enabled.
+
+  3. ha_discovery_config.h (from appliance_api_erd_definitions.json):
+     Minimal header with only the list of string-valued ERD IDs that the MQTT
+     adapter needs at init time.  The full HA-discovery entity data is no longer
+     stored in flash; instead it is fetched at runtime from compact JSONL files.
+
+  4. ha_discovery/*.jsonl (from appliance_api_erd_definitions.json):
+     One JSONL file per appliance category (common, refrigeration, laundry, …).
+     Each line is a compact JSON object with the pre-computed HA-discovery fields
+     for one entity.  The ESPHome bridge downloads only the categories that match
+     the connected appliance's registered ERD IDs, dramatically reducing flash usage.
 """
 
 import json
@@ -408,6 +419,873 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
     return "\n".join(lines)
 
 
+def get_erd_byte_size(erd_data: List[Dict]) -> int:
+    """Compute the actual byte size of an ERD from its data field definitions.
+
+    Each data field has an 'offset' (byte offset) and 'size' (byte count).
+    Fields may overlap (bit-fields share the same bytes), so the true ERD byte
+    size is the highest (offset + size) value across all fields.
+    """
+    if not erd_data:
+        return 0
+    return max((d.get('offset', 0) + d.get('size', 0)) for d in erd_data)
+
+
+def get_first_enum_values(erd_data: List[Dict]) -> Dict[str, str]:
+    """Return the values dict from the first enum-typed data field, or {}."""
+    for d in erd_data:
+        if d.get('type') == 'enum':
+            return d.get('values', {})
+    return {}
+
+
+def _get_first_enum_field_info(erd_data: List[Dict]):
+    """Return (values_dict, field_size) for the first enum-typed data field.
+
+    field_size is the byte width of the enum field (used to build the hex
+    extraction slice in value templates).  Falls back to ({}, 1) when no
+    enum field is present.
+    """
+    for d in erd_data:
+        if d.get('type') == 'enum':
+            return d.get('values', {}), max(1, d.get('size', 1))
+    return {}, 1
+
+
+# ---------------------------------------------------------------------------
+# Multi-field ERD helpers
+# ---------------------------------------------------------------------------
+
+def _is_reserved_field(name: str) -> bool:
+    """Return True if a field name indicates it is a reserved/padding field."""
+    return 'reserved' in name.lower()
+
+
+def _leaf_field_name(name: str) -> str:
+    """Return the leaf portion of a potentially dot-qualified field name.
+
+    E.g. "Allowed Selections.Cyclic Supported" → "Cyclic Supported".
+    """
+    return name.split('.')[-1].strip()
+
+
+def _field_slug(name: str) -> str:
+    """Convert a field name to a compact ASCII slug suitable for unique_ids.
+
+    Examples:
+        "Critical Major"          → "critical_major"
+        "GH (Fan Hi)"             → "gh_fan_hi"
+        "Cyclic Supported"        → "cyclic_supported"
+    """
+    slug = re.sub(r'[^a-z0-9]+', '_', name.lower())
+    slug = slug.strip('_')
+    # Cap at 64 chars to keep MQTT topic segments reasonable without losing
+    # enough uniqueness to cause collisions within a single ERD's sub-fields.
+    return slug[:64]
+
+
+def _has_bits(field: Dict) -> bool:
+    """Return True if a field carries a 'bits' sub-object (i.e. it is a bit-field)."""
+    return 'bits' in field and isinstance(field['bits'], dict)
+
+
+def _get_non_reserved_fields(erd_data: List[Dict]) -> List[Dict]:
+    """Return data fields whose names do not indicate reserved/padding content."""
+    return [d for d in erd_data if not _is_reserved_field(d.get('name', ''))]
+
+
+def _classify_erd_data(erd_data: List[Dict]) -> str:
+    """Classify how sub-fields of an ERD should be expanded for HA discovery.
+
+    Returns one of:
+        'single'      – one entity covers the whole ERD value
+        'byte_offset' – multiple fields at distinct byte positions (no bits)
+        'bitfield'    – all non-reserved fields are bit-flags at same byte range
+        'mixed'       – one primary byte-offset field + additional bit-flag fields
+    """
+    nr = _get_non_reserved_fields(erd_data)
+    if len(nr) <= 1:
+        return 'single'
+
+    with_bits = [d for d in nr if _has_bits(d)]
+    no_bits = [d for d in nr if not _has_bits(d)]
+
+    if not with_bits:
+        # All byte-offset: split only if they occupy different (offset, size) ranges
+        offsets = {(d.get('offset', 0), d.get('size', 1)) for d in no_bits}
+        return 'byte_offset' if len(offsets) > 1 else 'single'
+    elif not no_bits:
+        # Pure bit-field ERD
+        return 'bitfield'
+    else:
+        # Mixed: primary value field + bit-flag fields
+        return 'mixed'
+
+
+def _byte_subfield_value_template(field: Dict, erd_scaling: int) -> str:
+    """Generate a Jinja2 value_template that extracts one byte-offset sub-field.
+
+    The template slices the right hex-char range from the full ERD hex payload,
+    then converts to a number (applying scaling if needed) or an enum label.
+    """
+    offset = field.get('offset', 0)
+    size = field.get('size', 1)
+    hex_start = offset * 2
+    hex_end = (offset + size) * 2
+    field_type = field.get('type', 'u8')
+
+    if field_type == 'enum':
+        enum_values = field.get('values', {})
+        valid_pairs = sorted(
+            [(int(k), v) for k, v in enum_values.items() if v != 'Request Consumed'],
+            key=lambda x: x[0]
+        )
+        if not valid_pairs:
+            return f"{{{{ value[{hex_start}:{hex_end}] }}}}"
+        hex_chars = size * 2
+        mapping = ', '.join(f"'{k:0{hex_chars}x}': '{v}'" for k, v in valid_pairs)
+        return f"{{{{ {{{mapping}}}.get(value[{hex_start}:{hex_end}], 'Unknown') }}}}"
+    elif field_type == 'bool':
+        return f"{{{{ '01' if value[{hex_start}:{hex_end}] != '00' else '00' }}}}"
+    else:
+        # Numeric types: u8, u16, u32, i16, etc.
+        if erd_scaling and erd_scaling > 1:
+            dp = {10: 1, 100: 2}.get(erd_scaling, 3)
+            return (f"{{{{ (value[{hex_start}:{hex_end}] | int(base=16))"
+                    f" / {erd_scaling} | round({dp}) }}}}")
+        else:
+            return f"{{{{ value[{hex_start}:{hex_end}] | int(base=16) }}}}"
+
+
+def _bitfield_sub_value_template(field: Dict) -> str:
+    """Generate a Jinja2 value_template that extracts one bit-field sub-field.
+
+    For 1-bit fields the template outputs '01' (on) or '00' (off) so that it
+    works with the binary_sensor payload_on/payload_off defaults already
+    hardcoded in publish_next_ha_discovery_entity_().
+    For multi-bit fields the template outputs the extracted integer.
+    """
+    byte_offset = field.get('offset', 0)
+    byte_size = field.get('size', 1)
+    bits = field.get('bits', {})
+    bit_offset = bits.get('offset', 0)
+    bit_size = bits.get('size', 1)
+    hex_start = byte_offset * 2
+    hex_end = (byte_offset + byte_size) * 2
+
+    if bit_size == 1:
+        return (f"{{{{ '01' if ((value[{hex_start}:{hex_end}] | int(base=16))"
+                f" >> {bit_offset}) & 1 else '00' }}}}")
+    else:
+        mask = (1 << bit_size) - 1
+        return (f"{{{{ ((value[{hex_start}:{hex_end}] | int(base=16))"
+                f" >> {bit_offset}) & {mask} }}}}")
+
+
+def _unit_to_ha(unit: str) -> str:
+    """Convert an API unit string to the Home Assistant display unit."""
+    return {'degF': '\u00b0F', 'degC': '\u00b0C'}.get(unit, unit)
+
+
+def _c_str(s: str) -> str:
+    """Wrap a Python string as a C string literal (double-quoted, escaped)."""
+    escaped = s.replace('\\', '\\\\').replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _compute_sensor_value_template(scaling_factor: int, data_size: int) -> str:
+    """Return the Jinja2 value_template for a numeric sensor ERD."""
+    if scaling_factor > 1:
+        if scaling_factor == 10:
+            dp = 1
+        elif scaling_factor == 100:
+            dp = 2
+        else:
+            dp = 3
+        return f'{{{{ (value | int(base=16)) / {scaling_factor} | round({dp}) }}}}'
+    return '{{ value | int(base=16) }}'
+
+
+def _infer_unit_from_field_name(field_name: str, parent_unit: str) -> str:
+    """Override the parent ERD unit when the field name explicitly names a unit.
+
+    This handles ERDs like 0x7705 which has one field in °F and one in °C but
+    the parent unit_of_measurement is degF.  If the field name contains the
+    word 'Celsius' the unit is overridden to °C, and vice versa for 'Fahrenheit'.
+    Otherwise the parent unit is returned unchanged.
+    """
+    name_lower = field_name.lower()
+    if 'celsius' in name_lower:
+        return '\u00b0C'
+    if 'fahrenheit' in name_lower:
+        return '\u00b0F'
+    return parent_unit
+
+
+def _compute_binary_sensor_value_template(data_size: int) -> str:
+    """Return value_template for a binary_sensor ERD.
+
+    For single-byte ERDs the raw hex payload ('00'/'01') already matches
+    payload_on/payload_off, so no template is needed.  For multi-byte ERDs
+    we slice the first two hex characters to extract just the first byte.
+    """
+    return '{{ value[:2] }}' if data_size > 1 else ''
+
+
+def _select_options_and_templates(enum_values: Dict[str, str], data_size: int):
+    """Build options_json, value_template and command_template for a select entity.
+
+    'Request Consumed' (value 255) is excluded from selectable options because
+    it is a write-only protocol marker (not a valid user-visible state).
+    Returns (options_json_str, value_template_str, command_template_str).
+    """
+    # Filter out 'Request Consumed' (255) and sort by numeric key
+    valid_pairs = sorted(
+        [(int(k), v) for k, v in enum_values.items() if v != 'Request Consumed'],
+        key=lambda x: x[0]
+    )
+    if not valid_pairs:
+        return ('[]', '', '')
+
+    hex_chars = data_size * 2
+
+    # Build value_template: map hex string -> option name
+    hex_to_name = ', '.join(
+        f"'{k:0{hex_chars}x}': '{v}'" for k, v in valid_pairs
+    )
+    value_template = f"{{{{ {{{hex_to_name}}}.get(value[:{hex_chars}], 'Unknown') }}}}"
+
+    # Build command_template: map option name -> hex string
+    name_to_hex = ', '.join(
+        f"'{v}': '{k:0{hex_chars}x}'" for k, v in valid_pairs
+    )
+    command_template = f"{{{{ {{{name_to_hex}}}[value] }}}}"
+
+    # Build options JSON array
+    option_names = [v for _, v in valid_pairs]
+    options_json = '[' + ', '.join(f'"{name}"' for name in option_names) + ']'
+
+    return (options_json, value_template, command_template)
+
+
+def _enum_sensor_value_template(enum_values: Dict[str, str], field_size: int) -> str:
+    """Build value_template for a read-only enum sensor.
+
+    Maps hex byte values to their human-readable label.  Works the same as the
+    select value_template but without options or command_template.
+    'Request Consumed' (255) is excluded.
+    Falls back to showing the raw first-byte hex string when no valid mappings
+    exist.
+    """
+    valid_pairs = sorted(
+        [(int(k), v) for k, v in enum_values.items() if v != 'Request Consumed'],
+        key=lambda x: x[0]
+    )
+    if not valid_pairs:
+        return '{{ value[:2] }}'
+
+    hex_chars = field_size * 2
+    hex_to_name = ', '.join(
+        f"'{k:0{hex_chars}x}': '{v}'" for k, v in valid_pairs
+    )
+    return f"{{{{ {{{hex_to_name}}}.get(value[:{hex_chars}], 'Unknown') }}}}"
+
+
+def _strip_pair_role_word(name: str) -> str:
+    """Remove trailing or standalone 'Status'/'Request' words from a paired-ERD name.
+
+    Examples:
+        'Fan Configuration in Cooling Status'  -> 'Fan Configuration in Cooling'
+        'Freeze Sentinel Request'               -> 'Freeze Sentinel'
+    """
+    # Strip the word wherever it appears as a complete word (word boundaries)
+    result = re.sub(r'\b(?:Status|Request)\b', '', name, flags=re.IGNORECASE)
+    # Collapse multiple spaces and strip surrounding whitespace
+    result = re.sub(r'\s+', ' ', result).strip()
+    return result
+
+
+def _number_command_template(data_size: int, scaling_factor: int) -> str:
+    """Return command_template for a number entity."""
+    hex_chars = data_size * 2
+    if scaling_factor > 1:
+        return f"{{{{ '%0{hex_chars}x' % ((value | float) * {scaling_factor} | int) }}}}"
+    return f"{{{{ '%0{hex_chars}x' % (value | int) }}}}"
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers for HA-discovery data collection
+# ---------------------------------------------------------------------------
+
+def _get_primary_field(erd_by_id: Dict[str, Dict], paired_erd_str: str):
+    """Return the first non-reserved, non-bitfield data field of the paired ERD.
+
+    Used by number entities to extract only the primary value bytes from the
+    (potentially multi-field) status ERD payload.
+    Returns None if the paired ERD is unknown or has no suitable field.
+    """
+    if not paired_erd_str or paired_erd_str not in erd_by_id:
+        return None
+    status_data = erd_by_id[paired_erd_str].get('data', [])
+    return next(
+        (d for d in status_data
+         if not _is_reserved_field(d.get('name', ''))
+         and not _has_bits(d)),
+        None
+    )
+
+
+def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
+    """Process all ERDs with ha_domain metadata and return a list of entry dicts.
+
+    Each dict has the keys: erd_id, name, domain, unit, device_class,
+    state_class, scaling_factor, data_size, paired_erd_id, pair_role,
+    value_template, command_template, options_json, field_id.
+
+    This is the single source of truth for ha-discovery data; both the C header
+    generator and the JSONL generator call this function.
+    """
+    erd_by_id: Dict[str, Dict] = {e['id']: e for e in erds}
+    ha_erds = [e for e in erds if 'ha_domain' in e]
+    entries: List[Dict] = []
+
+    def collect(erd_id_int: int, name: str, domain: str, unit: str,
+                dev_cls: str, state_cls: str, scaling: int, d_size: int,
+                paired_id: int, role: str, val_tmpl: str, cmd_tmpl: str,
+                opts: str, field_id: str) -> None:
+        entries.append({
+            'erd_id': erd_id_int,
+            'name': name,
+            'domain': domain,
+            'unit': unit,
+            'device_class': dev_cls,
+            'state_class': state_cls,
+            'scaling_factor': scaling,
+            'data_size': d_size,
+            'paired_erd_id': paired_id,
+            'pair_role': role,
+            'value_template': val_tmpl,
+            'command_template': cmd_tmpl,
+            'options_json': opts,
+            'field_id': field_id,
+        })
+
+    for erd in ha_erds:
+        erd_id_int = parse_erd_id(erd['id'])
+        name = erd.get('name', '')
+        ha_domain = erd.get('ha_domain', '')
+        unit = _unit_to_ha(erd.get('unit_of_measurement') or '')
+        device_class = erd.get('device_class') or ''
+        state_class = erd.get('state_class') or ''
+        scaling_factor = int(erd.get('scaling_factor') or 1)
+        pair_role = erd.get('pair_role') or ''
+        paired_erd_str = erd.get('paired_erd') or ''
+        paired_erd_id = parse_erd_id(paired_erd_str) if paired_erd_str else 0
+        display_name = _strip_pair_role_word(name) if pair_role else name
+        erd_data = erd.get('data', [])
+        data_size = get_erd_byte_size(erd_data) or 1
+
+        classification = (
+            'single'
+            if ha_domain in ('select', 'number', 'button', 'switch')
+            else _classify_erd_data(erd_data)
+        )
+
+        if classification == 'single':
+            vt, ct, opts = '', '', ''
+
+            if ha_domain == 'sensor':
+                if device_class == 'enum':
+                    ev, fs = _get_first_enum_field_info(erd_data)
+                    vt = _enum_sensor_value_template(ev, fs)
+                elif data_size <= 4:
+                    vt = _compute_sensor_value_template(scaling_factor, data_size)
+            elif ha_domain == 'binary_sensor':
+                vt = _compute_binary_sensor_value_template(data_size)
+            elif ha_domain == 'switch':
+                if paired_erd_str and paired_erd_str in erd_by_id:
+                    s_size = get_erd_byte_size(erd_by_id[paired_erd_str].get('data', [])) or 1
+                    vt = _compute_binary_sensor_value_template(s_size)
+            elif ha_domain == 'select':
+                ev = get_first_enum_values(erd_data)
+                if ev:
+                    opts, vt, ct = _select_options_and_templates(ev, data_size)
+            elif ha_domain == 'number':
+                pf = _get_primary_field(erd_by_id, paired_erd_str)
+                if pf:
+                    p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
+                    vt = _byte_subfield_value_template(pf, p_scale)
+                elif paired_erd_str and paired_erd_str in erd_by_id:
+                    p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
+                    vt = _compute_sensor_value_template(p_scale, data_size)
+                else:
+                    vt = _compute_sensor_value_template(scaling_factor, data_size)
+                ct = _number_command_template(data_size, scaling_factor)
+            # button: no templates
+
+            collect(erd_id_int, display_name, ha_domain, unit, device_class,
+                    state_class, scaling_factor, data_size, paired_erd_id,
+                    pair_role, vt, ct, opts, '')
+
+        elif classification == 'byte_offset':
+            nr_fields = _get_non_reserved_fields(erd_data)
+            for idx, field in enumerate(nr_fields):
+                leaf = _leaf_field_name(field.get('name', ''))
+                entity_name = (leaf if leaf.lower().startswith(display_name.lower())
+                               else f'{display_name} - {leaf}')
+                fid = '' if idx == 0 else _field_slug(leaf)
+                f_type = field.get('type', '')
+                f_dev_cls = 'enum' if f_type == 'enum' else (device_class if idx == 0 else '')
+                f_state_cls = state_class if idx == 0 else ''
+                f_unit = _infer_unit_from_field_name(leaf, unit)
+                vt = _byte_subfield_value_template(field, scaling_factor)
+                collect(erd_id_int, entity_name, ha_domain, f_unit, f_dev_cls,
+                        f_state_cls, scaling_factor, data_size, paired_erd_id,
+                        pair_role, vt, '', '', fid)
+
+        elif classification == 'bitfield':
+            for field in _get_non_reserved_fields(erd_data):
+                leaf = _leaf_field_name(field.get('name', ''))
+                fid = _field_slug(leaf)
+                bits_size = field.get('bits', {}).get('size', 1)
+                sub_domain = 'binary_sensor' if bits_size == 1 else 'sensor'
+                vt = _bitfield_sub_value_template(field)
+                collect(erd_id_int, f'{display_name} - {leaf}', sub_domain, '', '',
+                        '', scaling_factor, data_size, paired_erd_id, pair_role,
+                        vt, '', '', fid)
+
+        elif classification == 'mixed':
+            primary = next(
+                (d for d in erd_data
+                 if not _has_bits(d) and not _is_reserved_field(d.get('name', ''))),
+                None
+            )
+            if primary:
+                p_type = primary.get('type', '')
+                p_dev_cls = 'enum' if p_type == 'enum' else device_class
+                p_vt = _byte_subfield_value_template(primary, scaling_factor)
+                collect(erd_id_int, display_name, ha_domain, unit, p_dev_cls,
+                        state_class, scaling_factor, data_size, paired_erd_id,
+                        pair_role, p_vt, '', '', '')
+
+            for field in [d for d in erd_data
+                          if _has_bits(d) and not _is_reserved_field(d.get('name', ''))]:
+                leaf = _leaf_field_name(field.get('name', ''))
+                fid = _field_slug(leaf)
+                bits_size = field.get('bits', {}).get('size', 1)
+                sub_domain = 'binary_sensor' if bits_size == 1 else 'sensor'
+                vt = _bitfield_sub_value_template(field)
+                collect(erd_id_int, f'{display_name} - {leaf}', sub_domain, '', '',
+                        '', scaling_factor, data_size, paired_erd_id, pair_role,
+                        vt, '', '', fid)
+
+    return entries
+
+
+# Category definitions: (name, low ERD id, high ERD id)
+_HA_DISCOVERY_CATEGORIES = [
+    ('common',        0x0000, 0x0FFF),
+    ('refrigeration', 0x1000, 0x1FFF),
+    ('laundry',       0x2000, 0x2FFF),
+    ('dishwasher',    0x3000, 0x3FFF),
+    ('waterheater',   0x4000, 0x4FFF),
+    ('range',         0x5000, 0x5FFF),
+    ('airconditioning', 0x7000, 0x7FFF),
+    ('waterfilter',   0x8000, 0x8FFF),
+    ('smallappliance', 0x9000, 0x9FFF),
+    ('energy',        0xD000, 0xDFFF),
+]
+
+
+def generate_ha_discovery_jsonl_by_category(erds: List[Dict]) -> Dict[str, str]:
+    """Generate compact JSONL content grouped by appliance category.
+
+    Returns a dict mapping category name → JSONL string content.
+    Each JSONL line is a compact JSON object with the pre-computed ha-discovery
+    fields for one entity.  Fields that equal their default value are omitted to
+    reduce file size.
+    """
+    entries = _collect_ha_discovery_entries(erds)
+
+    categorized: Dict[str, list] = {cat: [] for cat, _, _ in _HA_DISCOVERY_CATEGORIES}
+    for entry in entries:
+        eid = entry['erd_id']
+        for cat, lo, hi in _HA_DISCOVERY_CATEGORIES:
+            if lo <= eid <= hi:
+                categorized[cat].append(entry)
+                break
+
+    result: Dict[str, str] = {}
+    for cat, _, _ in _HA_DISCOVERY_CATEGORIES:
+        cat_entries = categorized[cat]
+        if not cat_entries:
+            continue
+        lines = []
+        for e in cat_entries:
+            obj: Dict = {
+                'i': f'{e["erd_id"]:04x}',
+                'n': e['name'],
+                'd': e['domain'],
+                'ds': e['data_size'],
+            }
+            # Omit fields that equal their defaults to save space
+            if e['unit']:                         obj['u']  = e['unit']
+            if e['device_class']:                 obj['dc'] = e['device_class']
+            if e['state_class']:                  obj['sc'] = e['state_class']
+            if e['scaling_factor'] != 1:          obj['sf'] = e['scaling_factor']
+            if e['paired_erd_id']:                obj['p']  = f'{e["paired_erd_id"]:04x}'
+            if e['pair_role']:                    obj['r']  = e['pair_role']
+            if e['value_template']:               obj['vt'] = e['value_template']
+            if e['command_template']:             obj['ct'] = e['command_template']
+            if e['options_json']:                 obj['o']  = e['options_json']
+            if e['field_id']:                     obj['fi'] = e['field_id']
+            lines.append(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
+        result[cat] = '\n'.join(lines) + '\n'
+
+    return result
+
+
+def generate_ha_discovery_minimal_header(erds: List[Dict]) -> str:
+    """Generate a minimal ha_discovery_config.h with only the string-ERD list.
+
+    The full HA-discovery entity table is no longer compiled into flash.
+    Instead the bridge fetches compact per-category JSONL files at runtime.
+    """
+    ha_erds = [e for e in erds if 'ha_domain' in e]
+    string_ha_erds = [
+        e for e in ha_erds
+        if any(d.get('type') == 'string' for d in e.get('data', []))
+    ]
+
+    lines: List[str] = []
+    lines.append('/*!')
+    lines.append(' * @file')
+    lines.append(' * @brief Known string-valued ERD IDs for the MQTT adapter.')
+    lines.append(' *')
+    lines.append(' * Full HA-discovery entity definitions are NOT stored here.')
+    lines.append(' * They are fetched at runtime from compact per-category JSONL files hosted at:')
+    lines.append(' *   https://raw.githubusercontent.com/joshualongenecker/'
+                 'home-assistant-bridge-esphome/main/ha_discovery/')
+    lines.append(' *')
+    lines.append(' * Do not edit this file manually.'
+                 ' Run scripts/generate_erd_lists.py to regenerate.')
+    lines.append(' */')
+    lines.append('')
+    lines.append('#ifndef HA_DISCOVERY_CONFIG_H')
+    lines.append('#define HA_DISCOVERY_CONFIG_H')
+    lines.append('')
+    lines.append('#include <stdint.h>')
+    lines.append('')
+    lines.append('// ERDs whose value is a null-terminated ASCII string.')
+    lines.append('// The MQTT adapter publishes these as text rather than hex.')
+    lines.append('static const uint16_t ha_string_erd_ids[] = {')
+    for e in string_ha_erds:
+        eid = parse_erd_id(e['id'])
+        lines.append(f'  0x{eid:04x},  /* {e["name"]} */')
+    lines.append('};')
+    lines.append('static const uint16_t ha_string_erd_count =')
+    lines.append('  (uint16_t)(sizeof(ha_string_erd_ids) / sizeof(ha_string_erd_ids[0]));')
+    lines.append('')
+    lines.append('#endif')
+    lines.append('')
+
+    return '\n'.join(lines)
+
+
+
+    """Generate ha_discovery_config.h from ERDs that have ha_domain metadata.
+
+    Each annotated ERD produces one entry in the ha_erd_discovery_configs[] array.
+    The C++ bridge reads this array at startup and publishes an MQTT Discovery
+    payload for each entry, causing Home Assistant to auto-create entities.
+    """
+    # Build a lookup dict: ERD id string -> ERD dict for paired-ERD resolution
+    erd_by_id: Dict[str, Dict] = {e['id']: e for e in erds}
+
+    lines: List[str] = []
+    lines.append('/*!')
+    lines.append(' * @file')
+    lines.append(' * @brief Home Assistant MQTT Discovery configuration per ERD')
+    lines.append(' *')
+    lines.append(' * This file is auto-generated from appliance_api_erd_definitions.json')
+    lines.append(' * Do not edit this file manually. Run scripts/generate_erd_lists.py to regenerate.')
+    lines.append(' */')
+    lines.append('')
+    lines.append('#ifndef HA_DISCOVERY_CONFIG_H')
+    lines.append('#define HA_DISCOVERY_CONFIG_H')
+    lines.append('')
+    lines.append('#include <stdint.h>')
+    lines.append('')
+    lines.append('typedef struct {')
+    lines.append('  uint16_t erd_id;')
+    lines.append('  const char* name;')
+    lines.append('  const char* ha_domain;')
+    lines.append('  const char* unit_of_measurement;  /* "" if none */')
+    lines.append('  const char* device_class;          /* "" if none */')
+    lines.append('  const char* state_class;           /* "" if none */')
+    lines.append('  uint32_t scaling_factor;           /* 1 if no scaling */')
+    lines.append('  uint8_t data_size;                 /* ERD payload byte count */')
+    lines.append('  uint16_t paired_erd_id;            /* 0 if no pair */')
+    lines.append('  const char* pair_role;             /* "status", "request", or "" */')
+    lines.append('  const char* value_template;        /* Jinja2 template for state values; "" if none */')
+    lines.append('  const char* command_template;      /* Jinja2 template for command payloads; "" if none */')
+    lines.append('  const char* options_json;          /* JSON array of select options; "" if not select */')
+    lines.append('  const char* field_id;              /* "" for single-field ERDs; slug for sub-field entities */')
+    lines.append('} ha_erd_discovery_config_t;')
+    lines.append('')
+    lines.append('static const ha_erd_discovery_config_t ha_erd_discovery_configs[] = {')
+
+    ha_erds = [e for e in erds if 'ha_domain' in e]
+
+    def emit(comment: str,
+             erd_id_int: int, entity_name: str, domain: str, unit: str,
+             dev_cls: str, state_cls: str, scaling: int, d_size: int,
+             paired_id: int, role: str, val_tmpl: str, cmd_tmpl: str,
+             opts: str, field_id: str) -> None:
+        fields = [
+            f'0x{erd_id_int:04x}',
+            _c_str(entity_name),
+            _c_str(domain),
+            _c_str(unit),
+            _c_str(dev_cls),
+            _c_str(state_cls),
+            str(scaling),
+            str(d_size),
+            f'0x{paired_id:04x}',
+            _c_str(role),
+            _c_str(val_tmpl),
+            _c_str(cmd_tmpl),
+            _c_str(opts),
+            _c_str(field_id),
+        ]
+        lines.append(f'  /* {comment} */')
+        lines.append('  {' + ', '.join(fields) + '},')
+
+    for erd in ha_erds:
+        erd_id_int = parse_erd_id(erd['id'])
+        name = erd.get('name', '')
+        ha_domain = erd.get('ha_domain', '')
+        unit_raw = erd.get('unit_of_measurement') or ''
+        unit = _unit_to_ha(unit_raw)
+        device_class = erd.get('device_class') or ''
+        state_class = erd.get('state_class') or ''
+        scaling_factor = int(erd.get('scaling_factor') or 1)
+        pair_role = erd.get('pair_role') or ''
+        paired_erd_str = erd.get('paired_erd') or ''
+        paired_erd_id = parse_erd_id(paired_erd_str) if paired_erd_str else 0
+
+        # Strip "Status"/"Request" role words from names on paired ERDs so both
+        # sides of a pair share a clean base name (e.g. "Fan Configuration in
+        # Cooling" instead of "Fan Configuration in Cooling Status/Request").
+        display_name = _strip_pair_role_word(name) if pair_role else name
+
+        erd_data = erd.get('data', [])
+        data_size = get_erd_byte_size(erd_data)
+        if data_size == 0:
+            data_size = 1  # safe fallback
+
+        # Classify the ERD's data fields.
+        # select / number / button / switch ERDs are always treated as single
+        # entities (they read/write via paired status ERD or have special roles).
+        classification = (
+            'single'
+            if ha_domain in ('select', 'number', 'button', 'switch')
+            else _classify_erd_data(erd_data)
+        )
+
+        # ------------------------------------------------------------------
+        # Helper: find the primary (first non-reserved, non-bits) field of the
+        # paired status ERD so number entities can extract the right bytes.
+        # ------------------------------------------------------------------
+        def _primary_field_of(paired_str):
+            if not paired_str or paired_str not in erd_by_id:
+                return None
+            status_data = erd_by_id[paired_str].get('data', [])
+            return next(
+                (d for d in status_data
+                 if not _is_reserved_field(d.get('name', ''))
+                 and not _has_bits(d)),
+                None
+            )
+
+        # ------------------------------------------------------------------
+        # SINGLE-entity ERDs (existing behaviour, plus select/number/switch/button)
+        # ------------------------------------------------------------------
+        if classification == 'single':
+            value_template = ''
+            command_template = ''
+            options_json = ''
+
+            if ha_domain == 'sensor':
+                if device_class == 'enum':
+                    ev, fs = _get_first_enum_field_info(erd_data)
+                    value_template = _enum_sensor_value_template(ev, fs)
+                elif data_size <= 4:
+                    value_template = _compute_sensor_value_template(scaling_factor, data_size)
+                # For large ERDs (data_size > 4) leave value_template empty.
+
+            elif ha_domain == 'binary_sensor':
+                value_template = _compute_binary_sensor_value_template(data_size)
+
+            elif ha_domain == 'switch':
+                if paired_erd_str and paired_erd_str in erd_by_id:
+                    status_erd = erd_by_id[paired_erd_str]
+                    s_size = get_erd_byte_size(status_erd.get('data', [])) or 1
+                    value_template = _compute_binary_sensor_value_template(s_size)
+
+            elif ha_domain == 'select':
+                ev = get_first_enum_values(erd_data)
+                if ev:
+                    options_json, value_template, command_template = \
+                        _select_options_and_templates(ev, data_size)
+
+            elif ha_domain == 'number':
+                pf = _primary_field_of(paired_erd_str)
+                if pf:
+                    p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
+                    value_template = _byte_subfield_value_template(pf, p_scale)
+                elif paired_erd_str and paired_erd_str in erd_by_id:
+                    p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
+                    value_template = _compute_sensor_value_template(p_scale, data_size)
+                else:
+                    value_template = _compute_sensor_value_template(scaling_factor, data_size)
+                command_template = _number_command_template(data_size, scaling_factor)
+            # button: no templates
+
+            emit(f'{erd["id"]} {name}',
+                 erd_id_int, display_name, ha_domain, unit,
+                 device_class, state_class, scaling_factor, data_size,
+                 paired_erd_id, pair_role,
+                 value_template, command_template, options_json,
+                 field_id='')
+
+        # ------------------------------------------------------------------
+        # BYTE-OFFSET multi-field ERDs: one entity per non-reserved field.
+        # The first field gets field_id="" (backward compat); the rest get slugs.
+        # ------------------------------------------------------------------
+        elif classification == 'byte_offset':
+            nr_fields = _get_non_reserved_fields(erd_data)
+            for idx, field in enumerate(nr_fields):
+                leaf = _leaf_field_name(field.get('name', ''))
+                # Check if the leaf name already encodes the ERD name to avoid
+                # redundant prefixes like "Make-up Air Fan Cfm Status Make-up Air...".
+                if leaf.lower().startswith(display_name.lower()):
+                    entity_name = leaf
+                else:
+                    entity_name = f'{display_name} - {leaf}'
+
+                fid = '' if idx == 0 else _field_slug(leaf)
+
+                # For enum sub-fields override device_class to "enum"
+                f_type = field.get('type', '')
+                f_dev_cls = 'enum' if f_type == 'enum' else (device_class if idx == 0 else '')
+                f_state_cls = state_class if idx == 0 else ''
+                # Infer the correct unit from the field name when it explicitly
+                # names a unit (e.g., "in Celsius x 10"), overriding the parent
+                # ERD unit so sensors with mixed Fahrenheit/Celsius sub-fields
+                # each carry the right display unit.
+                f_unit = _infer_unit_from_field_name(leaf, unit)
+
+                vt = _byte_subfield_value_template(field, scaling_factor)
+
+                emit(f'{erd["id"]} {name} - {leaf}',
+                     erd_id_int, entity_name, ha_domain, f_unit,
+                     f_dev_cls, f_state_cls, scaling_factor, data_size,
+                     paired_erd_id, pair_role,
+                     vt, '', '',
+                     field_id=fid)
+
+        # ------------------------------------------------------------------
+        # BITFIELD ERDs: one binary_sensor / sensor entity per non-reserved bit.
+        # All get field_id slugs (the old single entity is replaced entirely).
+        # ------------------------------------------------------------------
+        elif classification == 'bitfield':
+            nr_fields = _get_non_reserved_fields(erd_data)
+            for field in nr_fields:
+                leaf = _leaf_field_name(field.get('name', ''))
+                entity_name = f'{display_name} - {leaf}'
+                fid = _field_slug(leaf)
+
+                bits_size = field.get('bits', {}).get('size', 1)
+                # 1-bit fields → binary_sensor; multi-bit → sensor
+                sub_domain = 'binary_sensor' if bits_size == 1 else 'sensor'
+                vt = _bitfield_sub_value_template(field)
+
+                emit(f'{erd["id"]} {name} - {leaf}',
+                     erd_id_int, entity_name, sub_domain, '',
+                     '', '', scaling_factor, data_size,
+                     paired_erd_id, pair_role,
+                     vt, '', '',
+                     field_id=fid)
+
+        # ------------------------------------------------------------------
+        # MIXED ERDs: primary byte-offset field (keep current behaviour)
+        # plus additional binary_sensor entities for non-reserved bit-fields.
+        # ------------------------------------------------------------------
+        elif classification == 'mixed':
+            # Primary field (no bits sub-object)
+            primary = next(
+                (d for d in erd_data
+                 if not _has_bits(d) and not _is_reserved_field(d.get('name', ''))),
+                None
+            )
+            if primary:
+                p_type = primary.get('type', '')
+                p_dev_cls = 'enum' if p_type == 'enum' else device_class
+                p_vt = _byte_subfield_value_template(primary, scaling_factor)
+                emit(f'{erd["id"]} {name}',
+                     erd_id_int, display_name, ha_domain, unit,
+                     p_dev_cls, state_class, scaling_factor, data_size,
+                     paired_erd_id, pair_role,
+                     p_vt, '', '',
+                     field_id='')
+
+            # Bit-field sub-fields (non-reserved)
+            bit_fields = [d for d in erd_data
+                          if _has_bits(d) and not _is_reserved_field(d.get('name', ''))]
+            for field in bit_fields:
+                leaf = _leaf_field_name(field.get('name', ''))
+                entity_name = f'{display_name} - {leaf}'
+                fid = _field_slug(leaf)
+                bits_size = field.get('bits', {}).get('size', 1)
+                sub_domain = 'binary_sensor' if bits_size == 1 else 'sensor'
+                vt = _bitfield_sub_value_template(field)
+                emit(f'{erd["id"]} {name} - {leaf}',
+                     erd_id_int, entity_name, sub_domain, '',
+                     '', '', scaling_factor, data_size,
+                     paired_erd_id, pair_role,
+                     vt, '', '',
+                     field_id=fid)
+
+    lines.append('};')
+    lines.append('')
+    lines.append('static const uint16_t ha_erd_discovery_config_count =')
+    lines.append('  (uint16_t)(sizeof(ha_erd_discovery_configs) / sizeof(ha_erd_discovery_configs[0]));')
+    lines.append('')
+
+    # Generate a compact list of ERD IDs whose raw bytes are a null-terminated
+    # ASCII string (type == "string" in the JSON metadata).  The MQTT adapter
+    # uses this list to publish ASCII text instead of a hex string for those ERDs.
+    string_ha_erds = [
+        e for e in ha_erds
+        if any(d.get('type') == 'string' for d in e.get('data', []))
+    ]
+    lines.append('// ERDs whose value is a null-terminated ASCII string.')
+    lines.append('// The MQTT adapter publishes these as text rather than hex.')
+    lines.append('static const uint16_t ha_string_erd_ids[] = {')
+    for e in string_ha_erds:
+        eid = parse_erd_id(e['id'])
+        lines.append(f'  0x{eid:04x},  /* {e["name"]} */')
+    lines.append('};')
+    lines.append('static const uint16_t ha_string_erd_count =')
+    lines.append('  (uint16_t)(sizeof(ha_string_erd_ids) / sizeof(ha_string_erd_ids[0]));')
+    lines.append('')
+    lines.append('#endif')
+    lines.append('')
+
+    return '\n'.join(lines)
+
+
 def main():
     """Main entry point for the script."""
     # Determine paths relative to script location
@@ -494,6 +1372,35 @@ def main():
     print(f"\nWriting generated header to {api_output_file}")
     with open(api_output_file, 'w') as f:
         f.write(api_header_content)
+
+    # -------------------------------------------------------------------------
+    # Generate ha_discovery_config.h (minimal - only string ERD list)
+    # and per-category JSONL files for runtime fetch
+    # -------------------------------------------------------------------------
+    ha_output_file = repo_root / 'components' / 'geappliances_bridge' / 'ha_discovery_config.h'
+
+    ha_erds = [e for e in erds if 'ha_domain' in e]
+    print(f"\nFound {len(ha_erds)} ERDs with ha_domain metadata for HA MQTT Discovery")
+
+    # Write minimal C header (string ERD list only; full entity data moved to JSONL)
+    ha_header_content = generate_ha_discovery_minimal_header(erds)
+    print(f"\nWriting minimal ha_discovery_config.h to {ha_output_file}")
+    with open(ha_output_file, 'w') as f:
+        f.write(ha_header_content)
+
+    # Write per-category JSONL files for runtime download
+    jsonl_dir = repo_root / 'ha_discovery'
+    jsonl_dir.mkdir(exist_ok=True)
+    jsonl_by_cat = generate_ha_discovery_jsonl_by_category(erds)
+    total_entries = 0
+    for cat, content in jsonl_by_cat.items():
+        outfile = jsonl_dir / f'{cat}.jsonl'
+        with open(outfile, 'w', encoding='utf-8') as f:
+            f.write(content)
+        n = content.count('\n')
+        total_entries += n
+        print(f"  ha_discovery/{cat}.jsonl  ({n} entities, {len(content):,} bytes)")
+    print(f"Wrote {len(jsonl_by_cat)} JSONL category files with {total_entries} total entities")
 
     print("Done!")
 

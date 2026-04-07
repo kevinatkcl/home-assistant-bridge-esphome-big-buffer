@@ -52,13 +52,17 @@ class GeappliancesBridge : public Component {
   void set_polling_interval(uint32_t polling_interval) { this->polling_interval_ms_ = polling_interval; }
   void set_polling_only_publish_on_change(bool only_publish_on_change) { this->polling_only_publish_on_change_ = only_publish_on_change; }
   void set_appliance_api_parsing(bool appliance_api_parsing) { this->appliance_api_parsing_ = appliance_api_parsing; }
+  void set_generate_device_config(bool generate_device_config) { this->generate_device_config_ = generate_device_config; }
   void add_custom_erd(uint16_t erd) { this->custom_erds_vec_.push_back(static_cast<tiny_erd_t>(erd)); }
+  void set_ha_discovery_base_url(const std::string& url) { this->ha_discovery_base_url_ = url; }
 
  protected:
   void on_mqtt_connected_();
   void notify_mqtt_disconnected_();
   void handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args);
   void initialize_mqtt_bridge_();
+  void publish_ha_discovery_();
+  void publish_next_ha_discovery_entity_();
   void configure_polling_optional_lists_();
   void check_subscription_activity_();
   void run_autodiscovery_();
@@ -140,6 +144,7 @@ class GeappliancesBridge : public Component {
   uint32_t polling_interval_ms_{10000};
   bool polling_only_publish_on_change_{false};
   bool appliance_api_parsing_{false};
+  bool generate_device_config_{true};
   // User-configured custom ERDs to poll in addition to the standard list.
   // Populated by add_custom_erd() calls generated from the YAML custom_erds option.
   std::vector<tiny_erd_t> custom_erds_vec_;
@@ -193,6 +198,70 @@ class GeappliancesBridge : public Component {
   // tight-loop continues processing UART bytes without being stalled by parse_and_log_feature_bits_().
   bool feature_bit_parse_pending_{false};
 
+  // HA device discovery publish: deferred until ERD registration has settled.
+  // In subscription mode: publish 10 s after the last NEW ERD subscription
+  //   publication is received (or 30 s from bridge init as a safety cap).
+  // In polling mode: publish 10 s after the last ERD is registered by the
+  //   polling bridge (tracked by comparing ha_registered_erds_.size() each
+  //   loop iteration — the same 30 s cap applies).
+  bool ha_discovery_pending_{false};
+  bool ha_discovery_published_{false};
+  bool ha_discovery_publish_in_progress_{false};
+  uint32_t ha_discovery_last_activity_{0};         // millis() of last NEW ERD registered/seen (subscription mode)
+  uint32_t ha_entity_last_publish_ms_{0};          // millis() of last HA entity publish (rate-limiter)
+  const char* last_logged_poll_state_{nullptr};    // tracks current_state_name to detect transitions for debug logging
+  // ERD IDs received via subscription that have been seen at least once.
+  // The quiet window is only reset when a NEW ERD ID arrives; repeated value
+  // updates for already-known ERDs do not extend the wait.
+  std::set<tiny_erd_t> ha_discovery_seen_erds_;
+  // Set of all ERD IDs that the device has registered (populated by the MQTT
+  // adapter's register_erd callback). Used to filter HA discovery entities so
+  // only ERDs actually supported by the connected device are published.
+  std::set<tiny_erd_t> ha_registered_erds_;
+  // Set of string-type ERD IDs built from ha_discovery_config.h at bridge init.
+  // Passed to the MQTT adapter so it can publish ASCII text instead of hex.
+  std::set<tiny_erd_t> ha_string_erds_set_;
+  static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;  // 10 s quiet period (subscription mode)
+  // Minimum interval between successive HA entity publishes. Publishing one QoS-1
+  // MQTT message per loop() call (which runs ~100s of times/sec) floods the IDF
+  // MQTT event queue and causes "Dropped inbound MQTT events" warnings. 50 ms
+  // gives the stack time to send the packet and process the PUBACK before the next
+  // one arrives while keeping total discovery time reasonable (<100 entities × 50 ms = 5 s).
+  static constexpr uint32_t HA_ENTITY_PUBLISH_INTERVAL_MS = 50;
+
+  // --- Runtime HA-discovery fetch state ------------------------------------
+  // Entity definitions are downloaded at runtime from compact JSONL files
+  // rather than stored in flash.  A FreeRTOS background task performs the
+  // HTTPS fetch; each discovered entity is sent to a queue that the main
+  // loop() drains one publish per iteration (preserving the existing
+  // rate-limiting behaviour).
+
+  // A (topic, payload) pair ready to be published via MQTT.
+  struct HaDiscoveryItem {
+    std::string topic;
+    std::string payload;
+  };
+
+  // Base URL for the per-category JSONL files.
+  // Can be overridden in YAML via ha_discovery_base_url.
+  std::string ha_discovery_base_url_{
+    "https://raw.githubusercontent.com/joshualongenecker/"
+    "home-assistant-bridge-esphome/copilot/implement-goal-2-autodiscovery/ha_discovery"
+  };
+
+  QueueHandle_t ha_discovery_queue_{nullptr};   // carries HaDiscoveryItem* (nullptr = sentinel)
+  TaskHandle_t  ha_fetch_task_handle_{nullptr};
+
+  static void ha_fetch_task_fn_(void* param);
+  void        fetch_ha_definitions_();
+  bool        fetch_category_(const std::string& url,
+                              const std::string& device_id,
+                              const std::string& device_json);
+  bool        process_jsonl_line_(const char* line,
+                                  const std::string& device_id,
+                                  const std::string& device_json);
+
+
   // Autodiscovery state machine
   AutodiscoveryState autodiscovery_state_{AUTODISCOVERY_WAITING_FOR_MQTT};
   uint32_t autodiscovery_timer_start_{0};
@@ -208,6 +277,12 @@ class GeappliancesBridge : public Component {
   uint32_t read_retry_count_{0};
   static constexpr uint32_t LOG_EVERY_N_RETRIES = 50; // Log retry attempts periodically
   static constexpr uint32_t MAX_READ_RETRIES = 1000; // Maximum retries before giving up (about 10 seconds at loop rate)
+  // Counts consecutive READ-RESPONSE failures for the current device-ID ERD.
+  // Separate from read_retry_count_ which counts queue failures.  When this
+  // reaches MAX_DEVICE_ID_RESPONSE_RETRIES the ERD is skipped and a fallback
+  // value is used so device ID generation can always complete.
+  uint32_t device_id_response_retries_{0};
+  static constexpr uint32_t MAX_DEVICE_ID_RESPONSE_RETRIES = 3;
 
   tiny_timer_group_t timer_group_;
 

@@ -1,8 +1,20 @@
 #include "geappliances_bridge.h"
 #include "appliance_api_feature_lists.h"
+#include "ha_discovery_config.h"
 #include "esphome/core/log.h"
 #include "esphome_time_source.h"
 #include <cstring>
+#include <inttypes.h>
+
+// Runtime HA-discovery: HTTP fetch + JSON parsing on ESP-IDF targets.
+#ifdef USE_ESP_IDF
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#endif  // USE_ESP_IDF
 
 namespace esphome {
 namespace geappliances_bridge {
@@ -278,6 +290,82 @@ void GeappliancesBridge::loop() {
   // Check for subscription activity timeout in auto mode
   if (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_) {
     this->check_subscription_activity_();
+  }
+
+  // Debug: log polling bridge state machine transitions.
+  if (this->mqtt_bridge_initialized_) {
+    bool is_poll_mode = !((this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                          (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_));
+    if (is_poll_mode) {
+      const char* new_state = this->mqtt_bridge_polling_.current_state_name;
+      if (new_state != nullptr && new_state != this->last_logged_poll_state_) {
+        ESP_LOGD(TAG, "Polling bridge state: %s (ERDs registered: %zu)",
+                 new_state, this->ha_registered_erds_.size());
+        this->last_logged_poll_state_ = new_state;
+      }
+    }
+  }
+
+  // Deferred HA discovery: wait for the 10 s quiet window, then publish entities
+  // one at a time across successive loop() calls to avoid large heap allocations
+  // that would trigger an OOM panic or watchdog reset on ESP32.
+  //
+  // In subscription mode: ha_discovery_last_activity_ is reset whenever a new
+  // ERD subscription publication is received; discovery fires after 10 s of
+  // quiet (no new ERDs seen).
+  //
+  // In polling mode: the polling bridge has its own state machine that walks
+  // through identify_appliance → add_common_erds → add_energy_erds →
+  // add_appliance_erds → state_polling.  Discovery must not fire until
+  // state_polling is entered (polling_list_complete flag set), because ERD
+  // reads during the discovery phase can be separated by multi-second gaps
+  // when the appliance does not respond and retries are needed.
+
+  if (this->ha_discovery_pending_ && !this->ha_discovery_publish_in_progress_) {
+    bool is_poll_mode = !((this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                          (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_));
+
+    bool ready = false;
+    if (is_poll_mode) {
+      // Wait until the polling state machine has completed ERD discovery and
+      // entered state_polling — that flag is the definitive signal.
+      ready = this->mqtt_bridge_polling_.polling_list_complete;
+    } else {
+      // Subscription mode: use the 10 s quiet window.
+      //
+      // For AUTO mode, the bridge starts in subscription mode but may fall
+      // back to polling if the appliance does not respond with subscription
+      // publications.  Only start the quiet-window countdown once subscription
+      // activity has actually been detected.  If no subscription publications
+      // have arrived yet, the device may not support subscriptions and the
+      // bridge will eventually fall back to polling — discovery must wait for
+      // that transition (polling_list_complete) rather than firing prematurely
+      // when the 10 s timer expires from bridge init.
+      bool subscription_confirmed = (this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                                    this->subscription_activity_detected_;
+      if (subscription_confirmed) {
+        uint32_t now = millis();
+        uint32_t since_activity = now - this->ha_discovery_last_activity_;
+        ready = (since_activity >= HA_DISCOVERY_QUIET_MS);
+      }
+    }
+
+    if (ready) {
+      this->publish_ha_discovery_();
+    }
+  }
+
+  // One entity per rate-limited interval while publishing is in progress.
+  // Each entity is published QoS 0 (no PUBACK) to avoid generating inbound
+  // MQTT events that can overflow the IDF MQTT event queue.
+  // Still throttle to once per HA_ENTITY_PUBLISH_INTERVAL_MS to avoid back-to-
+  // back outbox fills while MQTT is processing the previous packet.
+  if (this->ha_discovery_publish_in_progress_) {
+    uint32_t now = millis();
+    if (now - this->ha_entity_last_publish_ms_ >= HA_ENTITY_PUBLISH_INTERVAL_MS) {
+      this->ha_entity_last_publish_ms_ = now;
+      this->publish_next_ha_discovery_entity_();
+    }
   }
 
   // Feature bit reading: runs after autodiscovery, before device ID generation.
@@ -737,6 +825,31 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
       ESP_LOGI(TAG, "Subscription activity detected - subscription mode is working");
       this->subscription_activity_detected_ = true;
     }
+    // Reset the HA discovery quiet window only when a NEW ERD ID is seen for
+    // the first time.  Repeated value updates for already-known ERDs do not
+    // extend the wait (per requirement: "An already registered ERD changing
+    // values is not an issue").
+    if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
+      tiny_erd_t pub_erd = args->subscription_publication_received.erd;
+      if (this->ha_discovery_seen_erds_.find(pub_erd) == this->ha_discovery_seen_erds_.end()) {
+        this->ha_discovery_seen_erds_.insert(pub_erd);
+        this->ha_discovery_last_activity_ = millis();
+      }
+    }
+  }
+
+  // Also apply the same new-ERD-only quiet-window logic for BRIDGE_MODE_SUBSCRIBE.
+  if (this->mode_ == BRIDGE_MODE_SUBSCRIBE &&
+      this->mqtt_bridge_initialized_ &&
+      args->address == this->host_address_ &&
+      args->type == tiny_gea3_erd_client_activity_type_subscription_publication_received) {
+    if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
+      tiny_erd_t pub_erd = args->subscription_publication_received.erd;
+      if (this->ha_discovery_seen_erds_.find(pub_erd) == this->ha_discovery_seen_erds_.end()) {
+        this->ha_discovery_seen_erds_.insert(pub_erd);
+        this->ha_discovery_last_activity_ = millis();
+      }
+    }
   }
 
   // Handle autodiscovery: first responder on GEA3 or GEA2 broadcast
@@ -803,6 +916,8 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
 }
 
 void GeappliancesBridge::process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size) {
+  // Successful response — reset the per-ERD response-failure counter.
+  this->device_id_response_retries_ = 0;
   if (erd == ERD_APPLIANCE_TYPE) {
     if (size < 1) return;
     this->appliance_type_ = data[0];
@@ -849,12 +964,49 @@ void GeappliancesBridge::process_device_id_erd_response_(tiny_erd_t erd, const u
 }
 
 void GeappliancesBridge::handle_device_id_read_failure_(tiny_erd_t erd) {
+  this->device_id_response_retries_++;
+  if (this->device_id_response_retries_ < MAX_DEVICE_ID_RESPONSE_RETRIES) {
+    // Retry — requeue the same ERD.
+    if (erd == ERD_APPLIANCE_TYPE) {
+      this->device_id_state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
+    } else if (erd == ERD_MODEL_NUMBER) {
+      this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
+    } else if (erd == ERD_SERIAL_NUMBER) {
+      this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
+    }
+    return;
+  }
+
+  // Too many failures — use a fallback value and advance to the next ERD so
+  // device ID generation can always complete even on appliances that do not
+  // support the standard identification ERDs (0x0008 / 0x0001 / 0x0002).
+  this->device_id_response_retries_ = 0;
+  ESP_LOGW(TAG, "ERD 0x%04X unreadable after %u attempts, using fallback for device ID",
+           erd, MAX_DEVICE_ID_RESPONSE_RETRIES);
+
   if (erd == ERD_APPLIANCE_TYPE) {
-    this->device_id_state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
-  } else if (erd == ERD_MODEL_NUMBER) {
+    this->appliance_type_ = 0;  // Unknown
     this->device_id_state_ = DEVICE_ID_STATE_READING_MODEL_NUMBER;
-  } else if (erd == ERD_SERIAL_NUMBER) {
+  } else if (erd == ERD_MODEL_NUMBER) {
+    this->model_number_ = "";  // empty — will be omitted from device ID
     this->device_id_state_ = DEVICE_ID_STATE_READING_SERIAL_NUMBER;
+  } else if (erd == ERD_SERIAL_NUMBER) {
+    // Use the appliance bus address as a serial-number substitute so the
+    // generated device ID is still unique per appliance on the local bus.
+    // host_address_ is uint8_t so "%02X" produces at most 2 hex digits + NUL.
+    char addr_str[8];
+    snprintf(addr_str, sizeof(addr_str), "%02X", this->host_address_);
+    this->serial_number_ = std::string("busaddr") + addr_str;
+
+    std::string appliance_type_name = appliance_type_to_string(this->appliance_type_);
+    this->generated_device_id_ = appliance_type_name + "_" +
+                                 this->sanitize_for_mqtt_topic_(this->model_number_) + "_" +
+                                 this->sanitize_for_mqtt_topic_(this->serial_number_);
+    this->final_device_id_ = this->generated_device_id_;
+    ESP_LOGI(TAG, "Generated device ID (with fallback): %s", this->final_device_id_.c_str());
+
+    this->device_id_state_ = DEVICE_ID_STATE_COMPLETE;
+    this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
   }
 }
 
@@ -901,6 +1053,23 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
 
   // Initialize MQTT client adapter
   esphome_mqtt_client_adapter_init(&this->mqtt_client_adapter_, this->final_device_id_.c_str());
+
+  // Wire up the registered-ERD tracking set so every ERD the device registers
+  // is captured. Used later to filter HA discovery to only supported entities.
+  this->ha_registered_erds_.clear();
+  esphome_mqtt_client_adapter_set_registered_erds_out(
+    &this->mqtt_client_adapter_, &this->ha_registered_erds_);
+
+  // Build the set of string-type ERD IDs from the generated config and tell
+  // the adapter so it can publish ASCII text instead of hex for those ERDs.
+  this->ha_string_erds_set_.clear();
+  for (uint16_t i = 0; i < ha_string_erd_count; i++) {
+    this->ha_string_erds_set_.insert(ha_string_erd_ids[i]);
+  }
+  if (!this->ha_string_erds_set_.empty()) {
+    esphome_mqtt_client_adapter_set_string_erds_filter(
+      &this->mqtt_client_adapter_, &this->ha_string_erds_set_);
+  }
 
   // Apply valid ERD filter if appliance_api_parsing is enabled, the list is ready,
   // and at least one ERD was added to the valid set. An empty set would silently
@@ -950,7 +1119,407 @@ void GeappliancesBridge::initialize_mqtt_bridge_() {
 
   this->mqtt_bridge_initialized_ = true;
   ESP_LOGI(TAG, "MQTT bridge initialized successfully");
+
+  // Defer publishing the HA device discovery payload until ERD registration has
+  // settled. In subscription mode: 10 s quiet window after the last ERD is seen.
+  // In polling mode: waits for the polling HSM to enter state_polling (all ERD
+  // discovery phases complete), tracked via polling_list_complete flag.
+  if (this->generate_device_config_) {
+    this->ha_discovery_pending_ = true;
+    this->ha_discovery_last_activity_ = millis();
+    ESP_LOGI(TAG, "HA discovery deferred: will publish after ERD discovery completes "
+                  "(polling mode) or %u s quiet window (subscription mode)",
+             HA_DISCOVERY_QUIET_MS / 1000);
+  }
 }
+
+// Escape a string value for embedding inside a JSON string literal.
+// Only `"` and `\` need escaping; control chars are also handled.
+static std::string escape_json_str(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() + 4);
+  for (unsigned char c : s) {
+    if (c == '"') {
+      out += "\\\"";
+    } else if (c == '\\') {
+      out += "\\\\";
+    } else if (c < 0x20) {
+      char buf[8];
+      snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
+      out += buf;
+    } else {
+      out += static_cast<char>(c);
+    }
+  }
+  return out;
+}
+
+void GeappliancesBridge::publish_ha_discovery_() {
+  auto* mqtt_client = esphome::mqtt::global_mqtt_client;
+  if (mqtt_client == nullptr || !mqtt_client->is_connected()) {
+    ESP_LOGW(TAG, "MQTT not connected, skipping HA discovery publish");
+    return;
+  }
+
+#ifdef USE_ESP_IDF
+  // Create a queue for passing (topic, payload) pairs from the background
+  // HTTP-fetch task to the main loop.  Queue depth = 20 so the task can run
+  // ahead of the main loop without blocking excessively.
+  this->ha_discovery_queue_ = xQueueCreate(20, sizeof(HaDiscoveryItem*));
+  if (!this->ha_discovery_queue_) {
+    ESP_LOGE(TAG, "HA discovery: failed to create queue (OOM)");
+    return;
+  }
+
+  this->ha_discovery_pending_ = false;
+  this->ha_discovery_publish_in_progress_ = true;
+  ESP_LOGI(TAG, "HA discovery: starting — %zu ERDs registered, launching fetch task",
+           this->ha_registered_erds_.size());
+
+  // Stack size 12 KB – enough for HTTPS + cJSON on ESP32.
+  // Priority 1: below IDF MQTT task (5) so MQTT events aren't starved while
+  // the fetch task is actively parsing JSONL lines and filling the queue.
+  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 12288, this, 1,
+                              &this->ha_fetch_task_handle_);
+  if (rc != pdPASS) {
+    ESP_LOGE(TAG, "HA discovery: failed to create fetch task (rc=%d)", (int)rc);
+    vQueueDelete(this->ha_discovery_queue_);
+    this->ha_discovery_queue_                 = nullptr;
+    this->ha_fetch_task_handle_               = nullptr;
+    this->ha_discovery_publish_in_progress_   = false;
+  }
+#else
+  // HA entity discovery requires the ESP-IDF framework (esp_http_client +
+  // FreeRTOS tasks).  On Arduino or other non-IDF builds, log a warning so
+  // users know why no fetch messages appear, then mark discovery as done.
+  ESP_LOGW(TAG, "Home Assistant discovery is only available with the ESP-IDF framework. "
+                "Add 'framework:\\n  type: esp-idf' to your esp32: section to enable it.");
+  this->ha_discovery_pending_           = false;
+  this->ha_discovery_publish_in_progress_ = false;
+  this->ha_discovery_published_          = true;
+#endif
+}
+
+void GeappliancesBridge::publish_next_ha_discovery_entity_() {
+#ifdef USE_ESP_IDF
+  if (!this->ha_discovery_queue_) return;
+
+  auto* mqtt_client = esphome::mqtt::global_mqtt_client;
+  if (mqtt_client == nullptr || !mqtt_client->is_connected()) {
+    // MQTT dropped mid-sequence; leave in_progress so we resume on reconnect.
+    return;
+  }
+
+  HaDiscoveryItem* item = nullptr;
+  if (xQueueReceive(this->ha_discovery_queue_, &item, 0) == pdTRUE) {
+    if (item == nullptr) {
+      // Sentinel: the fetch task has finished.
+      ESP_LOGI(TAG, "HA discovery: complete — all entities published");
+      this->ha_discovery_publish_in_progress_ = false;
+      this->ha_discovery_published_           = true;
+      vQueueDelete(this->ha_discovery_queue_);
+      this->ha_discovery_queue_       = nullptr;
+      this->ha_fetch_task_handle_     = nullptr;
+    } else {
+      mqtt_client->publish(item->topic, item->payload, 0, true);  // QoS 0, retain
+      ESP_LOGD(TAG, "HA discovery: published %s", item->topic.c_str());
+      delete item;
+    }
+  }
+  // else: queue empty, fetch task still running – nothing to do this loop.
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// Background task: HTTP fetch + JSONL parse
+// (compiled only when building for ESP-IDF / ESP32)
+// ---------------------------------------------------------------------------
+#ifdef USE_ESP_IDF
+
+/*static*/ void GeappliancesBridge::ha_fetch_task_fn_(void* param) {
+  auto* self = static_cast<GeappliancesBridge*>(param);
+  self->fetch_ha_definitions_();
+
+  // Send nullptr sentinel so the main loop knows we are done.
+  HaDiscoveryItem* sentinel = nullptr;
+  xQueueSend(self->ha_discovery_queue_, &sentinel, portMAX_DELAY);
+
+  vTaskDelete(nullptr);
+}
+
+void GeappliancesBridge::fetch_ha_definitions_() {
+  // Determine which category files are needed based on registered ERD ranges.
+  struct Category { const char* name; uint16_t lo; uint16_t hi; };
+  static const Category CATS[] = {
+    {"common",          0x0000, 0x0FFF},
+    {"refrigeration",   0x1000, 0x1FFF},
+    {"laundry",         0x2000, 0x2FFF},
+    {"dishwasher",      0x3000, 0x3FFF},
+    {"waterheater",     0x4000, 0x4FFF},
+    {"range",           0x5000, 0x5FFF},
+    {"airconditioning", 0x7000, 0x7FFF},
+    {"waterfilter",     0x8000, 0x8FFF},
+    {"smallappliance",  0x9000, 0x9FFF},
+    {"energy",          0xD000, 0xDFFF},
+  };
+
+  // Build a bitmask of needed categories.
+  bool need[10] = {};
+  need[0] = true;  // common – always needed
+  for (uint16_t erd : this->ha_registered_erds_) {
+    for (int i = 1; i < 10; ++i) {
+      if (erd >= CATS[i].lo && erd <= CATS[i].hi) { need[i] = true; break; }
+    }
+  }
+
+  // Build device JSON once (reused for all entities in this fetch run).
+  const std::string& device_id = this->final_device_id_;
+  std::string device_json = "{\"identifiers\":[\"" + device_id + "\"]";
+  device_json += ",\"name\":\"" + escape_json_str(device_id) + "\"";
+  device_json += ",\"manufacturer\":\"GE Appliances\"";
+  if (!this->model_number_.empty())
+    device_json += ",\"model\":\"" + escape_json_str(this->model_number_) + "\"";
+  if (!this->serial_number_.empty())
+    device_json += ",\"serial_number\":\"" + escape_json_str(this->serial_number_) + "\"";
+  device_json += "}";
+
+  for (int i = 0; i < 10; ++i) {
+    if (!need[i]) continue;
+    std::string url = this->ha_discovery_base_url_ + "/" + CATS[i].name + ".jsonl";
+    ESP_LOGI(TAG, "HA fetch: downloading %s", url.c_str());
+    fetch_category_(url, device_id, device_json);
+    vTaskDelay(pdMS_TO_TICKS(50));  // brief yield between requests
+  }
+}
+
+bool GeappliancesBridge::fetch_category_(const std::string& url,
+                                         const std::string& device_id,
+                                         const std::string& device_json) {
+  esp_http_client_config_t cfg = {};
+  cfg.url                 = url.c_str();
+  cfg.crt_bundle_attach   = esp_crt_bundle_attach;
+  cfg.timeout_ms          = 20000;
+  cfg.max_redirection_count = 5;
+
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  if (!client) {
+    ESP_LOGE(TAG, "HA fetch: esp_http_client_init failed for %s", url.c_str());
+    return false;
+  }
+
+  esp_err_t err = esp_http_client_open(client, 0);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "HA fetch: open failed for %s: %s", url.c_str(), esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return false;
+  }
+
+  esp_http_client_fetch_headers(client);
+  int status = esp_http_client_get_status_code(client);
+  if (status == 404) {
+    // Category file not present on the configured base URL.
+    ESP_LOGW(TAG, "HA fetch: %s not found (404) — check ha_discovery_base_url", url.c_str());
+    esp_http_client_cleanup(client);
+    return true;
+  }
+  if (status != 200) {
+    ESP_LOGW(TAG, "HA fetch: HTTP %d for %s", status, url.c_str());
+    esp_http_client_cleanup(client);
+    return false;
+  }
+
+  // Read response body line by line.  Each JSONL line is one entity.
+  // We use a modest stack-allocated read buffer and a heap-allocated line
+  // accumulator (lines can be several KB for complex value templates).
+  static constexpr int READ_BUF  = 512;
+  static constexpr int LINE_BUF  = 4096;
+  char  read_buf[READ_BUF];
+  char* line_buf = static_cast<char*>(malloc(LINE_BUF));
+  if (!line_buf) {
+    ESP_LOGE(TAG, "HA fetch: OOM allocating line buffer");
+    esp_http_client_cleanup(client);
+    return false;
+  }
+
+  int line_pos = 0;
+  int entities = 0;
+  int read_len;
+  while ((read_len = esp_http_client_read(client, read_buf, READ_BUF - 1)) > 0) {
+    for (int i = 0; i < read_len; ++i) {
+      char c = read_buf[i];
+      if (c == '\n' || c == '\r') {
+        if (line_pos > 2) {
+          line_buf[line_pos] = '\0';
+          if (process_jsonl_line_(line_buf, device_id, device_json))
+            ++entities;
+        }
+        line_pos = 0;
+      } else if (line_pos < LINE_BUF - 1) {
+        line_buf[line_pos++] = c;
+      }
+      // Lines longer than LINE_BUF are silently truncated – they won't parse.
+    }
+  }
+  if (line_pos > 2) {
+    line_buf[line_pos] = '\0';
+    if (process_jsonl_line_(line_buf, device_id, device_json))
+      ++entities;
+  }
+
+  free(line_buf);
+  esp_http_client_cleanup(client);
+  ESP_LOGI(TAG, "HA fetch: %s → %d entities queued", url.c_str(), entities);
+  return true;
+}
+
+bool GeappliancesBridge::process_jsonl_line_(const char* line,
+                                              const std::string& device_id,
+                                              const std::string& device_json) {
+  cJSON* root = cJSON_Parse(line);
+  if (!root) return false;
+
+  // Helper: safely get a string field value (empty string if absent/wrong type).
+  auto get_str = [&](const char* key) -> const char* {
+    cJSON* item = cJSON_GetObjectItemCaseSensitive(root, key);
+    return (item && cJSON_IsString(item) && item->valuestring) ? item->valuestring : "";
+  };
+
+  const char* erd_hex = get_str("i");
+  if (erd_hex[0] == '\0') { cJSON_Delete(root); return false; }
+
+  uint16_t erd_id    = static_cast<uint16_t>(strtol(erd_hex, nullptr, 16));
+  const char* domain = get_str("d");
+  const char* name   = get_str("n");
+  const char* role   = get_str("r");
+  const char* paired = get_str("p");
+
+  // Filter: only publish entities for ERDs the device actually registered.
+  if (!this->ha_registered_erds_.empty()) {
+    bool registered = this->ha_registered_erds_.count(erd_id) > 0;
+    if (!registered && role[0] == 'r' && paired[0] != '\0') {
+      uint16_t paired_id = static_cast<uint16_t>(strtol(paired, nullptr, 16));
+      if (paired_id)
+        registered = this->ha_registered_erds_.count(paired_id) > 0
+                  || this->ha_registered_erds_.count(erd_id) > 0;
+    }
+    if (!registered) { cJSON_Delete(root); return false; }
+  }
+
+  char erd_id_str[5];
+  snprintf(erd_id_str, sizeof(erd_id_str), "%04x", erd_id);
+
+  // Build state / command topic URLs.
+  bool is_request = (role[0] == 'r');
+  std::string state_topic, command_topic;
+  if (is_request && paired[0] != '\0') {
+    state_topic   = "geappliances/" + device_id + "/erd/0x" + std::string(paired) + "/value";
+    command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
+  } else {
+    state_topic   = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/value";
+    command_topic = "geappliances/" + device_id + "/erd/0x" + erd_id_str + "/write";
+  }
+
+  const char* field_id = get_str("fi");
+  std::string unique_id = device_id + "_" + erd_id_str;
+  if (field_id[0] != '\0') { unique_id += "_"; unique_id += field_id; }
+
+  const char* vt   = get_str("vt");
+  const char* ct   = get_str("ct");
+  const char* opts = get_str("o");
+  const char* unit = get_str("u");
+  const char* dc   = get_str("dc");
+  const char* sc   = get_str("sc");
+
+  // Appends an optional JSON string field to *payload*.
+  std::string payload;
+  auto add_field = [&](const char* key, const char* val) {
+    if (val && val[0] != '\0')
+      payload += ",\"" + std::string(key) + "\":\"" + escape_json_str(std::string(val)) + "\"";
+  };
+
+  if (strcmp(domain, "sensor") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    add_field("unit_of_measurement", unit);
+    add_field("device_class", dc);
+    add_field("state_class", sc);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(domain, "binary_sensor") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    payload += ",\"payload_on\":\"01\",\"payload_off\":\"00\"";
+    add_field("device_class", dc);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(domain, "switch") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    payload += ",\"state_on\":\"01\",\"state_off\":\"00\"";
+    payload += ",\"payload_on\":\"01\",\"payload_off\":\"00\"";
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(domain, "select") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    add_field("command_template", ct);
+    if (opts[0] != '\0') payload += ",\"options\":" + std::string(opts);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(domain, "number") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"state_topic\":\"" + state_topic + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    add_field("value_template", vt);
+    add_field("command_template", ct);
+    add_field("unit_of_measurement", unit);
+    add_field("device_class", dc);
+    payload += ",\"mode\":\"box\"";
+    payload += ",\"device\":" + device_json + "}";
+
+  } else if (strcmp(domain, "button") == 0) {
+    payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
+    payload += ",\"command_topic\":\"" + command_topic + "\"";
+    payload += ",\"unique_id\":\"" + unique_id + "\"";
+    payload += ",\"payload_press\":\"01\"";
+    add_field("device_class", dc);
+    payload += ",\"device\":" + device_json + "}";
+
+  } else {
+    cJSON_Delete(root);
+    return false;
+  }
+
+  // Build the per-entity discovery topic (erd_id + optional field_id suffix).
+  std::string topic_key = erd_id_str;
+  if (field_id[0] != '\0') { topic_key += "_"; topic_key += field_id; }
+  std::string topic = "homeassistant/" + std::string(domain)
+                       + "/" + device_id + "/" + topic_key + "/config";
+
+  cJSON_Delete(root);
+
+  // Allocate and enqueue; the main loop deletes after publish.
+  auto* item = new (std::nothrow) HaDiscoveryItem{std::move(topic), std::move(payload)};
+  if (!item) return false;
+  if (xQueueSend(this->ha_discovery_queue_, &item, portMAX_DELAY) != pdTRUE) {
+    delete item;
+    return false;
+  }
+  return true;
+}
+
+#endif  // USE_ESP_IDF
 
 void GeappliancesBridge::configure_polling_optional_lists_() {
   // Set the API-parsed list AFTER init but before any events fire.
@@ -1070,7 +1639,16 @@ void GeappliancesBridge::check_subscription_activity_() {
     
     // Mark that we're no longer in subscription mode
     this->subscription_mode_active_ = false;
-    
+
+    // In polling mode, HA discovery is now gated on polling_list_complete
+    // (set when the polling HSM enters state_polling), so no timer reset
+    // is needed here.  The ha_discovery_last_activity_ reset is kept only
+    // as a conservative safety net for the subscription-mode quiet check in
+    // case this bridge is later reconfigured.
+    if (this->ha_discovery_pending_ && !this->ha_discovery_published_) {
+      this->ha_discovery_last_activity_ = millis();
+    }
+
     ESP_LOGI(TAG, "Successfully switched to polling mode");
   }
 }

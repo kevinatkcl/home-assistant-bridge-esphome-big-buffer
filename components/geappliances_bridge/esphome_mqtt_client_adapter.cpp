@@ -26,7 +26,13 @@ static std::string build_topic(esphome_mqtt_client_adapter_t* self, const char* 
 static void register_erd(i_mqtt_client_t* _self, tiny_erd_t erd)
 {
   auto self = reinterpret_cast<esphome_mqtt_client_adapter_t*>(_self);
-  
+
+  // Track which ERDs the device registers so the bridge can filter
+  // HA discovery entities to only those actually supported by the device.
+  if (self->registered_erds_out != nullptr) {
+    self->registered_erds_out->insert(erd);
+  }
+
   char topic_suffix[32];
   snprintf(topic_suffix, sizeof(topic_suffix), "/erd/0x%04x", erd);
   
@@ -103,25 +109,46 @@ static void update_erd(i_mqtt_client_t* _self, tiny_erd_t erd, const void* value
   char topic_suffix[32];
   snprintf(topic_suffix, sizeof(topic_suffix), "/erd/0x%04x/value", erd);
   std::string topic = build_topic(self, topic_suffix);
-  
-  // Convert binary data to hex string
-  std::string hex_payload;
-  hex_payload.reserve(size * 2);
+
   const uint8_t* bytes = reinterpret_cast<const uint8_t*>(value);
-  for (uint8_t i = 0; i < size; i++) {
-    char hex[3];
-    snprintf(hex, sizeof(hex), "%02x", bytes[i]);
-    hex_payload += hex;
+
+  // String-type ERDs: publish the raw bytes as a null-terminated ASCII string
+  // instead of a hex string so Home Assistant displays human-readable text.
+  bool is_string = (self->string_erds_filter != nullptr &&
+                    self->string_erds_filter->find(erd) != self->string_erds_filter->end());
+
+  std::string payload;
+  if (is_string) {
+    // Reserve only up to the first null byte (or full size if no null found)
+    uint8_t str_len = 0;
+    while (str_len < size && bytes[str_len] != 0) str_len++;
+    payload.reserve(str_len);
+    for (uint8_t i = 0; i < str_len; i++) {
+      if (isprint(bytes[i])) {
+        payload += static_cast<char>(bytes[i]);
+      } else {
+        ESP_LOGD(TAG, "ERD 0x%04X: skipping non-printable byte 0x%02X at offset %u",
+                 erd, bytes[i], i);
+      }
+    }
+  } else {
+    // Convert binary data to hex string
+    payload.reserve(size * 2);
+    for (uint8_t i = 0; i < size; i++) {
+      char hex[3];
+      snprintf(hex, sizeof(hex), "%02x", bytes[i]);
+      payload += hex;
+    }
   }
   
   // Publish to MQTT or queue if not connected
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client != nullptr && mqtt_client->is_connected()) {
-    mqtt_client->publish(topic, hex_payload, 2, true);  // QoS 2, retain
+    mqtt_client->publish(topic, payload, 2, true);  // QoS 2, retain
   } else {
     // Queue the update for later when MQTT connects
     if (self->pending_updates != nullptr && self->pending_updates->size() < MAX_PENDING_UPDATES) {
-      self->pending_updates->push_back({topic, hex_payload});
+      self->pending_updates->push_back({topic, payload});
       ESP_LOGD(TAG, "MQTT not connected, queued ERD update for 0x%04X (queue size: %zu)", 
                erd, self->pending_updates->size());
     } else if (self->pending_updates == nullptr) {
@@ -189,6 +216,8 @@ extern "C" void esphome_mqtt_client_adapter_init(
   self->device_id = new std::string(device_id);
   self->pending_updates = new std::deque<PendingErdUpdate>();
   self->valid_erds_filter = nullptr;
+  self->string_erds_filter = nullptr;
+  self->registered_erds_out = nullptr;
 
   tiny_event_init(&self->on_write_request_event);
   tiny_event_init(&self->on_mqtt_disconnect_event);
@@ -199,6 +228,20 @@ extern "C" void esphome_mqtt_client_adapter_set_valid_erds_filter(
   const std::set<tiny_erd_t>* valid_erds_filter)
 {
   self->valid_erds_filter = valid_erds_filter;
+}
+
+extern "C" void esphome_mqtt_client_adapter_set_string_erds_filter(
+  esphome_mqtt_client_adapter_t* self,
+  const std::set<tiny_erd_t>* string_erds_filter)
+{
+  self->string_erds_filter = string_erds_filter;
+}
+
+extern "C" void esphome_mqtt_client_adapter_set_registered_erds_out(
+  esphome_mqtt_client_adapter_t* self,
+  std::set<tiny_erd_t>* registered_erds_out)
+{
+  self->registered_erds_out = registered_erds_out;
 }
 
 extern "C" void esphome_mqtt_client_adapter_notify_disconnected(
