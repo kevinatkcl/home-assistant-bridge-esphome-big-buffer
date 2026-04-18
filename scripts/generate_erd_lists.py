@@ -750,16 +750,17 @@ def _strip_pair_role_word(name: str) -> str:
 def _number_command_template(data_size: int, scaling_factor: int, signed: bool = False) -> str:
     """Return command_template for a number entity.
 
-    When ``signed`` is True a bitmask is applied so that negative values are
-    converted to their two's-complement unsigned hex representation (e.g. -1
-    for an int16 becomes 'ffff').
+    When ``signed`` is True a modulo operation is applied so that negative
+    values are converted to their two's-complement unsigned hex representation
+    (e.g. -1 for an int16 becomes 'ffff').  Modulo is used instead of a
+    bitwise-AND mask because Jinja2 does not support the ``&`` operator.
     """
     hex_chars = data_size * 2
     if signed:
-        mask = (1 << (data_size * 8)) - 1
+        max_val = 1 << (data_size * 8)
         if scaling_factor > 1:
-            return f"{{{{ '%0{hex_chars}x' % (((value | float) * {scaling_factor} | int) & {mask}) }}}}"
-        return f"{{{{ '%0{hex_chars}x' % ((value | int) & {mask}) }}}}"
+            return f"{{{{ '%0{hex_chars}x' % ((((value | float) * {scaling_factor}) | int) % {max_val}) }}}}"
+        return f"{{{{ '%0{hex_chars}x' % ((value | int) % {max_val}) }}}}"
     if scaling_factor > 1:
         return f"{{{{ '%0{hex_chars}x' % ((value | float) * {scaling_factor} | int) }}}}"
     return f"{{{{ '%0{hex_chars}x' % (value | int) }}}}"
