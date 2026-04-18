@@ -1523,9 +1523,11 @@ bool GeappliancesBridge::process_jsonl_line_(const char* line,
       // When the value_template reads only a leading slice of the payload (e.g.
       // "value[0:4]"), determine the effective byte count from the slice length.
       // Otherwise the full data_size bytes govern the range.
+      // The slice marker "[0:" identifies leading-slice notation in Jinja2 templates.
+      static const char* kSlicePrefix = "[0:";
       int effective_bytes = data_size;
       if (vt && vt[0] != '\0') {
-        const char* slice = strstr(vt, "[0:");
+        const char* slice = strstr(vt, kSlicePrefix);
         if (slice) {
           int hex_chars = atoi(slice + 3);
           if (hex_chars >= 2 && (hex_chars % 2) == 0)

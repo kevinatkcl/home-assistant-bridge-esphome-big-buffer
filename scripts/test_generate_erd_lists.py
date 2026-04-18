@@ -504,7 +504,7 @@ class TestNumberMinMax(unittest.TestCase):
         _, _, st = _number_min_max(2, 1, False)
         self.assertEqual(st, 1.0)
 
-    def test_step_equals_01_when_scale10(self):
+    def test_step_equals_one_tenth_when_scale10(self):
         _, _, st = _number_min_max(2, 10, False)
         self.assertAlmostEqual(st, 0.1)
 
