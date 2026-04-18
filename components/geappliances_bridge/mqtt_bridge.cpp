@@ -356,9 +356,16 @@ static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_sign
       break;
 
     case signal_read_completed:
+      // Ignore reads for ERDs other than the appliance type ERD (0x0008); they
+      // are from concurrent activity on the shared bus and must not trigger a
+      // premature transition out of identification with erd_host_address still
+      // set to the broadcast address (0xFF).
+      if(args->read_completed.erd != 0x0008) {
+        break;
+      }
       disarm_timer(self);
       reset_lost_appliance_timer(self);
-      if(args->read_completed.erd == 0x0008 && args->read_completed.data_size >= 1) {
+      if(args->read_completed.data_size >= 1) {
         self->erd_host_address = args->address;
         self->appliance_type = *reinterpret_cast<const uint8_t*>(args->read_completed.data);
       }
