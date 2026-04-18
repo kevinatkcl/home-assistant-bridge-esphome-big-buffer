@@ -1511,6 +1511,7 @@ bool GeappliancesBridge::process_jsonl_line_(const char* line,
     double type_min, type_max;
     if      (strcmp(dtype, "int8")   == 0) { type_min = -128.0;        type_max = 127.0; }
     else if (strcmp(dtype, "int16")  == 0) { type_min = -32768.0;      type_max = 32767.0; }
+    else if (strcmp(dtype, "int24")  == 0) { type_min = -8388608.0;    type_max = 8388607.0; }
     else if (strcmp(dtype, "int32")  == 0) { type_min = -2147483648.0; type_max = 2147483647.0; }
     else if (strcmp(dtype, "uint8")  == 0) { type_min = 0.0;           type_max = 255.0; }
     else if (strcmp(dtype, "uint16") == 0) { type_min = 0.0;           type_max = 65535.0; }

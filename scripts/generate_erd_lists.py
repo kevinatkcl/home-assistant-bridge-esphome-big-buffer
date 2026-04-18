@@ -822,8 +822,8 @@ def _effective_dtype(eff_bytes: int, signed: bool) -> str:
     """Return the canonical data-type string for a number entity.
 
     Maps (effective_bytes, signed) to one of the type names understood by the
-    C++ runtime parser: ``int8``, ``int16``, ``int32``, ``uint8``, ``uint16``,
-    ``uint24``, ``uint32``.
+    C++ runtime parser: ``int8``, ``int16``, ``int24``, ``int32``, ``uint8``,
+    ``uint16``, ``uint24``, ``uint32``.
 
     Byte counts above 4 are capped at 4 (``uint32`` / ``int32``) because JSON
     ``double`` cannot exactly represent values beyond 2^53, and no real
@@ -831,8 +831,39 @@ def _effective_dtype(eff_bytes: int, signed: bool) -> str:
     """
     capped = min(eff_bytes, 4)
     if signed:
-        return {1: 'int8', 2: 'int16', 3: 'int32', 4: 'int32'}[capped]
+        return {1: 'int8', 2: 'int16', 3: 'int24', 4: 'int32'}[capped]
     return {1: 'uint8', 2: 'uint16', 3: 'uint24', 4: 'uint32'}[capped]
+
+
+# Lookup table for (type_min, type_max) by data-type name.
+# The C++ runtime uses an identical mapping.
+_DTYPE_RANGE: dict = {
+    'int8':   (-128.0,        127.0),
+    'int16':  (-32768.0,      32767.0),
+    'int24':  (-8388608.0,    8388607.0),
+    'int32':  (-2147483648.0, 2147483647.0),
+    'uint8':  (0.0,           255.0),
+    'uint16': (0.0,           65535.0),
+    'uint24': (0.0,           16777215.0),
+    'uint32': (0.0,           4294967295.0),
+}
+
+
+def _range_from_dtype(dtype: str, scale_factor: int = 1):
+    """Return (min_val, max_val, step_val) for a given data type and scale factor.
+
+    Mirrors the lookup table used in the C++ runtime so that Python tests can
+    verify end-to-end correctness without running the embedded firmware.
+
+    Raises ``KeyError`` for unknown type names.
+    """
+    if scale_factor < 1:
+        scale_factor = 1
+    type_min, type_max = _DTYPE_RANGE[dtype]
+    min_val  = type_min / scale_factor
+    max_val  = type_max / scale_factor
+    step_val = 1.0 / scale_factor if scale_factor > 1 else 1.0
+    return min_val, max_val, step_val
 
 
 def _infer_dtype_from_jsonl_entry(obj: dict) -> str:

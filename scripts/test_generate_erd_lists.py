@@ -24,6 +24,7 @@ from generate_erd_lists import (
     _number_command_template,
     _number_min_max,
     _effective_dtype,
+    _range_from_dtype,
     _infer_dtype_from_jsonl_entry,
     backfill_ha_discovery_jsonl_data_type,
     _collect_ha_discovery_entries,
@@ -536,11 +537,84 @@ class TestEffectiveDtype(unittest.TestCase):
     def test_signed_2byte(self):
         self.assertEqual(_effective_dtype(2, True), 'int16')
 
+    def test_signed_3byte(self):
+        self.assertEqual(_effective_dtype(3, True), 'int24')
+
     def test_signed_4byte(self):
         self.assertEqual(_effective_dtype(4, True), 'int32')
 
     def test_signed_large_capped_to_int32(self):
         self.assertEqual(_effective_dtype(8, True), 'int32')
+
+
+class TestRangeFromDtype(unittest.TestCase):
+    """Verify _range_from_dtype mirrors the C++ runtime lookup table.
+
+    These tests validate the end-to-end derivation of min/max/step from a
+    data-type string and scale factor – the same logic the firmware runs.
+    """
+
+    def test_uint8_no_scaling(self):
+        mn, mx, st = _range_from_dtype('uint8')
+        self.assertEqual(mn, 0.0)
+        self.assertEqual(mx, 255.0)
+        self.assertEqual(st, 1.0)
+
+    def test_uint16_no_scaling(self):
+        mn, mx, st = _range_from_dtype('uint16')
+        self.assertEqual(mn, 0.0)
+        self.assertEqual(mx, 65535.0)
+        self.assertEqual(st, 1.0)
+
+    def test_uint16_scale10(self):
+        mn, mx, st = _range_from_dtype('uint16', scale_factor=10)
+        self.assertAlmostEqual(mn, 0.0)
+        self.assertAlmostEqual(mx, 6553.5)
+        self.assertAlmostEqual(st, 0.1)
+
+    def test_uint24_no_scaling(self):
+        mn, mx, _ = _range_from_dtype('uint24')
+        self.assertEqual(mn, 0.0)
+        self.assertEqual(mx, 16777215.0)
+
+    def test_uint32_no_scaling(self):
+        _, mx, _ = _range_from_dtype('uint32')
+        self.assertEqual(mx, 4294967295.0)
+
+    def test_int8_no_scaling(self):
+        mn, mx, st = _range_from_dtype('int8')
+        self.assertEqual(mn, -128.0)
+        self.assertEqual(mx, 127.0)
+        self.assertEqual(st, 1.0)
+
+    def test_int16_no_scaling(self):
+        mn, mx, _ = _range_from_dtype('int16')
+        self.assertEqual(mn, -32768.0)
+        self.assertEqual(mx, 32767.0)
+
+    def test_int24_no_scaling(self):
+        mn, mx, _ = _range_from_dtype('int24')
+        self.assertEqual(mn, -8388608.0)
+        self.assertEqual(mx, 8388607.0)
+
+    def test_int32_no_scaling(self):
+        mn, mx, _ = _range_from_dtype('int32')
+        self.assertEqual(mn, -2147483648.0)
+        self.assertEqual(mx, 2147483647.0)
+
+    def test_int16_scale10(self):
+        mn, mx, st = _range_from_dtype('int16', scale_factor=10)
+        self.assertAlmostEqual(mn, -3276.8)
+        self.assertAlmostEqual(mx, 3276.7)
+        self.assertAlmostEqual(st, 0.1)
+
+    def test_step_is_1_when_no_scaling(self):
+        _, _, st = _range_from_dtype('uint16', scale_factor=1)
+        self.assertEqual(st, 1.0)
+
+    def test_step_equals_one_over_scale(self):
+        _, _, st = _range_from_dtype('uint16', scale_factor=100)
+        self.assertAlmostEqual(st, 0.01)
 
 
 class TestInferDtypeFromJsonlEntry(unittest.TestCase):
@@ -574,6 +648,10 @@ class TestInferDtypeFromJsonlEntry(unittest.TestCase):
 
     def test_3byte_yields_uint24(self):
         self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 3, 'vt': '{{ value | int(base=16) }}'}), 'uint24')
+
+    def test_3byte_signed_yields_int24(self):
+        vt = '{{ (value | int(base=16)) - 16777216 if (value | int(base=16)) >= 8388608 else (value | int(base=16)) }}'
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 3, 'vt': vt}), 'int24')
 
     def test_large_ds_capped_to_uint32(self):
         self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 8, 'vt': '{{ value | int(base=16) }}'}), 'uint32')
