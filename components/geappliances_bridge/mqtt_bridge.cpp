@@ -292,6 +292,7 @@ static tiny_hsm_result_t poll_state_top(tiny_hsm_t* hsm, tiny_hsm_signal_t signa
 static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_energy_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
+static tiny_hsm_result_t state_add_appliance_api_feature_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_appliance_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 
@@ -475,9 +476,27 @@ static tiny_hsm_result_t state_add_energy_erds(tiny_hsm_t* hsm, tiny_hsm_signal_
 
   if(signal == tiny_hsm_signal_entry) {
     self->current_state_name = "add_energy_erds";
-    self->next_discovery_state = state_add_appliance_erds;
+    self->next_discovery_state = state_add_appliance_api_feature_erds;
     self->appliance_erd_list = energyErds;
     self->appliance_erd_list_count = energyErdCount;
+    self->erd_index = 0;
+    tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
+    arm_timer(self, retry_delay);
+    return tiny_hsm_result_signal_consumed;
+  }
+
+  return handle_discovery_list_signals(hsm, signal, data);
+}
+
+static tiny_hsm_result_t state_add_appliance_api_feature_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
+{
+  mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
+
+  if(signal == tiny_hsm_signal_entry) {
+    self->current_state_name = "add_appliance_api_feature_erds";
+    self->next_discovery_state = state_add_appliance_erds;
+    self->appliance_erd_list = applianceApiFeatureErds;
+    self->appliance_erd_list_count = applianceApiFeatureErdCount;
     self->erd_index = 0;
     tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
     arm_timer(self, retry_delay);
@@ -619,6 +638,7 @@ static const tiny_hsm_state_descriptor_t poll_hsm_state_descriptors[] = {
   { .state = state_identify_appliance, .parent = poll_state_top },
   { .state = state_add_common_erds, .parent = poll_state_top },
   { .state = state_add_energy_erds, .parent = poll_state_top },
+  { .state = state_add_appliance_api_feature_erds, .parent = poll_state_top },
   { .state = state_add_appliance_erds, .parent = poll_state_top },
   { .state = state_polling, .parent = poll_state_top }
 };

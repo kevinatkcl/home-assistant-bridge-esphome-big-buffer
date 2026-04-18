@@ -123,7 +123,7 @@ def generate_header(categories: Dict[str, List[int]], polling_list_max_size: int
 #include "tiny_erd.h"
 
 // Maximum number of ERDs that can be held in the polling list.
-// Sized for the worst case: common ERDs + energy ERDs + largest appliance-specific ERD list.
+// Sized for the worst case: common ERDs + energy ERDs + appliance API feature ERDs + largest appliance-specific ERD list.
 #define POLLING_LIST_MAX_SIZE {polling_list_max_size}
 
 """
@@ -151,7 +151,30 @@ def generate_header(categories: Dict[str, List[int]], polling_list_max_size: int
             header += "\n"
         header += "};\n"
         header += f"const uint16_t {count_name} = sizeof({array_name}) / sizeof({array_name}[0]);\n\n"
-    
+
+    # Add the appliance API feature bit ERDs (hard-coded; not from appliance_api_erd_definitions.json)
+    appliance_api_feature_erds = [
+        (0x0092, 'Common feature API'),
+        (0x0093, 'Appliance feature API group 0'),
+        (0x0094, 'Appliance feature API group 1'),
+        (0x0095, 'Appliance feature API group 2'),
+        (0x0096, 'Appliance feature API group 3'),
+        (0x0097, 'Appliance feature API group 4'),
+        (0x0109, 'Appliance feature API group 5'),
+        (0x010a, 'Appliance feature API group 6'),
+        (0x010b, 'Appliance feature API group 7'),
+        (0x010c, 'Appliance feature API group 8'),
+        (0x010d, 'Appliance feature API group 9'),
+    ]
+    header += "// Appliance API feature bit ERDs (all appliance types)\n"
+    header += "// These ERDs carry feature bitmaps used to determine which appliance API features are active.\n"
+    header += "// Not generated from appliance_api_erd_definitions.json; hard-coded here.\n"
+    header += "const tiny_erd_t applianceApiFeatureErds[] = {\n"
+    for erd_id, comment in appliance_api_feature_erds:
+        header += f"  0x{erd_id:04x},  // {comment}\n"
+    header += "};\n"
+    header += "const uint16_t applianceApiFeatureErdCount = sizeof(applianceApiFeatureErds) / sizeof(applianceApiFeatureErds[0]);\n\n"
+
     # Add the lookup table structure
     header += """typedef struct {
   const tiny_erd_t* erdList;
@@ -1543,7 +1566,7 @@ def main():
         print(f"  {category}: {len(erd_list)}")
 
     # Calculate required POLLING_LIST_MAX_SIZE.
-    # The polling list holds: common ERDs + energy ERDs + appliance-specific ERDs.
+    # The polling list holds: common ERDs + energy ERDs + appliance API feature ERDs + appliance-specific ERDs.
     # Use the worst case across all appliance-specific categories.
     appliance_specific_categories = [
         'waterHeater', 'laundry', 'refrigeration', 'smallAppliance',
@@ -1552,9 +1575,10 @@ def main():
     max_appliance_erds = max(len(categories[cat]) for cat in appliance_specific_categories)
     common_erds_count = len(categories['common'])
     energy_erds_count = len(categories['energy'])
-    polling_list_max_size = common_erds_count + energy_erds_count + max_appliance_erds
+    appliance_api_feature_erd_count = 11  # 0x0092-0x0097 and 0x0109-0x010D
+    polling_list_max_size = common_erds_count + energy_erds_count + appliance_api_feature_erd_count + max_appliance_erds
     print(f"\nPolling list size check:")
-    print(f"  common ERDs: {common_erds_count}, energy ERDs: {energy_erds_count}, max appliance ERDs: {max_appliance_erds}")
+    print(f"  common ERDs: {common_erds_count}, energy ERDs: {energy_erds_count}, appliance API feature ERDs: {appliance_api_feature_erd_count}, max appliance ERDs: {max_appliance_erds}")
     print(f"  POLLING_LIST_MAX_SIZE: {polling_list_max_size}")
 
     # Generate header (includes POLLING_LIST_MAX_SIZE)
