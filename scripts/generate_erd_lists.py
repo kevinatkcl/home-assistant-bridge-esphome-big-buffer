@@ -829,7 +829,7 @@ def _effective_dtype(eff_bytes: int, signed: bool) -> str:
     ``double`` cannot exactly represent values beyond 2^53, and no real
     appliance value approaches 4 billion.
     """
-    capped = min(eff_bytes, 4)
+    capped = min(eff_bytes, 4)  # cap: JSON double is exact up to 2^53; uint32 max (~4.3B) is well within that
     if signed:
         return {1: 'int8', 2: 'int16', 3: 'int24', 4: 'int32'}[capped]
     return {1: 'uint8', 2: 'uint16', 3: 'uint24', 4: 'uint32'}[capped]
