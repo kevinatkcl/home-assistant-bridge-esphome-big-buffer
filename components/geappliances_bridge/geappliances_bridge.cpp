@@ -1437,6 +1437,24 @@ bool GeappliancesBridge::process_jsonl_line_(const char* line,
       payload += ",\"" + std::string(key) + "\":\"" + escape_json_str(std::string(val)) + "\"";
   };
 
+  // Helper: format a double as a compact decimal string (no trailing zeros).
+  auto fmt_double = [](double v) -> std::string {
+    char buf[32];
+    if (v == static_cast<double>(static_cast<long long>(v))) {
+      snprintf(buf, sizeof(buf), "%.0f", v);
+    } else {
+      snprintf(buf, sizeof(buf), "%.6f", v);
+      // Strip trailing zeros after decimal point.
+      char* dot = strchr(buf, '.');
+      if (dot) {
+        char* end = buf + strlen(buf) - 1;
+        while (end > dot && *end == '0') *end-- = '\0';
+        if (*end == '.') *end = '\0';
+      }
+    }
+    return std::string(buf);
+  };
+
   if (strcmp(domain, "sensor") == 0) {
     payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
     payload += ",\"state_topic\":\"" + state_topic + "\"";
@@ -1477,6 +1495,33 @@ bool GeappliancesBridge::process_jsonl_line_(const char* line,
     payload += ",\"device\":" + device_json + "}";
 
   } else if (strcmp(domain, "number") == 0) {
+    // Read the data type ("uint8", "uint16", "uint24", "uint32",
+    // "int8", "int16", "int32") from the JSONL and derive min/max from it.
+    // The scale factor (sf) is applied so that fractional increments work
+    // correctly for scaled sensors (e.g. uint16 + sf=10 → max 6553.5, step 0.1).
+    // Without explicit min/max, HA defaults to the range 0-100 and rejects
+    // any appliance value outside that range.
+    cJSON* dt_item = cJSON_GetObjectItemCaseSensitive(root, "dt");
+    cJSON* sf_item = cJSON_GetObjectItemCaseSensitive(root, "sf");
+
+    const char* dtype = (dt_item && cJSON_IsString(dt_item)) ? dt_item->valuestring : "uint8";
+    int scale_factor  = (sf_item && cJSON_IsNumber(sf_item)) ? static_cast<int>(sf_item->valuedouble) : 1;
+    if (scale_factor < 1) scale_factor = 1;
+
+    double type_min, type_max;
+    if      (strcmp(dtype, "int8")   == 0) { type_min = -128.0;        type_max = 127.0; }
+    else if (strcmp(dtype, "int16")  == 0) { type_min = -32768.0;      type_max = 32767.0; }
+    else if (strcmp(dtype, "int24")  == 0) { type_min = -8388608.0;    type_max = 8388607.0; }
+    else if (strcmp(dtype, "int32")  == 0) { type_min = -2147483648.0; type_max = 2147483647.0; }
+    else if (strcmp(dtype, "uint8")  == 0) { type_min = 0.0;           type_max = 255.0; }
+    else if (strcmp(dtype, "uint16") == 0) { type_min = 0.0;           type_max = 65535.0; }
+    else if (strcmp(dtype, "uint24") == 0) { type_min = 0.0;           type_max = 16777215.0; }
+    else                                   { type_min = 0.0;           type_max = 4294967295.0; } // uint32
+
+    double min_val  = type_min / scale_factor;
+    double max_val  = type_max / scale_factor;
+    double step_val = (scale_factor > 1) ? (1.0 / scale_factor) : 1.0;
+
     payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
     payload += ",\"state_topic\":\"" + state_topic + "\"";
     payload += ",\"command_topic\":\"" + command_topic + "\"";
@@ -1486,6 +1531,9 @@ bool GeappliancesBridge::process_jsonl_line_(const char* line,
     add_field("unit_of_measurement", unit);
     add_field("device_class", dc);
     payload += ",\"mode\":\"box\"";
+    payload += ",\"min\":"  + fmt_double(min_val);
+    payload += ",\"max\":"  + fmt_double(max_val);
+    payload += ",\"step\":" + fmt_double(step_val);
     payload += ",\"device\":" + device_json + "}";
 
   } else if (strcmp(domain, "button") == 0) {

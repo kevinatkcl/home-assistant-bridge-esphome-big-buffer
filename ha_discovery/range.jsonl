@@ -104,7 +104,7 @@
 {"i":"5061","n":"AI Bake Cloud Status - Roasted Supported","d":"binary_sensor","ds":80,"vt":"{{ '01' if ((value[80:84] | int(base=16)) >> 4) & 1 else '00' }}","fi":"roasted_supported"}
 {"i":"5061","n":"AI Bake Cloud Status - Toasted Supported","d":"binary_sensor","ds":80,"vt":"{{ '01' if ((value[80:84] | int(base=16)) >> 5) & 1 else '00' }}","fi":"toasted_supported"}
 {"i":"5070","n":"Heartbeat Tick On Device","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5071","n":"Heartbeat Tick From Client","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5071","n":"Heartbeat Tick From Client","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5080","n":"Cooktop v2 Notifications - Left Front Burner Pan Suitability Notification","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 56) & 1 else '00' }}","fi":"left_front_burner_pan_suitability_notification"}
 {"i":"5080","n":"Cooktop v2 Notifications - Left Rear Burner Pan Suitability Notification","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 57) & 1 else '00' }}","fi":"left_rear_burner_pan_suitability_notification"}
 {"i":"5080","n":"Cooktop v2 Notifications - Right Front Burner Pan Suitability Notification","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 58) & 1 else '00' }}","fi":"right_front_burner_pan_suitability_notification"}
@@ -131,7 +131,7 @@
 {"i":"5102","n":"Upper Oven Delay Time Remaining","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
 {"i":"5103","n":"Upper Oven Probe Display Temperature","d":"sensor","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"5104","n":"Upper Oven Cook Time Remaining","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
-{"i":"5105","n":"Upper Oven Display Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
+{"i":"5105","n":"Upper Oven Display Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"5106","n":"Upper Oven User Temperature Offset","d":"sensor","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"5107","n":"Upper Oven Probe Present","d":"binary_sensor","ds":1}
 {"i":"5108","n":"Upper Oven Elapsed Cook Time","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
@@ -316,7 +316,7 @@
 {"i":"5118","n":"Upper Oven Door Open Remote Enabled","d":"binary_sensor","ds":1}
 {"i":"5119","n":"Session ID for Cavity 1 - ID","d":"sensor","ds":38,"vt":"{{ value[0:74] | int(base=16) }}"}
 {"i":"5119","n":"Session ID for Cavity 1 - Active","d":"sensor","ds":38,"vt":"{{ '01' if value[74:76] != '00' else '00' }}","fi":"active"}
-{"i":"511a","n":"Upper Oven Do Not Stop Cook Mode On Timer Expiration","d":"number","ds":1,"dc":"duration","p":"511b","r":"request","vt":"{{ '01' if value[0:2] != '00' else '00' }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"511a","n":"Upper Oven Do Not Stop Cook Mode On Timer Expiration","d":"number","ds":1,"dc":"duration","p":"511b","r":"request","vt":"{{ '01' if value[0:2] != '00' else '00' }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"511b","n":"Upper Oven Do Not Stop Cook Mode On Timer Expiration","d":"sensor","ds":1,"dc":"duration","p":"511a","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"511c","n":"Upper Oven Cook Time Add Or Subtract - Request ID","d":"sensor","ds":4,"p":"511d","r":"request","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"511c","n":"Upper Oven Cook Time Add Or Subtract - Padding","d":"sensor","ds":4,"p":"511d","r":"request","vt":"{{ value[2:4] | int(base=16) }}","fi":"padding"}
@@ -695,7 +695,7 @@
 {"i":"5150","n":"Upper Cavity Current Cycle Stage - Remove Probe","d":"binary_sensor","ds":3,"vt":"{{ '01' if ((value[2:4] | int(base=16)) >> 1) & 1 else '00' }}","fi":"remove_probe"}
 {"i":"5150","n":"Upper Cavity Current Cycle Stage - Press Start Key","d":"binary_sensor","ds":3,"vt":"{{ '01' if ((value[2:4] | int(base=16)) >> 2) & 1 else '00' }}","fi":"press_start_key"}
 {"i":"5150","n":"Upper Cavity Current Cycle Stage - Press 1 Key","d":"binary_sensor","ds":3,"vt":"{{ '01' if ((value[2:4] | int(base=16)) >> 3) & 1 else '00' }}","fi":"press_1_key"}
-{"i":"5151","n":"Upper Oven Advance Cook Stage","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5151","n":"Upper Oven Advance Cook Stage","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5200","n":"Lower Oven Cook Mode - Mode","d":"sensor","ds":13,"u":"h","dc":"enum","vt":"{{ {'00': 'No Mode', '01': 'Bake No Option', '02': 'Bake Probe', '03': 'Bake Delay Start', '04': 'Bake Timed Warm', '05': 'Bake Timed Two-Temp', '06': 'Bake Probe Delay Start', '07': 'Bake Timed Shutoff Delay Start', '08': 'Bake Timed Warm Delay Start', '09': 'Bake Timed TwoTemp Delay Start', '0a': 'Bake Sabbath', '0b': 'Broil Low', '0c': 'Broil High', '0d': 'Proof No Option', '0e': 'Proof Delay Start', '0f': 'Warm No Option', '10': 'Warm Probe', '11': 'Warm Delay Start', '12': 'Convection Bake No Option', '13': 'Convection Bake Probe', '14': 'Convection Bake Delay Start', '15': 'Convection Bake Timed Warm', '16': 'Convection Bake Timed Two-Temp', '17': 'Convection Bake Probe Delay Start', '18': 'Convection Bake Timed Shutoff Delay Start', '19': 'Convection Bake Timed Warm Delay Start', '1a': 'Convection Bake Timed TwoTemp Delay Start', '1b': 'Convection Multi-Bake No Option', '1c': 'Convection Multi-Bake Probe', '1d': 'Convection Multi-Bake Delay Start', '1e': 'Convection Multi-Bake Timed Warm', '1f': 'Convection Multi-Bake Timed Two-Temp', '20': 'Convection Multi-Bake Probe Delay Start', '21': 'Convection Multi-Bake Timed Shutoff Delay Start', '22': 'Convection Multi-Bake Timed Warm Delay Start', '23': 'Convection Multi-Bake Timed Two-Temp Delay Start', '24': 'Convection Roast No Option', '25': 'Convection Roast Probe', '26': 'Convection Roast Delay Start', '27': 'Convection Roast Timed Warm', '28': 'Convection Roast Timed Two-Temp', '29': 'Convection Roast Probe Delay Start', '2a': 'Convection Roast Timed Shutoff Delay Start', '2b': 'Convection Roast Timed Warm Delay Start', '2c': 'Convection Roast Timed Two-Temp Delay Start', '2d': 'Convection Broil Low No Option', '2e': 'Convection Broil High No Option', '2f': 'Convection Broil Crisp No Option', '30': 'Convection Broil Crisp Probe', '31': 'Custom Self Clean', '32': 'Custom Self Clean Delay Start', '33': 'Steam Clean', '34': 'Steam Clean Delay Start', '35': 'Dual Broil Low No Option', '36': 'Dual Broil High No Option', '37': 'FCT_NoOption', '38': 'Frozen Snacks No Option', '39': 'Frozen Snacks Multi NoOption', '3a': 'Frozen Pizza No Option', '3b': 'Frozen PizzaMulti No Option', '3c': 'Baked Goods No Option', '3d': 'Frozen Snacks Delay Start', '3e': 'Frozen Snacks Multi Delay Start', '3f': 'Frozen Pizza Delay Start', '40': 'Frozen Pizza Multi Delay Start', '41': 'Baked Goods Delay Start', '42': 'Special 6 No Option', '43': 'Special 6 Probe', '44': 'Special 6 Delay Start', '45': 'Special 6 Probe Delay Start', '46': 'Special 7 No Option', '47': 'Special 7 Probe', '48': 'Special 7 Delay Start', '49': 'Special 7 Probe Delay Start', '4a': 'Special 8 No Option', '4b': 'Special 8 Probe', '4c': 'Special 8 Delay Start', '4d': 'Special 8 Probe Delay Start', '4e': 'Special 9 No Option', '4f': 'Special 9 Probe', '50': 'Special 9 Delay Start', '51': 'Special 9 Probe Delay Start', '52': 'Special 10 No Option', '53': 'Special 10 Probe', '54': 'Special 10 Delay Start', '55': 'Special 10 Probe Delay Start', '56': 'Special 11 No Option', '57': 'Special 11 Probe', '58': 'Special 11 Delay Start', '59': 'Special 11 Probe Delay Start', '5a': 'Special 12 No Option', '5b': 'Special 12 Probe', '5c': 'Special 12 Delay Start', '5d': 'Special 12 Probe Delay Start', '5e': 'Special 13 No Option', '5f': 'Special 13 Probe', '60': 'Special 13 Delay Start', '61': 'Special 13 Probe Delay Start', '62': 'Special 14 No Option', '63': 'Special 14 Probe', '64': 'Special 14 Delay Start', '65': 'Special 14 Probe Delay Start', '66': 'Special 15 No Option', '67': 'Special 15 Probe', '68': 'Special 15 Delay Start', '69': 'Special 15 Probe Delay Start', '6a': 'Special 16 No Option', '6b': 'Special 16 Probe', '6c': 'Special 16 Delay Start', '6d': 'Special 16 Probe Delay Start', '6e': 'Special 17 No Option', '6f': 'Special 17 Probe', '70': 'Special 17 Delay Start', '71': 'Special 17 Probe Delay Start', '72': 'Special 18 No Option', '73': 'Special 18 Probe', '74': 'Special 18 Delay Start', '75': 'Special 18 Probe Delay Start', '76': 'Special 19 No Option', '77': 'Special 19 Probe', '78': 'Special 19 Delay Start', '79': 'Special 19 Probe Delay Start', '7a': 'Special 20 No Option', '7b': 'Special 20 Probe', '7c': 'Special 20 Delay Start', '7d': 'Special 20 Probe Delay Start', '7e': 'Special 21 No Option', '7f': 'Special 21 Probe', '80': 'Special 21 Delay Start', '81': 'Special 21 Probe Delay Start', '82': 'Special 22 No Option', '83': 'Special 22 Probe', '84': 'Special 22 Delay Start', '85': 'Special 22 Probe Delay Start', '86': 'Special 23 No Option', '87': 'Special 23 Probe', '88': 'Special 23 Delay Start', '89': 'Special 23 Probe Delay Start', '8a': 'Special 24 No Option', '8b': 'Special 24 Probe', '8c': 'Special 24 Delay Start', '8d': 'Special 24 Probe Delay Start', '8e': 'Special 25 No Option', '8f': 'Special 25 Probe', '90': 'Special 25 Delay Start', '91': 'Special 25 Probe Delay Start', '92': 'Special 26 No Option', '93': 'Special 26 Probe', '94': 'Special 26 Delay Start', '95': 'Special 26 Probe Delay Start', '96': 'Special 27 No Option', '97': 'Special 27 Probe', '98': 'Special 27 Delay Start', '99': 'Special 27 Probe Delay Start', '9a': 'Special 28 No Option', '9b': 'Special 28 Probe', '9c': 'Special 28 Delay Start', '9d': 'Special 28 Probe Delay Start', '9e': 'Air Fry No Option', '9f': 'Air Fry Probe', 'a0': 'Air Fry Delay Start', 'a1': 'Air Fry Probe Delay Start', 'a2': 'Special 30 No Option', 'a3': 'Special 30 Probe', 'a4': 'Special 30 Delay Start', 'a5': 'Special 30 Probe Delay Start', 'a6': 'Crisp No Option', 'a7': 'Crisp Probe', 'a8': 'Crisp Delay Start', 'a9': 'Crisp Probe Delay Start', 'aa': 'Reheat High No Option', 'ab': 'Reheat High Delay Start', 'ac': 'Reheat Low No Option', 'ad': 'Reheat Low Delay Start', 'ae': 'Bake Rapid Preheat', 'af': 'Convection Bake Rapid Preheat', 'b0': 'Convection Multi-Bake Rapid Preheat', 'b1': 'Convection Roast Rapid Preheat', 'b2': 'Convection Broil High Rapid Preheat', 'b3': 'Traditional Bake', 'b4': 'Traditional Bake Rapid Preheat', 'b5': 'Pastry Plus', 'b6': 'Pastry Plus Rapid Preheat', 'b7': 'Pizza', 'b8': 'Defrost', 'b9': 'Dynamic Broil', 'ba': 'Toast'}.get(value[0:2], 'Unknown') }}"}
 {"i":"5200","n":"Lower Oven Cook Mode - Cook Temperature (fahrenheit)","d":"sensor","ds":13,"u":"°F","vt":"{{ value[2:6] | int(base=16) }}","fi":"cook_temperature_fahrenheit"}
 {"i":"5200","n":"Lower Oven Cook Mode - Cook Time Hours (hours)","d":"sensor","ds":13,"u":"h","vt":"{{ value[6:8] | int(base=16) }}","fi":"cook_time_hours_hours"}
@@ -710,7 +710,7 @@
 {"i":"5202","n":"Lower Oven Delay Time Remaining","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
 {"i":"5203","n":"Lower Oven Probe Display Temperature","d":"sensor","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"5204","n":"Lower Oven Cook Time Remaining","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
-{"i":"5205","n":"Lower Oven Display Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
+{"i":"5205","n":"Lower Oven Display Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"5206","n":"Lower Oven User Temperature Offset","d":"sensor","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"5207","n":"Lower Oven Probe Present","d":"binary_sensor","ds":1}
 {"i":"5208","n":"Lower Oven Elapsed Cook Time","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
@@ -893,7 +893,7 @@
 {"i":"5218","n":"Lower Oven Door Open Remote Enabled","d":"binary_sensor","ds":1}
 {"i":"5219","n":"Session ID for Cavity 2 - ID","d":"sensor","ds":38,"vt":"{{ value[0:74] | int(base=16) }}"}
 {"i":"5219","n":"Session ID for Cavity 2 - Active","d":"sensor","ds":38,"vt":"{{ '01' if value[74:76] != '00' else '00' }}","fi":"active"}
-{"i":"521a","n":"Lower Oven Do Not Stop Cook Mode On Timer Expiration","d":"number","ds":1,"dc":"duration","p":"521b","r":"request","vt":"{{ '01' if value[0:2] != '00' else '00' }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"521a","n":"Lower Oven Do Not Stop Cook Mode On Timer Expiration","d":"number","ds":1,"dc":"duration","p":"521b","r":"request","vt":"{{ '01' if value[0:2] != '00' else '00' }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"521b","n":"Lower Oven Do Not Stop Cook Mode On Timer Expiration","d":"sensor","ds":1,"dc":"duration","p":"521a","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"521c","n":"Lower Oven Cook Time Add Or Subtract - Request ID","d":"sensor","ds":4,"p":"521d","r":"request","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"521c","n":"Lower Oven Cook Time Add Or Subtract - Padding","d":"sensor","ds":4,"p":"521d","r":"request","vt":"{{ value[2:4] | int(base=16) }}","fi":"padding"}
@@ -1315,7 +1315,7 @@
 {"i":"5250","n":"Lower Cavity Current Cycle Stage - Remove Probe","d":"binary_sensor","ds":3,"vt":"{{ '01' if ((value[2:4] | int(base=16)) >> 1) & 1 else '00' }}","fi":"remove_probe"}
 {"i":"5250","n":"Lower Cavity Current Cycle Stage - Press Start Key","d":"binary_sensor","ds":3,"vt":"{{ '01' if ((value[2:4] | int(base=16)) >> 2) & 1 else '00' }}","fi":"press_start_key"}
 {"i":"5250","n":"Lower Cavity Current Cycle Stage - Press 1 Key","d":"binary_sensor","ds":3,"vt":"{{ '01' if ((value[2:4] | int(base=16)) >> 3) & 1 else '00' }}","fi":"press_1_key"}
-{"i":"5251","n":"Lower Oven Advance Cook Stage","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5251","n":"Lower Oven Advance Cook Stage","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5300","n":"Recipe Status - Recipe Execution ID","d":"sensor","ds":23,"vt":"{{ value[0:40] | int(base=16) }}"}
 {"i":"5300","n":"Recipe Status - Current Cook Step Index","d":"sensor","ds":23,"vt":"{{ value[40:44] | int(base=16) }}","fi":"current_cook_step_index"}
 {"i":"5300","n":"Recipe Status - Cavity Status","d":"sensor","ds":23,"dc":"enum","vt":"{{ {'00': 'Idle', '01': 'Upper Oven', '02': 'Lower Oven', 'ff': 'Invalid'}.get(value[44:46], 'Unknown') }}","fi":"cavity_status"}
@@ -1492,7 +1492,7 @@
 {"i":"5404","n":"Advantium Cook Time Adjustment - Request ID","d":"sensor","ds":3,"u":"s","dc":"duration","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"5404","n":"Advantium Cook Time Adjustment - Cook time adjustment (seconds)","d":"sensor","ds":3,"u":"s","vt":"{{ value[2:6] | int(base=16) }}","fi":"cook_time_adjustment_seconds"}
 {"i":"5405","n":"Advantium Menu Tree Parametric Hash","d":"sensor","ds":32}
-{"i":"5406","n":"Advantium Menu Tree Selection","d":"number","ds":4,"vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}"}
+{"i":"5406","n":"Advantium Menu Tree Selection","d":"number","ds":4,"vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}","dt":"uint32"}
 {"i":"5407","n":"Advantium Allowable Oven Cook Time - Convection Bake Min Allowable Cook Time (seconds)","d":"sensor","ds":32,"u":"s","dc":"duration","vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"5407","n":"Advantium Allowable Oven Cook Time - Convection Bake Max Allowable Cook Time (seconds)","d":"sensor","ds":32,"u":"s","vt":"{{ value[4:8] | int(base=16) }}","fi":"convection_bake_max_allowable_cook_time_seconds"}
 {"i":"5407","n":"Advantium Allowable Oven Cook Time - Broil Min Allowable Cook Time (seconds)","d":"sensor","ds":32,"u":"s","vt":"{{ value[8:12] | int(base=16) }}","fi":"broil_min_allowable_cook_time_seconds"}
@@ -1529,8 +1529,8 @@
 {"i":"540a","n":"Advantium Allowable Kitchen Time - Max Allowable Kitchen Time (seconds)","d":"sensor","ds":4,"u":"s","vt":"{{ value[4:8] | int(base=16) }}","fi":"max_allowable_kitchen_time_seconds"}
 {"i":"540b","n":"Precision Cook Mode UID Cavity 1 Selection","d":"sensor","ds":4,"vt":"{{ value | int(base=16) }}"}
 {"i":"540c","n":"Precision Cook Mode UID Cavity 2 Selection","d":"sensor","ds":4,"vt":"{{ value | int(base=16) }}"}
-{"i":"540d","n":"Precision Cook Mode UID Cavity 1 Request","d":"number","ds":4,"vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}"}
-{"i":"540e","n":"Precision Cook Mode UID Cavity 2 Request","d":"number","ds":4,"vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}"}
+{"i":"540d","n":"Precision Cook Mode UID Cavity 1 Request","d":"number","ds":4,"vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}","dt":"uint32"}
+{"i":"540e","n":"Precision Cook Mode UID Cavity 2 Request","d":"number","ds":4,"vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}","dt":"uint32"}
 {"i":"5410","n":"Precision Cooking Short Name Cavity 1","d":"sensor","ds":16,"p":"5411","r":"request"}
 {"i":"5411","n":"Precision Cooking Short Name Cavity 1 - Short Name","d":"sensor","ds":24,"p":"5410","r":"status","vt":"{{ value[0:32] | int(base=16) }}"}
 {"i":"5411","n":"Precision Cooking Short Name Cavity 1 - UID","d":"sensor","ds":24,"p":"5410","r":"status","vt":"{{ value[32:40] | int(base=16) }}","fi":"uid"}
@@ -1780,8 +1780,8 @@
 {"i":"5671","n":"Closed-Loop Cooking Device Status - Device Status","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Not paired and not currently connected', '01': 'Paired but not currently connected', '02': 'Paired and currently connected', 'ff': 'Invalid'}.get(value[6:8], 'Unknown') }}","fi":"device_status"}
 {"i":"5672","n":"Closed-Loop Cooking Target Temperature","d":"sensor","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"5673","n":"Closed-Loop Cooking Current Temperature","d":"sensor","ds":2,"dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
-{"i":"5674","n":"Target Closed-Loop Cooking Time","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
-{"i":"5675","n":"Start Closed-Loop Cooking Cook Timer","d":"number","ds":1,"dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5674","n":"Target Closed-Loop Cooking Time","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
+{"i":"5675","n":"Start Closed-Loop Cooking Cook Timer","d":"number","ds":1,"dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5676","n":"Elapsed Closed-Loop Cooking Time","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
 {"i":"5677","n":"Closed-Loop Cooking Target Time Reached","d":"binary_sensor","ds":1}
 {"i":"5678","n":"Closed-Loop Cooking Device Battery State","d":"sensor","ds":1,"dc":"battery","vt":"{{ value | int(base=16) }}"}
@@ -3021,8 +3021,8 @@
 {"i":"5b0c","n":"Hood Notifications - Expiry notification for Charcoal  Filter","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 1) & 1 else '00' }}","fi":"expiry_notification_for_charcoal_filter"}
 {"i":"5b0d","n":"Hood Notification Reset - Expiry notification for Air Filter","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 0) & 1 else '00' }}","fi":"expiry_notification_for_air_filter"}
 {"i":"5b0d","n":"Hood Notification Reset - Expiry notification for Charcoal  Filter","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 1) & 1 else '00' }}","fi":"expiry_notification_for_charcoal_filter"}
-{"i":"5b0e","n":"Boost Duration","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b0f","n":"Delay Off Duration","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b0e","n":"Boost Duration","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b0f","n":"Delay Off Duration","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b10","n":"Boost Duration Limits - Minimum Boost Duration","d":"sensor","ds":2,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"5b10","n":"Boost Duration Limits - Maximum Boost Duration","d":"sensor","ds":2,"vt":"{{ value[2:4] | int(base=16) }}","fi":"maximum_boost_duration"}
 {"i":"5b11","n":"Delay Off Duration Limits - Min Delay Off Duration","d":"sensor","ds":2,"vt":"{{ value[0:2] | int(base=16) }}"}
@@ -3033,12 +3033,12 @@
 {"i":"5b15","n":"Hood Available Fan Speeds","d":"sensor","ds":1,"u":"rpm","vt":"{{ value | int(base=16) }}"}
 {"i":"5b16","n":"Hood Available Boost Speeds","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"5b17","n":"Hood Actual Light Level","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b18","n":"Hood Requested Light Level","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b18","n":"Hood Requested Light Level","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b19","n":"Hood Available Light Levels","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"5b1a","n":"Hood Actual Delay Off Mode","d":"binary_sensor","ds":1}
 {"i":"5b1b","n":"Hood Delay Off Request","d":"switch","ds":1}
 {"i":"5b1c","n":"Hood Actual Delay Off Duration","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b1d","n":"Hood Requested Delay Off Duration","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b1d","n":"Hood Requested Delay Off Duration","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b1e","n":"Hood to Cooktop Connection Status (Hood-Side)","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Not Paired And Not Connected', '01': 'Paired But Not Connected', '02': 'Paired And Connected', 'ff': 'Hood-To-Cooktop Not Available'}.get(value[:2], 'Unknown') }}"}
 {"i":"5b1f","n":"Hood Status","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Normal', '01': 'High Temperature', '02': 'Fan Shutdown'}.get(value[:2], 'Unknown') }}"}
 {"i":"5b20","n":"Hood Model","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Undefined', '01': 'F&P SDA', '02': 'OEM CATA'}.get(value[0:2], 'Unknown') }}"}
@@ -3058,32 +3058,32 @@
 {"i":"5b2a","n":"Relative Humidity (%) - State","d":"sensor","ds":4,"u":"%","dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[4:6], 'Unknown') }}","fi":"state"}
 {"i":"5b2a","n":"Relative Humidity (%) - padding","d":"sensor","ds":4,"u":"%","vt":"{{ value[6:8] | int(base=16) }}","fi":"padding"}
 {"i":"5b2b","n":"VOC Index Sensor Idle Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b2c","n":"Requested VOC Index Sensor Update Idle Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b2d","n":"Request Update of VOC Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b2c","n":"Requested VOC Index Sensor Update Idle Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b2d","n":"Request Update of VOC Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b2e","n":"VOC Index","d":"sensor","ds":4,"vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"5b2e","n":"VOC Index - VOC Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[4:6], 'Unknown') }}","fi":"voc_quality"}
 {"i":"5b2e","n":"VOC Index - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[6:8], 'Unknown') }}","fi":"state"}
 {"i":"5b2f","n":"PM 2.5 Update Idle Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b30","n":"Requested PM 2.5 Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b31","n":"Request Update of PM 2.5 (ug/m^3)","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b30","n":"Requested PM 2.5 Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b31","n":"Request Update of PM 2.5 (ug/m^3)","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b32","n":"PM 2.5 (ug/m^3) - 5 (ug/m^3)","d":"sensor","ds":4,"vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"5b32","n":"PM 2.5 (ug/m^3) - 5 Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[4:6], 'Unknown') }}","fi":"5_air_quality"}
 {"i":"5b32","n":"PM 2.5 (ug/m^3) - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[6:8], 'Unknown') }}","fi":"state"}
 {"i":"5b33","n":"NOx Index Idle Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b34","n":"Requested NOx Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b35","n":"Request Update of NOx Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b34","n":"Requested NOx Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b35","n":"Request Update of NOx Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b36","n":"NOx Index","d":"sensor","ds":4,"vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"5b36","n":"NOx Index - NOx Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[4:6], 'Unknown') }}","fi":"nox_air_quality"}
 {"i":"5b36","n":"NOx Index - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[6:8], 'Unknown') }}","fi":"state"}
 {"i":"5b37","n":"PM 1 Update Idle Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b38","n":"Requested PM 1 Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b39","n":"Request Update of PM 1 (ug/m^3)","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b38","n":"Requested PM 1 Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b39","n":"Request Update of PM 1 (ug/m^3)","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b3a","n":"PM 1 (ug/m^3)","d":"sensor","ds":4,"vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"5b3a","n":"PM 1 (ug/m^3) - PM 1 Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[4:6], 'Unknown') }}","fi":"pm_1_air_quality"}
 {"i":"5b3a","n":"PM 1 (ug/m^3) - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[6:8], 'Unknown') }}","fi":"state"}
 {"i":"5b3b","n":"PM 4 Update Idle Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b3c","n":"Requested PM 4 Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b3d","n":"Request Update of PM 4 (ug/m^3)","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b3c","n":"Requested PM 4 Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b3d","n":"Request Update of PM 4 (ug/m^3)","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b3e","n":"Hood Notifications V2 - Air Quality Change Notification","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 56) & 1 else '00' }}","fi":"air_quality_change_notification"}
 {"i":"5b3e","n":"Hood Notifications V2 - Expiry notification for Air Filter","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 57) & 1 else '00' }}","fi":"expiry_notification_for_air_filter"}
 {"i":"5b3e","n":"Hood Notifications V2 - Expiry notification for Charcoal Filter","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 58) & 1 else '00' }}","fi":"expiry_notification_for_charcoal_filter"}
@@ -3092,14 +3092,14 @@
 {"i":"5b3f","n":"PM 4 (ug/m^3) - PM 4 Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[4:6], 'Unknown') }}","fi":"pm_4_air_quality"}
 {"i":"5b3f","n":"PM 4 (ug/m^3) - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[6:8], 'Unknown') }}","fi":"state"}
 {"i":"5b40","n":"PM 10 Update Idle Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b41","n":"Requested PM 10 Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b42","n":"Request Update of PM 10 (ug/m^3)","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b41","n":"Requested PM 10 Sensor Idle Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b42","n":"Request Update of PM 10 (ug/m^3)","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b43","n":"PM 10 (ug/m^3)","d":"sensor","ds":4,"vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"5b43","n":"PM 10 (ug/m^3) - PM 10 Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[4:6], 'Unknown') }}","fi":"pm_10_air_quality"}
 {"i":"5b43","n":"PM 10 (ug/m^3) - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[6:8], 'Unknown') }}","fi":"state"}
 {"i":"5b44","n":"Environmental Temperature Update Idle Period in Minutes","d":"sensor","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
-{"i":"5b45","n":"Requested Environmental Temperature Idle Update Period in Minutes","d":"number","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b46","n":"Request Update of Environmental Temperature (F)","d":"number","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b45","n":"Requested Environmental Temperature Idle Update Period in Minutes","d":"number","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b46","n":"Request Update of Environmental Temperature (F)","d":"number","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b47","n":"Environmental Temperature (F)","d":"sensor","ds":4,"u":"°F","dc":"temperature","vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"5b47","n":"Environmental Temperature - Temperature Air Quality","d":"sensor","ds":4,"u":"°F","dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[4:6], 'Unknown') }}","fi":"temperature_air_quality"}
 {"i":"5b47","n":"Environmental Temperature - State","d":"sensor","ds":4,"u":"°F","dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[6:8], 'Unknown') }}","fi":"state"}
@@ -3115,29 +3115,29 @@
 {"i":"5b4d","n":"Selected Color Scheme","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Traffic Light', '01': 'Profile'}.get(value[:2], 'Unknown') }}"}
 {"i":"5b4e","n":"Requested Color Scheme","d":"select","ds":1,"vt":"{{ {'00': 'Traffic Light', '01': 'Profile'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Traffic Light': '00', 'Profile': '01'}[value] }}","o":"[\"Traffic Light\", \"Profile\"]"}
 {"i":"5b4f","n":"PM 2.5 Index Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b50","n":"Requested PM 2.5 Index Sensor Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b51","n":"Request Update of PM 2.5 Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b50","n":"Requested PM 2.5 Index Sensor Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b51","n":"Request Update of PM 2.5 Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b52","n":"PM 2.5 Index - 5 Index","d":"sensor","ds":4,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"5b52","n":"PM 2.5 Index - 5 Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[2:4], 'Unknown') }}","fi":"5_air_quality"}
 {"i":"5b52","n":"PM 2.5 Index - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[4:6], 'Unknown') }}","fi":"state"}
 {"i":"5b52","n":"PM 2.5 Index - padding","d":"sensor","ds":4,"vt":"{{ value[6:8] | int(base=16) }}","fi":"padding"}
 {"i":"5b53","n":"PM 1 Index Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b54","n":"Requested PM 1 Index Sensor Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b55","n":"Request Update of PM 1 Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b54","n":"Requested PM 1 Index Sensor Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b55","n":"Request Update of PM 1 Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b56","n":"PM 1 Index","d":"sensor","ds":4,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"5b56","n":"PM 1 Index - PM 1 Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[2:4], 'Unknown') }}","fi":"pm_1_air_quality"}
 {"i":"5b56","n":"PM 1 Index - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[4:6], 'Unknown') }}","fi":"state"}
 {"i":"5b56","n":"PM 1 Index - padding","d":"sensor","ds":4,"vt":"{{ value[6:8] | int(base=16) }}","fi":"padding"}
 {"i":"5b57","n":"PM 4 Index Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b58","n":"Requested PM 4 Index Sensor Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b59","n":"Request Update of PM 4 Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b58","n":"Requested PM 4 Index Sensor Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b59","n":"Request Update of PM 4 Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b5a","n":"PM 4 Index","d":"sensor","ds":4,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"5b5a","n":"PM 4 Index - PM 4 Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[2:4], 'Unknown') }}","fi":"pm_4_air_quality"}
 {"i":"5b5a","n":"PM 4 Index - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[4:6], 'Unknown') }}","fi":"state"}
 {"i":"5b5a","n":"PM 4 Index - padding","d":"sensor","ds":4,"vt":"{{ value[6:8] | int(base=16) }}","fi":"padding"}
 {"i":"5b5b","n":"PM 10 Index Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"5b5c","n":"Requested PM 10 Index Sensor Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
-{"i":"5b5d","n":"Request Update of PM 10 Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5b5c","n":"Requested PM 10 Index Sensor Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"5b5d","n":"Request Update of PM 10 Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5b5e","n":"PM 10 Index","d":"sensor","ds":4,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"5b5e","n":"PM 10 Index - PM 10 Air Quality","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Air Quality 1', '02': 'Air Quality 2', '03': 'Air Quality 3', '04': 'Air Quality 4', '05': 'Moderate', '06': 'Air Quality 6', '07': 'Air Quality 7', '08': 'Air Quality 8', '09': 'Air Quality 9', '0a': 'Poor', 'ff': 'Invalid'}.get(value[2:4], 'Unknown') }}","fi":"pm_10_air_quality"}
 {"i":"5b5e","n":"PM 10 Index - State","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Invalid', '01': 'Operating', '02': 'Error', '03': 'Calibrating'}.get(value[4:6], 'Unknown') }}","fi":"state"}
@@ -3250,7 +3250,7 @@
 {"i":"5c14","n":"Microwave Remote Enable","d":"switch","ds":1}
 {"i":"5c15","n":"Microwave Cook Timer - Minutes (minutes)","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"5c15","n":"Microwave Cook Timer - Seconds (seconds)","d":"sensor","ds":2,"u":"min","vt":"{{ value[2:4] | int(base=16) }}","fi":"seconds_seconds"}
-{"i":"5c16","n":"Microwave Defrost by Weight - Current Setting","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"5c16","n":"Microwave Defrost by Weight - Current Setting","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"5c17","n":"Microwave Defrost by Time Mode - Current Setting - Power Level","d":"sensor","ds":3,"u":"min","dc":"duration","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"5c17","n":"Microwave Defrost by Time Mode - Current Setting - Minutes at Start (minutes)","d":"sensor","ds":3,"u":"min","vt":"{{ value[2:4] | int(base=16) }}","fi":"minutes_at_start_minutes"}
 {"i":"5c17","n":"Microwave Defrost by Time Mode - Current Setting - Seconds at Start (seconds)","d":"sensor","ds":3,"u":"min","vt":"{{ value[4:6] | int(base=16) }}","fi":"seconds_at_start_seconds"}
@@ -3268,10 +3268,10 @@
 {"i":"5c18","n":"Microwave Notifications - Drain, stir food, & add ingredients","d":"binary_sensor","ds":6,"vt":"{{ '01' if ((value[0:12] | int(base=16)) >> 35) & 1 else '00' }}","fi":"drain_stir_food_add_ingredients"}
 {"i":"5c18","n":"Microwave Notifications - Turn food over & add ingredients","d":"binary_sensor","ds":6,"vt":"{{ '01' if ((value[0:12] | int(base=16)) >> 36) & 1 else '00' }}","fi":"turn_food_over_add_ingredients"}
 {"i":"5c18","n":"Microwave Notifications - Turn food over & stir","d":"binary_sensor","ds":6,"vt":"{{ '01' if ((value[0:12] | int(base=16)) >> 37) & 1 else '00' }}","fi":"turn_food_over_stir"}
-{"i":"5c19","n":"Microwave Kitchen/Display Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
+{"i":"5c19","n":"Microwave Kitchen/Display Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"5c1a","n":"Microwave Cycle Setting Modification Availability - Power Setting Modification","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 8) & 1 else '00' }}","fi":"power_setting_modification"}
 {"i":"5c1a","n":"Microwave Cycle Setting Modification Availability - Cook Time Setting Modification","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 9) & 1 else '00' }}","fi":"cook_time_setting_modification"}
-{"i":"5c1b","n":"Microwave Cook Timer Modification","d":"number","ds":4,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}"}
+{"i":"5c1b","n":"Microwave Cook Timer Modification","d":"number","ds":4,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}","dt":"uint32"}
 {"i":"5c1c","n":"Microwave Dinner Plate Mode - Available Settings - Sensed","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 56) & 1 else '00' }}","fi":"sensed"}
 {"i":"5c1c","n":"Microwave Dinner Plate Mode - Available Settings - 1 cup","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 57) & 1 else '00' }}","fi":"1_cup"}
 {"i":"5c1c","n":"Microwave Dinner Plate Mode - Available Settings - 2 cups","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 58) & 1 else '00' }}","fi":"2_cups"}
@@ -3279,7 +3279,7 @@
 {"i":"5c1c","n":"Microwave Dinner Plate Mode - Available Settings - 4 cups","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 60) & 1 else '00' }}","fi":"4_cups"}
 {"i":"5c1c","n":"Microwave Dinner Plate Mode - Available Settings - 5 cups","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 61) & 1 else '00' }}","fi":"5_cups"}
 {"i":"5c1d","n":"Microwave Dinner Plate Mode - Current Setting","d":"select","ds":1,"vt":"{{ {'00': 'Sensed', '01': '1 cup', '02': '2 cups', '03': '3 cups', '04': '4 cups', '05': '5 cups', 'ff': 'not set'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Sensed': '00', '1 cup': '01', '2 cups': '02', '3 cups': '03', '4 cups': '04', '5 cups': '05', 'not set': 'ff'}[value] }}","o":"[\"Sensed\", \"1 cup\", \"2 cups\", \"3 cups\", \"4 cups\", \"5 cups\", \"not set\"]"}
-{"i":"5c1e","n":"Microwave Kitchen Timer Modification","d":"number","ds":4,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}"}
+{"i":"5c1e","n":"Microwave Kitchen Timer Modification","d":"number","ds":4,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}","dt":"uint32"}
 {"i":"5c20","n":"Microwave Defrost by Weight - Maximum Allowed Setting","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"5c21","n":"Microwave Warm Mode - Available Settings - Sensed","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 56) & 1 else '00' }}","fi":"sensed"}
 {"i":"5c21","n":"Microwave Warm Mode - Available Settings - Low","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 57) & 1 else '00' }}","fi":"low"}
@@ -3325,7 +3325,7 @@
 {"i":"5c29","n":"Microwave Auto Roast - Available Settings - Pork (max lbs x 10)","d":"sensor","ds":32,"sf":10,"vt":"{{ ((value[0:64] | int(base=16)) >> 184) & 255 }}","fi":"pork_max_lbs_x_10"}
 {"i":"5c2a","n":"Microwave Auto Roast Mode - Current Setting - Current Mode","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Sensed', '01': 'Beef', '02': 'Whole Chicken', '03': 'Turkey Breast', '04': 'Pork', 'ff': 'not set'}.get(value[0:2], 'Unknown') }}"}
 {"i":"5c2a","n":"Microwave Auto Roast Mode - Current Setting - Lbs of selected item x10","d":"sensor","ds":2,"vt":"{{ value[2:4] | int(base=16) }}","fi":"lbs_of_selected_item_x10"}
-{"i":"5c2b","n":"Microwave Oven Cook Timer","d":"number","ds":3,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%06x' % (value | int) }}"}
+{"i":"5c2b","n":"Microwave Oven Cook Timer","d":"number","ds":3,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%06x' % (value | int) }}","dt":"uint24"}
 {"i":"5c2c","n":"Microwave Protein Mode - Available Settings - Sensed","d":"binary_sensor","ds":32,"sf":10,"vt":"{{ '01' if ((value[0:64] | int(base=16)) >> 248) & 1 else '00' }}","fi":"sensed"}
 {"i":"5c2c","n":"Microwave Protein Mode - Available Settings - Ground Beef","d":"binary_sensor","ds":32,"sf":10,"vt":"{{ '01' if ((value[0:64] | int(base=16)) >> 249) & 1 else '00' }}","fi":"ground_beef"}
 {"i":"5c2c","n":"Microwave Protein Mode - Available Settings - Fish","d":"binary_sensor","ds":32,"sf":10,"vt":"{{ '01' if ((value[0:64] | int(base=16)) >> 250) & 1 else '00' }}","fi":"fish"}

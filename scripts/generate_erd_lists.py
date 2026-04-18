@@ -788,12 +788,167 @@ def _get_primary_field(erd_by_id: Dict[str, Dict], paired_erd_str: str):
     )
 
 
+def _number_min_max(effective_bytes: int, scale_factor: int, signed: bool):
+    """Compute (min_val, max_val, step_val) for a number entity.
+
+    *effective_bytes* is the number of bytes whose value the Home Assistant
+    value_template will actually read (may differ from the full ERD data_size
+    when only a slice of the payload is used).  The step equals 1/scale_factor
+    so that fractional increments are correct when a scaling factor is present.
+
+    The byte count is capped at 4 (uint32 / int32 range) so the resulting max
+    value fits exactly in a JSON double (IEEE 754 doubles represent integers
+    exactly up to 2^53).  Values beyond 4.3 billion are not realistic for any
+    appliance sensor or control, so the cap has no practical impact.
+
+    Returned values are Python floats; callers should round to avoid tiny
+    floating-point artefacts.
+    """
+    # Cap at 4 bytes so results fit cleanly in a JSON float (uint32 max ≈ 4.3 B).
+    capped = min(effective_bytes, 4)
+    if signed:
+        half = 2 ** (capped * 8 - 1)
+        min_val = -half / scale_factor
+        max_val = (half - 1) / scale_factor
+    else:
+        raw_max = (1 << (capped * 8)) - 1
+        min_val = 0.0
+        max_val = raw_max / scale_factor
+    step_val = 1.0 / scale_factor if scale_factor > 1 else 1.0
+    return min_val, max_val, step_val
+
+
+def _effective_dtype(eff_bytes: int, signed: bool) -> str:
+    """Return the canonical data-type string for a number entity.
+
+    Maps (effective_bytes, signed) to one of the type names understood by the
+    C++ runtime parser: ``int8``, ``int16``, ``int24``, ``int32``, ``uint8``,
+    ``uint16``, ``uint24``, ``uint32``.
+
+    Byte counts above 4 are capped at 4 (``uint32`` / ``int32``) because JSON
+    ``double`` cannot exactly represent values beyond 2^53, and no real
+    appliance value approaches 4 billion.
+    """
+    capped = min(eff_bytes, 4)  # cap: JSON double is exact up to 2^53; uint32 max (~4.3B) is well within that
+    if signed:
+        return {1: 'int8', 2: 'int16', 3: 'int24', 4: 'int32'}[capped]
+    return {1: 'uint8', 2: 'uint16', 3: 'uint24', 4: 'uint32'}[capped]
+
+
+# Lookup table for (type_min, type_max) by data-type name.
+# The C++ runtime uses an identical mapping.
+_DTYPE_RANGE: dict = {
+    'int8':   (-128.0,        127.0),
+    'int16':  (-32768.0,      32767.0),
+    'int24':  (-8388608.0,    8388607.0),
+    'int32':  (-2147483648.0, 2147483647.0),
+    'uint8':  (0.0,           255.0),
+    'uint16': (0.0,           65535.0),
+    'uint24': (0.0,           16777215.0),
+    'uint32': (0.0,           4294967295.0),
+}
+
+
+def _range_from_dtype(dtype: str, scale_factor: int = 1):
+    """Return (min_val, max_val, step_val) for a given data type and scale factor.
+
+    Mirrors the lookup table used in the C++ runtime so that Python tests can
+    verify end-to-end correctness without running the embedded firmware.
+
+    Raises ``KeyError`` for unknown type names.
+    """
+    if scale_factor < 1:
+        scale_factor = 1
+    type_min, type_max = _DTYPE_RANGE[dtype]
+    min_val  = type_min / scale_factor
+    max_val  = type_max / scale_factor
+    step_val = 1.0 / scale_factor if scale_factor > 1 else 1.0
+    return min_val, max_val, step_val
+
+
+def _infer_dtype_from_jsonl_entry(obj: dict) -> str:
+    """Infer the data-type string for a number entity from a JSONL object.
+
+    Used to migrate existing JSONL files to the ``dt`` field.  The
+    value_template string encodes the information originally derived from the
+    ERD data type:
+
+    * *Signedness* is detected by looking for the sign-extension pattern
+      ``int(base=16)) - <N> if`` that _compute_sensor_value_template emits for
+      signed integer types (i8, i16, i32 …).
+    * *Effective byte count* is derived from the ``value[0:N]`` leading-slice
+      notation that paired-ERD templates use; otherwise the full ``ds`` field
+      is used.
+    """
+    data_size = int(obj.get('ds', 1))
+    if data_size < 1:
+        data_size = 1
+
+    vt = obj.get('vt', '')
+
+    # Detect signedness: _compute_sensor_value_template inserts a subtraction
+    # of the max value followed by ' if ' for signed types.
+    signed = bool(re.search(r'int\(base=16\)\)\s*-\s*\d+\s+if', vt))
+
+    # Detect effective byte count from leading-slice notation.
+    effective_bytes = data_size
+    m = re.search(r'value\[0:(\d+)\]', vt)
+    if m:
+        hex_chars = int(m.group(1))
+        if hex_chars >= 2 and hex_chars % 2 == 0:
+            effective_bytes = hex_chars // 2
+
+    return _effective_dtype(effective_bytes, signed)
+
+
+def backfill_ha_discovery_jsonl_data_type(jsonl_dir: 'Path') -> int:
+    """Migrate number entities in JSONL files from mn/mx/st to the dt field.
+
+    Removes the old explicit ``mn``, ``mx``, and ``st`` fields from every
+    number entity and replaces them with a single ``dt`` (data type) field
+    (e.g. ``"uint8"``, ``"uint16"``, ``"int16"``).
+
+    The C++ runtime then derives ``min``, ``max``, and ``step`` from ``dt``
+    combined with the already-present ``sf`` (scale factor) field.
+
+    Returns the total number of entries updated.
+    """
+    updated = 0
+    for path in sorted(jsonl_dir.glob('*.jsonl')):
+        lines_in = path.read_text(encoding='utf-8').splitlines()
+        lines_out = []
+        changed = False
+        for line in lines_in:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                lines_out.append(line)
+                continue
+            if obj.get('d') == 'number':
+                had_old = any(k in obj for k in ('mn', 'mx', 'st'))
+                for k in ('mn', 'mx', 'st'):
+                    obj.pop(k, None)
+                if 'dt' not in obj:
+                    obj['dt'] = _infer_dtype_from_jsonl_entry(obj)
+                    updated += 1
+                    changed = True
+                elif had_old:
+                    changed = True
+            lines_out.append(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
+        if changed:
+            path.write_text('\n'.join(lines_out) + '\n', encoding='utf-8')
+    return updated
+
+
 def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
     """Process all ERDs with ha_domain metadata and return a list of entry dicts.
 
     Each dict has the keys: erd_id, name, domain, unit, device_class,
     state_class, scaling_factor, data_size, paired_erd_id, pair_role,
-    value_template, command_template, options_json, field_id.
+    value_template, command_template, options_json, field_id, data_type.
 
     This is the single source of truth for ha-discovery data; both the C header
     generator and the JSONL generator call this function.
@@ -805,7 +960,8 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
     def collect(erd_id_int: int, name: str, domain: str, unit: str,
                 dev_cls: str, state_cls: str, scaling: int, d_size: int,
                 paired_id: int, role: str, val_tmpl: str, cmd_tmpl: str,
-                opts: str, field_id: str) -> None:
+                opts: str, field_id: str,
+                data_type: str = '') -> None:
         entries.append({
             'erd_id': erd_id_int,
             'name': name,
@@ -821,6 +977,7 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
             'command_template': cmd_tmpl,
             'options_json': opts,
             'field_id': field_id,
+            'data_type': data_type,
         })
 
     for erd in ha_erds:
@@ -845,7 +1002,7 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
         )
 
         if classification == 'single':
-            vt, ct, opts = '', '', ''
+            vt, ct, opts, dt = '', '', '', ''
 
             if ha_domain == 'sensor':
                 if device_class == 'enum':
@@ -870,20 +1027,25 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
                     p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
                     vt = _byte_subfield_value_template(pf, p_scale)
                     signed = _is_signed_type(pf.get('type', 'u8'))
+                    eff_bytes = pf.get('size', 1)
                 elif paired_erd_str and paired_erd_str in erd_by_id:
                     p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
                     paired_type = _get_primary_data_type(erd_by_id[paired_erd_str].get('data', []))
                     signed = _is_signed_type(paired_type)
                     vt = _compute_sensor_value_template(p_scale, data_size, signed)
+                    eff_bytes = data_size
                 else:
                     signed = _is_signed_type(_get_primary_data_type(erd_data))
                     vt = _compute_sensor_value_template(scaling_factor, data_size, signed)
+                    eff_bytes = data_size
                 ct = _number_command_template(data_size, scaling_factor, signed)
+                dt = _effective_dtype(eff_bytes, signed)
             # button: no templates
 
             collect(erd_id_int, display_name, ha_domain, unit, device_class,
                     state_class, scaling_factor, data_size, paired_erd_id,
-                    pair_role, vt, ct, opts, '')
+                    pair_role, vt, ct, opts, '',
+                    dt if ha_domain == 'number' else '')
 
         elif classification == 'byte_offset':
             nr_fields = _get_non_reserved_fields(erd_data)
@@ -997,6 +1159,9 @@ def generate_ha_discovery_jsonl_by_category(erds: List[Dict]) -> Dict[str, str]:
             if e['command_template']:             obj['ct'] = e['command_template']
             if e['options_json']:                 obj['o']  = e['options_json']
             if e['field_id']:                     obj['fi'] = e['field_id']
+            # Emit data type for number entities so the C++ runtime can derive
+            # the correct min/max bounds for each HA entity.
+            if e.get('data_type'):                obj['dt'] = e['data_type']
             lines.append(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
         result[cat] = '\n'.join(lines) + '\n'
 

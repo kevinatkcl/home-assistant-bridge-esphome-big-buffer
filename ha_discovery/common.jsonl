@@ -37,7 +37,7 @@
 {"i":"003c","n":"Auxiliary Version - Non-Critical Major","d":"sensor","ds":4,"vt":"{{ value[4:6] | int(base=16) }}","fi":"non_critical_major"}
 {"i":"003c","n":"Auxiliary Version - Non-Critical Minor","d":"sensor","ds":4,"vt":"{{ value[6:8] | int(base=16) }}","fi":"non_critical_minor"}
 {"i":"004f","n":"Enhanced Sabbath Mode Status","d":"switch","ds":1}
-{"i":"0050","n":"Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
+{"i":"0050","n":"Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"0051","n":"Available Sound Levels - Off","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 8) & 1 else '00' }}","fi":"off"}
 {"i":"0051","n":"Available Sound Levels - Low","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 9) & 1 else '00' }}","fi":"low"}
 {"i":"0051","n":"Available Sound Levels - Medium","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 10) & 1 else '00' }}","fi":"medium"}
@@ -245,9 +245,9 @@
 {"i":"0802","n":"Supported Sound Themes - Classical Theme","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 57) & 1 else '00' }}","fi":"classical_theme"}
 {"i":"0802","n":"Supported Sound Themes - Morse Code Theme","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 58) & 1 else '00' }}","fi":"morse_code_theme"}
 {"i":"0900","n":"Sign of Life","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"0902","n":"UI Sound Level Request","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"0902","n":"UI Sound Level Request","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"0903","n":"UI Sound Level State","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"0904","n":"Number of Sound Level Settings","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"0904","n":"Number of Sound Level Settings","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"0910","n":"Battery Level","d":"sensor","ds":1,"u":"%","dc":"battery","vt":"{{ value | int(base=16) }}"}
 {"i":"0911","n":"Battery Is Charging","d":"binary_sensor","ds":1,"dc":"battery_charging"}
 {"i":"0912","n":"Appliance Is Plugged Into Wall","d":"binary_sensor","ds":1,"dc":"plug"}
