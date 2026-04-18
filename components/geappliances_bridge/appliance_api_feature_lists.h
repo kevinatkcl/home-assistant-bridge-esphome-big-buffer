@@ -1824,6 +1824,10 @@ static const tiny_erd_t appliance_api_dishwasher_v2_cycle_names_erds[] = {
   0x301c,
 };
 
+static const tiny_erd_t appliance_api_dishwasher_v2_analog_door_latch_ad_counts_erds[] = {
+  0x3088,
+};
+
 static const tiny_erd_t appliance_api_cooking_v1_foundation_erds[] = {
   0x5007,
 };
@@ -2279,7 +2283,7 @@ static const tiny_erd_t appliance_api_cooking_v3_enhanced_sabbath_manual_mode_er
 };
 
 static const tiny_erd_t appliance_api_cooking_v3_upper_local_available_cook_modes_erds[] = {
-  0x521c,
+  0x512c,
 };
 
 static const tiny_erd_t appliance_api_cooking_v3_lower_local_available_cook_modes_erds[] = {
@@ -2524,11 +2528,13 @@ static const tiny_erd_t appliance_api_home_water_filter_v1_flow_meter_erds[] = {
 
 static const tiny_erd_t appliance_api_home_water_filter_v1_water_usage_erds[] = {
   0x1161,
+  0x1162,
   0x116d,
 };
 
 static const tiny_erd_t appliance_api_home_water_filter_v1_filter_status_erds[] = {
   0x1164,
+  0x1179,
 };
 
 static const tiny_erd_t appliance_api_home_water_filter_v1_reset_water_filter_erds[] = {
@@ -2541,7 +2547,6 @@ static const tiny_erd_t appliance_api_home_water_filter_v1_water_auto_shutoff_er
 };
 
 static const tiny_erd_t appliance_api_home_water_filter_v1_water_filter_alerts_legacy_erds[] = {
-  0x1162,
   0x1163,
   0x1169,
   0x116b,
@@ -2550,6 +2555,20 @@ static const tiny_erd_t appliance_api_home_water_filter_v1_water_filter_alerts_l
 
 static const tiny_erd_t appliance_api_home_water_filter_v1_notifications_erds[] = {
   0x1175,
+};
+
+static const tiny_erd_t appliance_api_home_water_filter_v1_filter_1_status_erds[] = {
+  0x1176,
+  0x117a,
+};
+
+static const tiny_erd_t appliance_api_home_water_filter_v1_filter_2_status_erds[] = {
+  0x1177,
+  0x117b,
+};
+
+static const tiny_erd_t appliance_api_home_water_filter_v1_home_water_filter_platform_erds[] = {
+  0x1178,
 };
 
 static const tiny_erd_t appliance_api_delivery_box_v1_go_box_foundation_erds[] = {
@@ -5244,6 +5263,21 @@ static const tiny_erd_t appliance_api_device_gateway_v1_delayed_appliance_ota_up
   0x0105,
 };
 
+static const tiny_erd_t appliance_api_device_gateway_v1_voice_diagnostics_erds[] = {
+  0x630b,
+  0x630c,
+  0x630d,
+};
+
+static const tiny_erd_t appliance_api_device_gateway_v1_remote_voice_enablement_erds[] = {
+  0x630e,
+  0x630f,
+};
+
+static const tiny_erd_t appliance_api_device_gateway_v1_network_state_indication_erds[] = {
+  0x6003,
+};
+
 static const tiny_erd_t appliance_api_hvac_v1_base_functionality_erds[] = {
   0x7700,
   0x7701,
@@ -5819,6 +5853,7 @@ static const appliance_feature_api_descriptor_t appliance_feature_api_descriptor
   {0x0006, 2, 0x00000040, "Dishwasher / Foundation 2", appliance_api_dishwasher_v2_foundation_2_erds, 5},
   {0x0006, 2, 0x00000080, "Dishwasher / Cycle Indication", appliance_api_dishwasher_v2_cycle_indication_erds, 1},
   {0x0006, 2, 0x00000100, "Dishwasher / Cycle Names", appliance_api_dishwasher_v2_cycle_names_erds, 1},
+  {0x0006, 2, 0x00000200, "Dishwasher / Analog Door Latch AD Counts", appliance_api_dishwasher_v2_analog_door_latch_ad_counts_erds, 1},
   {0x0007, 1, 0x00000001, "Cooking / Foundation", appliance_api_cooking_v1_foundation_erds, 1},
   {0x0007, 1, 0x00000002, "Cooking / Twelve Hour Shutoff", appliance_api_cooking_v1_twelve_hour_shutoff_erds, 1},
   {0x0007, 1, 0x00000004, "Cooking / End Tone Setting", appliance_api_cooking_v1_end_tone_setting_erds, 1},
@@ -5929,12 +5964,15 @@ static const appliance_feature_api_descriptor_t appliance_feature_api_descriptor
   {0x0010, 1, 0x00000010, "Home Water Filter / Continuous Flow Time Limits", appliance_api_home_water_filter_v1_continuous_flow_time_limits_erds, 1},
   {0x0010, 1, 0x00000020, "Home Water Filter / Leak Detection", appliance_api_home_water_filter_v1_leak_detection_erds, 1},
   {0x0010, 1, 0x00000040, "Home Water Filter / Flow Meter", appliance_api_home_water_filter_v1_flow_meter_erds, 1},
-  {0x0010, 1, 0x00000080, "Home Water Filter / Water Usage", appliance_api_home_water_filter_v1_water_usage_erds, 2},
-  {0x0010, 1, 0x00000100, "Home Water Filter / Filter Status", appliance_api_home_water_filter_v1_filter_status_erds, 1},
+  {0x0010, 1, 0x00000080, "Home Water Filter / Water Usage", appliance_api_home_water_filter_v1_water_usage_erds, 3},
+  {0x0010, 1, 0x00000100, "Home Water Filter / Filter Status", appliance_api_home_water_filter_v1_filter_status_erds, 2},
   {0x0010, 1, 0x00000200, "Home Water Filter / Reset Water Filter", appliance_api_home_water_filter_v1_reset_water_filter_erds, 1},
   {0x0010, 1, 0x00000400, "Home Water Filter / Water Auto shutoff", appliance_api_home_water_filter_v1_water_auto_shutoff_erds, 2},
-  {0x0010, 1, 0x00000800, "Home Water Filter / Water Filter Alerts Legacy", appliance_api_home_water_filter_v1_water_filter_alerts_legacy_erds, 5},
+  {0x0010, 1, 0x00000800, "Home Water Filter / Water Filter Alerts Legacy", appliance_api_home_water_filter_v1_water_filter_alerts_legacy_erds, 4},
   {0x0010, 1, 0x00001000, "Home Water Filter / Notifications", appliance_api_home_water_filter_v1_notifications_erds, 1},
+  {0x0010, 1, 0x00002000, "Home Water Filter / Filter 1 Status", appliance_api_home_water_filter_v1_filter_1_status_erds, 2},
+  {0x0010, 1, 0x00004000, "Home Water Filter / Filter 2 Status", appliance_api_home_water_filter_v1_filter_2_status_erds, 2},
+  {0x0010, 1, 0x00008000, "Home Water Filter / Home Water Filter Platform", appliance_api_home_water_filter_v1_home_water_filter_platform_erds, 1},
   {0x0012, 1, 0x00000001, "Delivery Box / Go Box Foundation", appliance_api_delivery_box_v1_go_box_foundation_erds, 5},
   {0x0012, 1, 0x00000004, "Delivery Box / Go Box Mini Foundation", appliance_api_delivery_box_v1_go_box_mini_foundation_erds, 2},
   {0x0014, 1, 0x00000001, "Zoneline / Foundation", appliance_api_zoneline_v1_foundation_erds, 41},
@@ -6345,6 +6383,9 @@ static const appliance_feature_api_descriptor_t appliance_feature_api_descriptor
   {0x0201, 1, 0x00000002, "Device Gateway / BLE Advertise Only Sensor", appliance_api_device_gateway_v1_ble_advertise_only_sensor_erds, 31},
   {0x0201, 1, 0x00000004, "Device Gateway / Test Mode", appliance_api_device_gateway_v1_test_mode_erds, 1},
   {0x0201, 1, 0x00000008, "Device Gateway / Delayed Appliance OTA Update", appliance_api_device_gateway_v1_delayed_appliance_ota_update_erds, 1},
+  {0x0201, 1, 0x00000010, "Device Gateway / Voice Diagnostics", appliance_api_device_gateway_v1_voice_diagnostics_erds, 3},
+  {0x0201, 1, 0x00000020, "Device Gateway / Remote Voice Enablement", appliance_api_device_gateway_v1_remote_voice_enablement_erds, 2},
+  {0x0201, 1, 0x00000040, "Device Gateway / Network State Indication", appliance_api_device_gateway_v1_network_state_indication_erds, 1},
   {0x0202, 1, 0x00000001, "HVAC / Base Functionality", appliance_api_hvac_v1_base_functionality_erds, 7},
   {0x0202, 1, 0x00000002, "HVAC / Heat Mode Supported", appliance_api_hvac_v1_heat_mode_supported_erds, 6},
   {0x0202, 1, 0x00000004, "HVAC / Cool Mode Supported", appliance_api_hvac_v1_cool_mode_supported_erds, 6},
