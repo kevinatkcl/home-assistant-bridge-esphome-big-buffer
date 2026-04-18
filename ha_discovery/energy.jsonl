@@ -1,4 +1,4 @@
-{"i":"d001","n":"DSM Override Status","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"d001","n":"DSM Override Status","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"d002","n":"DSM Override Allowed","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"d003","n":"End Of Cycle (Tub 0)","d":"binary_sensor","ds":1}
 {"i":"d004","n":"Cycle Time Remaining","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
@@ -7,7 +7,7 @@
 {"i":"d005","n":"DSM Power Usage - Seconds Since Cleared","d":"sensor","ds":11,"u":"W","vt":"{{ value[12:16] | int(base=16) }}","fi":"seconds_since_cleared"}
 {"i":"d005","n":"DSM Power Usage - ReferencedToLine","d":"sensor","ds":11,"u":"W","vt":"{{ value[16:18] | int(base=16) }}","fi":"referencedtoline"}
 {"i":"d005","n":"DSM Power Usage - Water Usage","d":"sensor","ds":11,"u":"W","vt":"{{ value[18:22] | int(base=16) }}","fi":"water_usage"}
-{"i":"d006","n":"Demand Response Status","d":"select","ds":1,"vt":"{{ {'00': 'Not in demand response mode', '01': 'In Demand Response mode', '02': 'In Temporary Load Reduction mode', '03': 'In appliances load reduction mode (Option 3 is controlled by the appliance and it cannot be triggered by the cloud)', '04': 'In Temporary Load Increase mode', '05': 'In Temperature Offset mode', 'ff': 'Invalid'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Not in demand response mode': '00', 'In Demand Response mode': '01', 'In Temporary Load Reduction mode': '02', 'In appliances load reduction mode (Option 3 is controlled by the appliance and it cannot be triggered by the cloud)': '03', 'In Temporary Load Increase mode': '04', 'In Temperature Offset mode': '05', 'Invalid': 'ff'}[value] }}","o":"[\"Not in demand response mode\", \"In Demand Response mode\", \"In Temporary Load Reduction mode\", \"In appliances load reduction mode (Option 3 is controlled by the appliance and it cannot be triggered by the cloud)\", \"In Temporary Load Increase mode\", \"In Temperature Offset mode\", \"Invalid\"]"}
+{"i":"d006","n":"Demand Response Status","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"d007","n":"Appliance Cumulative Energy","d":"sensor","ds":4,"u":"Wh","dc":"energy","sc":"total","vt":"{{ value | int(base=16) }}"}
 {"i":"d008","n":"Available Demand Response Modes - Demand Response Available","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"demand_response_available"}
 {"i":"d008","n":"Available Demand Response Modes - Temporary Load Reduction Available","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}","fi":"temporary_load_reduction_available"}
@@ -16,22 +16,22 @@
 {"i":"d00b","n":"Temporary Temperature Offset Demand Response","d":"number","ds":44,"u":"°F","dc":"temperature","p":"d00c","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%088x' % (value | int) }}","dt":"uint8"}
 {"i":"d00c","n":"Temporary Temperature Offset Demand Response - Segment Count","d":"sensor","ds":44,"u":"°F","dc":"temperature","p":"d00b","r":"status","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"d00c","n":"Temporary Temperature Offset Demand Response - Current Segment (0xFF if not begun)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[2:4] | int(base=16) }}","fi":"current_segment_0xff_if_not_begun"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Current offset being applied","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[4:8] | int(base=16) }}","fi":"current_offset_being_applied"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[8:16] | int(base=16) }}","fi":"start_time_seconds_since_1_1_1970"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Current offset being applied","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[4:8] | int(base=16)) - 65536 if (value[4:8] | int(base=16)) >= 32768 else (value[4:8] | int(base=16)) }}","fi":"current_offset_being_applied"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[8:16] | int(base=16)) - 4294967296 if (value[8:16] | int(base=16)) >= 2147483648 else (value[8:16] | int(base=16)) }}","fi":"start_time_seconds_since_1_1_1970"}
 {"i":"d00c","n":"Temporary Temperature Offset Demand Response - Duration (minutes)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[16:20] | int(base=16) }}","fi":"duration_minutes"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[20:24] | int(base=16) }}","fi":"offset_degrees_f"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[24:32] | int(base=16) }}","fi":"start_time_seconds_since_1_1_1970"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[20:24] | int(base=16)) - 65536 if (value[20:24] | int(base=16)) >= 32768 else (value[20:24] | int(base=16)) }}","fi":"offset_degrees_f"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[24:32] | int(base=16)) - 4294967296 if (value[24:32] | int(base=16)) >= 2147483648 else (value[24:32] | int(base=16)) }}","fi":"start_time_seconds_since_1_1_1970"}
 {"i":"d00c","n":"Temporary Temperature Offset Demand Response - Duration (minutes)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[32:36] | int(base=16) }}","fi":"duration_minutes"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[36:40] | int(base=16) }}","fi":"offset_degrees_f"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[40:48] | int(base=16) }}","fi":"start_time_seconds_since_1_1_1970"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[36:40] | int(base=16)) - 65536 if (value[36:40] | int(base=16)) >= 32768 else (value[36:40] | int(base=16)) }}","fi":"offset_degrees_f"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[40:48] | int(base=16)) - 4294967296 if (value[40:48] | int(base=16)) >= 2147483648 else (value[40:48] | int(base=16)) }}","fi":"start_time_seconds_since_1_1_1970"}
 {"i":"d00c","n":"Temporary Temperature Offset Demand Response - Duration (minutes)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[48:52] | int(base=16) }}","fi":"duration_minutes"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[52:56] | int(base=16) }}","fi":"offset_degrees_f"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[56:64] | int(base=16) }}","fi":"start_time_seconds_since_1_1_1970"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[52:56] | int(base=16)) - 65536 if (value[52:56] | int(base=16)) >= 32768 else (value[52:56] | int(base=16)) }}","fi":"offset_degrees_f"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[56:64] | int(base=16)) - 4294967296 if (value[56:64] | int(base=16)) >= 2147483648 else (value[56:64] | int(base=16)) }}","fi":"start_time_seconds_since_1_1_1970"}
 {"i":"d00c","n":"Temporary Temperature Offset Demand Response - Duration (minutes)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[64:68] | int(base=16) }}","fi":"duration_minutes"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[68:72] | int(base=16) }}","fi":"offset_degrees_f"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[72:80] | int(base=16) }}","fi":"start_time_seconds_since_1_1_1970"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[68:72] | int(base=16)) - 65536 if (value[68:72] | int(base=16)) >= 32768 else (value[68:72] | int(base=16)) }}","fi":"offset_degrees_f"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Start Time (seconds since 1/1/1970)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[72:80] | int(base=16)) - 4294967296 if (value[72:80] | int(base=16)) >= 2147483648 else (value[72:80] | int(base=16)) }}","fi":"start_time_seconds_since_1_1_1970"}
 {"i":"d00c","n":"Temporary Temperature Offset Demand Response - Duration (minutes)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[80:84] | int(base=16) }}","fi":"duration_minutes"}
-{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ value[84:88] | int(base=16) }}","fi":"offset_degrees_f"}
+{"i":"d00c","n":"Temporary Temperature Offset Demand Response - Offset (degrees F)","d":"sensor","ds":44,"u":"°F","p":"d00b","r":"status","vt":"{{ (value[84:88] | int(base=16)) - 65536 if (value[84:88] | int(base=16)) >= 32768 else (value[84:88] | int(base=16)) }}","fi":"offset_degrees_f"}
 {"i":"d00e","n":"Cost of power cost/comfort slider","d":"number","ds":1,"u":"W","dc":"power","sc":"measurement","p":"d00f","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"d00f","n":"Cost of power cost/comfort slider","d":"sensor","ds":1,"u":"W","dc":"power","sc":"measurement","p":"d00e","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"d014","n":"Appliance Energy Usage Update Period in Minutes","d":"sensor","ds":1,"u":"Wh","dc":"energy","sc":"total","vt":"{{ value | int(base=16) }}"}
@@ -42,7 +42,7 @@
 {"i":"d019","n":"Appliance Cumulative Cold Water Usage (L)","d":"sensor","ds":4,"vt":"{{ value | int(base=16) }}"}
 {"i":"d01a","n":"Appliance Cold Water Usage Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"d01b","n":"Appliance Cold Water Usage Estimated or Measured Flag","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Estimated', '01': 'Measured'}.get(value[:2], 'Unknown') }}"}
-{"i":"d01c","n":"Appliance Cumulative Gas Usage","d":"sensor","ds":4,"vt":"{{ value | int(base=16) }}"}
+{"i":"d01c","n":"Appliance Cumulative Gas Usage","d":"sensor","ds":4,"sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
 {"i":"d01d","n":"Appliance Gas Usage Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"d01e","n":"Appliance Gas Usage Estimated or Measured Flag","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Estimated', '01': 'Measured'}.get(value[:2], 'Unknown') }}"}
 {"i":"d01f","n":"Appliance Gas Type","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Unknown', '01': 'Natural Gas', '02': 'Liquid Propane'}.get(value[:2], 'Unknown') }}"}
@@ -508,9 +508,9 @@
 {"i":"d02b","n":"Electrical Pricing Time of Use Schedule Hash Status - Season 4 - Electrical Pricing Time of Use Schedule Sha256[30]","d":"sensor","ds":32,"vt":"{{ value[60:62] | int(base=16) }}","fi":"electrical_pricing_time_of_use_schedule_sha256_30"}
 {"i":"d02b","n":"Electrical Pricing Time of Use Schedule Hash Status - Season 4 - Electrical Pricing Time of Use Schedule Sha256[31]","d":"sensor","ds":32,"vt":"{{ value[62:64] | int(base=16) }}","fi":"electrical_pricing_time_of_use_schedule_sha256_31"}
 {"i":"d02c","n":"Requested Appliance Energy Usage Update Period in Minutes","d":"sensor","ds":1,"u":"Wh","dc":"energy","sc":"total","vt":"{{ value | int(base=16) }}"}
-{"i":"d02d","n":"Requested Appliance Hot Water Usage Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
-{"i":"d02e","n":"Requested Appliance Cold Water Usage Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
-{"i":"d02f","n":"Requested Appliance Gas Usage Update Period in Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"d02d","n":"Requested Appliance Hot Water Usage Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
+{"i":"d02e","n":"Requested Appliance Cold Water Usage Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
+{"i":"d02f","n":"Requested Appliance Gas Usage Update Period in Minutes","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"d030","n":"Appliance Cumulative Energy","d":"sensor","ds":4,"u":"kWh","dc":"energy","sc":"total","sf":1000,"vt":"{{ (value | int(base=16)) / 1000 | round(3) }}"}
 {"i":"d203","n":"End of cycle (Tub 1)","d":"binary_sensor","ds":1}
 {"i":"d204","n":"Cycle Time Remaining Tub 1","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}

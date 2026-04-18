@@ -370,12 +370,11 @@ static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_sign
         self->erd_host_address = args->address;
         self->appliance_type = *reinterpret_cast<const uint8_t*>(args->read_completed.data);
       }
-      // If an API-parsed ERD list is available, skip ERD discovery and go
-      // directly to polling using that list.
+      // If an API-parsed ERD list is available, run the appliance API feature ERD state
+      // (mandatory for all appliances) and then go directly to polling. Otherwise,
+      // run the full discovery chain: common → energy → appliance_api_feature → appliance.
       if(self->api_parsed_list != nullptr) {
-        self->erd_index = 0;
-        self->polling_retries = 0;
-        tiny_hsm_transition(hsm, state_polling);
+        tiny_hsm_transition(hsm, state_add_appliance_api_feature_erds);
       }
       else {
         tiny_hsm_transition(hsm, state_add_common_erds);
@@ -494,7 +493,10 @@ static tiny_hsm_result_t state_add_appliance_api_feature_erds(tiny_hsm_t* hsm, t
 
   if(signal == tiny_hsm_signal_entry) {
     self->current_state_name = "add_appliance_api_feature_erds";
-    self->next_discovery_state = state_add_appliance_erds;
+    // When reached via api_parsed_list path (from state_identify_appliance), go directly
+    // to polling after discovering the mandatory feature bit ERDs. When reached via the
+    // full discovery chain (from state_add_energy_erds), continue to appliance-specific ERDs.
+    self->next_discovery_state = (self->api_parsed_list != nullptr) ? state_polling : state_add_appliance_erds;
     self->appliance_erd_list = applianceApiFeatureErds;
     self->appliance_erd_list_count = applianceApiFeatureErdCount;
     self->erd_index = 0;
