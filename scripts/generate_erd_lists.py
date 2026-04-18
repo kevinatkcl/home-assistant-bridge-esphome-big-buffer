@@ -813,6 +813,81 @@ def _number_min_max(effective_bytes: int, scale_factor: int, signed: bool):
     return min_val, max_val, step_val
 
 
+def _infer_min_max_from_jsonl_entry(obj: dict):
+    """Infer (min_val, max_val, step_val) for a number entity from a JSONL object.
+
+    Used to back-fill existing JSONL files that were generated before explicit
+    min/max/step fields were added.  The value_template string encodes the
+    information originally derived from the ERD data type:
+
+    * *Signedness* is detected by looking for the sign-extension pattern
+      ``int(base=16)) - <N> if`` that _compute_sensor_value_template emits for
+      signed integer types (i8, i16, i32 …).
+    * *Effective byte count* is derived from the ``value[0:N]`` leading-slice
+      notation that paired-ERD templates use; otherwise the full ``ds`` field
+      is used.
+    """
+    data_size = int(obj.get('ds', 1))
+    scale_factor = int(obj.get('sf', 1))
+    if data_size < 1:
+        data_size = 1
+    if scale_factor < 1:
+        scale_factor = 1
+
+    vt = obj.get('vt', '')
+
+    # Detect signedness: _compute_sensor_value_template inserts a subtraction
+    # of the max value followed by ' if ' for signed types.
+    signed = bool(re.search(r'int\(base=16\)\)\s*-\s*\d+\s+if', vt))
+
+    # Detect effective byte count from leading-slice notation.
+    effective_bytes = data_size
+    m = re.search(r'value\[0:(\d+)\]', vt)
+    if m:
+        hex_chars = int(m.group(1))
+        if hex_chars >= 2 and hex_chars % 2 == 0:
+            effective_bytes = hex_chars // 2
+
+    return _number_min_max(effective_bytes, scale_factor, signed)
+
+
+def backfill_ha_discovery_jsonl_min_max(jsonl_dir: 'Path') -> int:
+    """Add mn/mx (and st when ≠ 1) to every number entity in existing JSONL files.
+
+    This makes the JSONL files the single source of truth for min/max/step so
+    that the C++ bridge only needs to read these fields from the JSONL – it does
+    not have to re-compute them at runtime.
+
+    Returns the total number of entries updated.
+    """
+    updated = 0
+    for path in sorted(jsonl_dir.glob('*.jsonl')):
+        lines_in = path.read_text(encoding='utf-8').splitlines()
+        lines_out = []
+        changed = False
+        for line in lines_in:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                lines_out.append(line)
+                continue
+            if obj.get('d') == 'number' and 'mn' not in obj:
+                mn, mx, st = _infer_min_max_from_jsonl_entry(obj)
+                obj['mn'] = mn
+                obj['mx'] = mx
+                if st != 1.0:
+                    obj['st'] = st
+                updated += 1
+                changed = True
+            lines_out.append(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
+        if changed:
+            path.write_text('\n'.join(lines_out) + '\n', encoding='utf-8')
+    return updated
+
+
 def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
     """Process all ERDs with ha_domain metadata and return a list of entry dicts.
 

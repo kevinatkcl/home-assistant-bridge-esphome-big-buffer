@@ -5,10 +5,10 @@
 {"i":"400c","n":"Mixing valve park position","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
 {"i":"4020","n":"Water Heater User Mode","d":"select","ds":1,"vt":"{{ {'00': 'Hybrid', '01': 'Standard electric', '02': 'E-heat', '03': 'HiDemand', '04': 'Vacation'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Hybrid': '00', 'Standard electric': '01', 'E-heat': '02', 'HiDemand': '03', 'Vacation': '04'}[value] }}","o":"[\"Hybrid\", \"Standard electric\", \"E-heat\", \"HiDemand\", \"Vacation\"]"}
 {"i":"4023","n":"Vacation Fallback Mode","d":"select","ds":1,"vt":"{{ {'00': 'Hybrid', '01': 'Standard electric', '02': 'E-heat', '03': 'HiDemand', '04': 'Vacation'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Hybrid': '00', 'Standard electric': '01', 'E-heat': '02', 'HiDemand': '03', 'Vacation': '04'}[value] }}","o":"[\"Hybrid\", \"Standard electric\", \"E-heat\", \"HiDemand\", \"Vacation\"]"}
-{"i":"4024","n":"User Setpoint Temperature","d":"number","ds":2,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
-{"i":"4025","n":"Vacation Setpoint Temperature","d":"number","ds":2,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
-{"i":"4026","n":"Actual Setpoint Temperature","d":"number","ds":2,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
-{"i":"4028","n":"Timed Mode Hours Remaining","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
+{"i":"4024","n":"User Setpoint Temperature","d":"number","ds":2,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"4025","n":"Vacation Setpoint Temperature","d":"number","ds":2,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"4026","n":"Actual Setpoint Temperature","d":"number","ds":2,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"4028","n":"Timed Mode Hours Remaining","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
 {"i":"402a","n":"Water Heater Mixing Valve Tank Capacity","d":"select","ds":1,"vt":"{{ {'00': 'Normal', '01': 'High', '02': 'X-High'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Normal': '00', 'High': '01', 'X-High': '02'}[value] }}","o":"[\"Normal\", \"High\", \"X-High\"]"}
 {"i":"402b","n":"Water Heater Mixing Valve Available Tank Capacities - Normal","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"normal"}
 {"i":"402b","n":"Water Heater Mixing Valve Available Tank Capacities - High","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}","fi":"high"}
@@ -20,10 +20,10 @@
 {"i":"4040","n":"Available Modes - HiDemand","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 3) & 1 else '00' }}","fi":"hidemand"}
 {"i":"4040","n":"Available Modes - Vacation","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 4) & 1 else '00' }}","fi":"vacation"}
 {"i":"4041","n":"Tank size","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"4047","n":"Min/max allowed setpoint","d":"number","ds":4,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}"}
-{"i":"4048","n":"Min/max allowed vacation setpoint","d":"number","ds":4,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}"}
-{"i":"4049","n":"Max allowed vacation hours","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
-{"i":"404a","n":"Max allowed standard electric hours","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}"}
+{"i":"4047","n":"Min/max allowed setpoint","d":"number","ds":4,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}","mn":0.0,"mx":4294967295.0}
+{"i":"4048","n":"Min/max allowed vacation setpoint","d":"number","ds":4,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%08x' % (value | int) }}","mn":0.0,"mx":4294967295.0}
+{"i":"4049","n":"Max allowed vacation hours","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"404a","n":"Max allowed standard electric hours","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
 {"i":"404c","n":"Anode depleted mass - Mass (most significant 32 bits)","d":"sensor","ds":8,"vt":"{{ value[0:8] | int(base=16) }}"}
 {"i":"404c","n":"Anode depleted mass - Mass (least significant 32 bits)","d":"sensor","ds":8,"vt":"{{ value[8:16] | int(base=16) }}","fi":"mass_least_significant_32_bits"}
 {"i":"404d","n":"Anode hours of service","d":"sensor","ds":4,"vt":"{{ value | int(base=16) }}"}
@@ -145,7 +145,7 @@
 {"i":"4103","n":"Heating cycle started","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"4105","n":"Missed flow off fault counter","d":"sensor","ds":2,"sc":"total","vt":"{{ value | int(base=16) }}"}
 {"i":"4107","n":"Water Heater Reset Information","d":"sensor","ds":4,"vt":"{{ value | int(base=16) }}"}
-{"i":"411d","n":"Water Heater Dad Mode Delay In Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}"}
+{"i":"411d","n":"Water Heater Dad Mode Delay In Minutes","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
 {"i":"4125","n":"Water Heater Current Cost Of Power","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Unknown cost', '01': 'Cost lower than average', '02': 'Average cost', '03': 'Cost higher than average'}.get(value[:2], 'Unknown') }}"}
 {"i":"4220","n":"Water Heater Boost Mode State - Status/Actual","d":"binary_sensor","ds":1}
 {"i":"4221","n":"Water Heater Boost Mode State - Requested/Desired","d":"switch","ds":1}
