@@ -456,6 +456,19 @@ def _get_first_enum_field_info(erd_data: List[Dict]):
 # Multi-field ERD helpers
 # ---------------------------------------------------------------------------
 
+def _is_signed_type(type_str: str) -> bool:
+    """Return True if the type string represents a signed integer (e.g. 'i8', 'i16', 'i32')."""
+    return bool(re.match(r'^i\d+$', type_str))
+
+
+def _get_primary_data_type(erd_data: List[Dict]) -> str:
+    """Return the type of the primary (first non-reserved, non-bitfield) data field."""
+    for d in erd_data:
+        if not _is_reserved_field(d.get('name', '')) and not _has_bits(d):
+            return d.get('type', 'u8')
+    return 'u8'
+
+
 def _is_reserved_field(name: str) -> bool:
     """Return True if a field name indicates it is a reserved/padding field."""
     return 'reserved' in name.lower()
@@ -548,8 +561,21 @@ def _byte_subfield_value_template(field: Dict, erd_scaling: int) -> str:
     elif field_type == 'bool':
         return f"{{{{ '01' if value[{hex_start}:{hex_end}] != '00' else '00' }}}}"
     else:
-        # Numeric types: u8, u16, u32, i16, etc.
-        if erd_scaling and erd_scaling > 1:
+        # Numeric types: u8, u16, u32, i8, i16, i32, etc.
+        if _is_signed_type(field_type):
+            max_val = 2 ** (size * 8)
+            half_val = max_val // 2
+            if erd_scaling and erd_scaling > 1:
+                dp = {10: 1, 100: 2}.get(erd_scaling, 3)
+                return (f"{{{{ ((value[{hex_start}:{hex_end}] | int(base=16)) - {max_val}"
+                        f" if (value[{hex_start}:{hex_end}] | int(base=16)) >= {half_val}"
+                        f" else (value[{hex_start}:{hex_end}] | int(base=16)))"
+                        f" / {erd_scaling} | round({dp}) }}}}")
+            else:
+                return (f"{{{{ (value[{hex_start}:{hex_end}] | int(base=16)) - {max_val}"
+                        f" if (value[{hex_start}:{hex_end}] | int(base=16)) >= {half_val}"
+                        f" else (value[{hex_start}:{hex_end}] | int(base=16)) }}}}")
+        elif erd_scaling and erd_scaling > 1:
             dp = {10: 1, 100: 2}.get(erd_scaling, 3)
             return (f"{{{{ (value[{hex_start}:{hex_end}] | int(base=16))"
                     f" / {erd_scaling} | round({dp}) }}}}")
@@ -593,8 +619,24 @@ def _c_str(s: str) -> str:
     return f'"{escaped}"'
 
 
-def _compute_sensor_value_template(scaling_factor: int, data_size: int) -> str:
-    """Return the Jinja2 value_template for a numeric sensor ERD."""
+def _compute_sensor_value_template(scaling_factor: int, data_size: int, signed: bool = False) -> str:
+    """Return the Jinja2 value_template for a numeric sensor ERD.
+
+    When ``signed`` is True the template applies two's-complement sign extension
+    so that negative values (e.g. an int16 encoded as 0xFFFF) are reported as
+    negative numbers rather than large positive values.
+    """
+    if signed:
+        max_val = 2 ** (data_size * 8)
+        half_val = max_val // 2
+        if scaling_factor > 1:
+            dp = {10: 1, 100: 2}.get(scaling_factor, 3)
+            return (f'{{{{ ((value | int(base=16)) - {max_val}'
+                    f' if (value | int(base=16)) >= {half_val}'
+                    f' else (value | int(base=16))) / {scaling_factor} | round({dp}) }}}}')
+        return (f'{{{{ (value | int(base=16)) - {max_val}'
+                f' if (value | int(base=16)) >= {half_val}'
+                f' else (value | int(base=16)) }}}}')
     if scaling_factor > 1:
         if scaling_factor == 10:
             dp = 1
@@ -705,9 +747,20 @@ def _strip_pair_role_word(name: str) -> str:
     return result
 
 
-def _number_command_template(data_size: int, scaling_factor: int) -> str:
-    """Return command_template for a number entity."""
+def _number_command_template(data_size: int, scaling_factor: int, signed: bool = False) -> str:
+    """Return command_template for a number entity.
+
+    When ``signed`` is True a modulo operation is applied so that negative
+    values are converted to their two's-complement unsigned hex representation
+    (e.g. -1 for an int16 becomes 'ffff').  Modulo is used instead of a
+    bitwise-AND mask because Jinja2 does not support the ``&`` operator.
+    """
     hex_chars = data_size * 2
+    if signed:
+        max_val = 1 << (data_size * 8)
+        if scaling_factor > 1:
+            return f"{{{{ '%0{hex_chars}x' % ((((value | float) * {scaling_factor}) | int) % {max_val}) }}}}"
+        return f"{{{{ '%0{hex_chars}x' % ((value | int) % {max_val}) }}}}"
     if scaling_factor > 1:
         return f"{{{{ '%0{hex_chars}x' % ((value | float) * {scaling_factor} | int) }}}}"
     return f"{{{{ '%0{hex_chars}x' % (value | int) }}}}"
@@ -799,7 +852,8 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
                     ev, fs = _get_first_enum_field_info(erd_data)
                     vt = _enum_sensor_value_template(ev, fs)
                 elif data_size <= 4:
-                    vt = _compute_sensor_value_template(scaling_factor, data_size)
+                    signed = _is_signed_type(_get_primary_data_type(erd_data))
+                    vt = _compute_sensor_value_template(scaling_factor, data_size, signed)
             elif ha_domain == 'binary_sensor':
                 vt = _compute_binary_sensor_value_template(data_size)
             elif ha_domain == 'switch':
@@ -815,12 +869,16 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
                 if pf:
                     p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
                     vt = _byte_subfield_value_template(pf, p_scale)
+                    signed = _is_signed_type(pf.get('type', 'u8'))
                 elif paired_erd_str and paired_erd_str in erd_by_id:
                     p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
-                    vt = _compute_sensor_value_template(p_scale, data_size)
+                    paired_type = _get_primary_data_type(erd_by_id[paired_erd_str].get('data', []))
+                    signed = _is_signed_type(paired_type)
+                    vt = _compute_sensor_value_template(p_scale, data_size, signed)
                 else:
-                    vt = _compute_sensor_value_template(scaling_factor, data_size)
-                ct = _number_command_template(data_size, scaling_factor)
+                    signed = _is_signed_type(_get_primary_data_type(erd_data))
+                    vt = _compute_sensor_value_template(scaling_factor, data_size, signed)
+                ct = _number_command_template(data_size, scaling_factor, signed)
             # button: no templates
 
             collect(erd_id_int, display_name, ha_domain, unit, device_class,
