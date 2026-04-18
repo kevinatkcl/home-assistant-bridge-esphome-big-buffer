@@ -631,6 +631,48 @@ TEST(mqtt_bridge_polling_custom_erds, should_poll_custom_erds_in_discovery_mode)
   when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xCC));
 }
 
+// A spurious read_completed for a non-0x0008 ERD arriving while the bridge is
+// still in state_identify_appliance (e.g. from a concurrent read on the shared
+// erd_client) must not cause a premature transition to state_polling with
+// erd_host_address still set to the broadcast address (0xFF).  The bridge must
+// wait for the genuine ERD 0x0008 response before polling begins.
+TEST(mqtt_bridge_polling_custom_erds, should_ignore_spurious_read_completed_during_identification)
+{
+  // Init sends broadcast identification read.
+  should_request_read(0xFF, 0x0008);
+  mqtt_bridge_polling_init(
+    &self,
+    &timer_group.timer_group,
+    &erd_client.interface,
+    &mqtt_client.interface,
+    polling_interval,
+    false);
+  self.api_parsed_list = custom_list;
+  self.api_parsed_list_count = 2;
+
+  // A spurious read_completed for a different ERD arrives (e.g. from the main
+  // bridge or a previous discovery phase) – bridge should stay in
+  // state_identify_appliance and must not emit any reads or registrations.
+  uint8_t dummy = 0xAB;
+  trigger_read_completed(0xC0, 0x1234, &dummy, sizeof(dummy));
+
+  // Only now does the real appliance-type response arrive.  The bridge must
+  // transition to polling and direct all reads to the discovered address 0xC0.
+  should_register_erd(custom_erd_1);
+  should_register_erd(custom_erd_2);
+  should_request_read(0xC0, custom_erd_1);
+  uint8_t appliance_type = 0x03;
+  trigger_read_completed(0xC0, 0x0008, &appliance_type, sizeof(appliance_type));
+
+  // Verify polling reads go to 0xC0, not 0xFF.
+  should_update_erd(custom_erd_1, uint8_t(0xAA));
+  should_request_read(0xC0, custom_erd_2);
+  when_a_poll_read_completes(0xC0, custom_erd_1, uint8_t(0xAA));
+
+  should_update_erd(custom_erd_2, uint8_t(0xBB));
+  when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xBB));
+}
+
 // When the polling bridge is used only for custom ERDs alongside a subscription bridge
 // (subscribe/auto mode), it is configured with api_parsed_list = custom ERDs. This
 // means discovery is skipped and only the custom ERDs are polled each cycle.
