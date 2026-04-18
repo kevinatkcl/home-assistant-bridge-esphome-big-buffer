@@ -818,12 +818,29 @@ def _number_min_max(effective_bytes: int, scale_factor: int, signed: bool):
     return min_val, max_val, step_val
 
 
-def _infer_min_max_from_jsonl_entry(obj: dict):
-    """Infer (min_val, max_val, step_val) for a number entity from a JSONL object.
+def _effective_dtype(eff_bytes: int, signed: bool) -> str:
+    """Return the canonical data-type string for a number entity.
 
-    Used to back-fill existing JSONL files that were generated before explicit
-    min/max/step fields were added.  The value_template string encodes the
-    information originally derived from the ERD data type:
+    Maps (effective_bytes, signed) to one of the type names understood by the
+    C++ runtime parser: ``int8``, ``int16``, ``int32``, ``uint8``, ``uint16``,
+    ``uint24``, ``uint32``.
+
+    Byte counts above 4 are capped at 4 (``uint32`` / ``int32``) because JSON
+    ``double`` cannot exactly represent values beyond 2^53, and no real
+    appliance value approaches 4 billion.
+    """
+    capped = min(eff_bytes, 4)
+    if signed:
+        return {1: 'int8', 2: 'int16', 3: 'int32', 4: 'int32'}[capped]
+    return {1: 'uint8', 2: 'uint16', 3: 'uint24', 4: 'uint32'}[capped]
+
+
+def _infer_dtype_from_jsonl_entry(obj: dict) -> str:
+    """Infer the data-type string for a number entity from a JSONL object.
+
+    Used to migrate existing JSONL files to the ``dt`` field.  The
+    value_template string encodes the information originally derived from the
+    ERD data type:
 
     * *Signedness* is detected by looking for the sign-extension pattern
       ``int(base=16)) - <N> if`` that _compute_sensor_value_template emits for
@@ -833,11 +850,8 @@ def _infer_min_max_from_jsonl_entry(obj: dict):
       is used.
     """
     data_size = int(obj.get('ds', 1))
-    scale_factor = int(obj.get('sf', 1))
     if data_size < 1:
         data_size = 1
-    if scale_factor < 1:
-        scale_factor = 1
 
     vt = obj.get('vt', '')
 
@@ -853,15 +867,18 @@ def _infer_min_max_from_jsonl_entry(obj: dict):
         if hex_chars >= 2 and hex_chars % 2 == 0:
             effective_bytes = hex_chars // 2
 
-    return _number_min_max(effective_bytes, scale_factor, signed)
+    return _effective_dtype(effective_bytes, signed)
 
 
-def backfill_ha_discovery_jsonl_min_max(jsonl_dir: 'Path') -> int:
-    """Add mn/mx (and st when ≠ 1) to every number entity in existing JSONL files.
+def backfill_ha_discovery_jsonl_data_type(jsonl_dir: 'Path') -> int:
+    """Migrate number entities in JSONL files from mn/mx/st to the dt field.
 
-    This makes the JSONL files the single source of truth for min/max/step so
-    that the C++ bridge only needs to read these fields from the JSONL – it does
-    not have to re-compute them at runtime.
+    Removes the old explicit ``mn``, ``mx``, and ``st`` fields from every
+    number entity and replaces them with a single ``dt`` (data type) field
+    (e.g. ``"uint8"``, ``"uint16"``, ``"int16"``).
+
+    The C++ runtime then derives ``min``, ``max``, and ``step`` from ``dt``
+    combined with the already-present ``sf`` (scale factor) field.
 
     Returns the total number of entries updated.
     """
@@ -879,14 +896,16 @@ def backfill_ha_discovery_jsonl_min_max(jsonl_dir: 'Path') -> int:
             except json.JSONDecodeError:
                 lines_out.append(line)
                 continue
-            if obj.get('d') == 'number' and 'mn' not in obj:
-                mn, mx, st = _infer_min_max_from_jsonl_entry(obj)
-                obj['mn'] = mn
-                obj['mx'] = mx
-                if st != 1.0:
-                    obj['st'] = st
-                updated += 1
-                changed = True
+            if obj.get('d') == 'number':
+                had_old = any(k in obj for k in ('mn', 'mx', 'st'))
+                for k in ('mn', 'mx', 'st'):
+                    obj.pop(k, None)
+                if 'dt' not in obj:
+                    obj['dt'] = _infer_dtype_from_jsonl_entry(obj)
+                    updated += 1
+                    changed = True
+                elif had_old:
+                    changed = True
             lines_out.append(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
         if changed:
             path.write_text('\n'.join(lines_out) + '\n', encoding='utf-8')
@@ -898,8 +917,7 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
 
     Each dict has the keys: erd_id, name, domain, unit, device_class,
     state_class, scaling_factor, data_size, paired_erd_id, pair_role,
-    value_template, command_template, options_json, field_id,
-    min_val, max_val, step_val.
+    value_template, command_template, options_json, field_id, data_type.
 
     This is the single source of truth for ha-discovery data; both the C header
     generator and the JSONL generator call this function.
@@ -912,7 +930,7 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
                 dev_cls: str, state_cls: str, scaling: int, d_size: int,
                 paired_id: int, role: str, val_tmpl: str, cmd_tmpl: str,
                 opts: str, field_id: str,
-                min_val=None, max_val=None, step_val=None) -> None:
+                data_type: str = '') -> None:
         entries.append({
             'erd_id': erd_id_int,
             'name': name,
@@ -928,9 +946,7 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
             'command_template': cmd_tmpl,
             'options_json': opts,
             'field_id': field_id,
-            'min_val': min_val,
-            'max_val': max_val,
-            'step_val': step_val,
+            'data_type': data_type,
         })
 
     for erd in ha_erds:
@@ -955,7 +971,7 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
         )
 
         if classification == 'single':
-            vt, ct, opts = '', '', ''
+            vt, ct, opts, dt = '', '', '', ''
 
             if ha_domain == 'sensor':
                 if device_class == 'enum':
@@ -992,15 +1008,13 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
                     vt = _compute_sensor_value_template(scaling_factor, data_size, signed)
                     eff_bytes = data_size
                 ct = _number_command_template(data_size, scaling_factor, signed)
-                mn, mx, st = _number_min_max(eff_bytes, scaling_factor, signed)
+                dt = _effective_dtype(eff_bytes, signed)
             # button: no templates
 
             collect(erd_id_int, display_name, ha_domain, unit, device_class,
                     state_class, scaling_factor, data_size, paired_erd_id,
                     pair_role, vt, ct, opts, '',
-                    mn if ha_domain == 'number' else None,
-                    mx if ha_domain == 'number' else None,
-                    st if ha_domain == 'number' else None)
+                    dt if ha_domain == 'number' else '')
 
         elif classification == 'byte_offset':
             nr_fields = _get_non_reserved_fields(erd_data)
@@ -1114,12 +1128,9 @@ def generate_ha_discovery_jsonl_by_category(erds: List[Dict]) -> Dict[str, str]:
             if e['command_template']:             obj['ct'] = e['command_template']
             if e['options_json']:                 obj['o']  = e['options_json']
             if e['field_id']:                     obj['fi'] = e['field_id']
-            # Emit min/max/step for number entities so HA accepts values outside
-            # the default 0-100 range.  Stored as numbers, not strings.
-            if e.get('min_val') is not None:      obj['mn'] = e['min_val']
-            if e.get('max_val') is not None:      obj['mx'] = e['max_val']
-            if e.get('step_val') is not None and e['step_val'] != 1.0:
-                obj['st'] = e['step_val']
+            # Emit data type for number entities so the C++ runtime can derive
+            # the correct min/max bounds for each HA entity.
+            if e.get('data_type'):                obj['dt'] = e['data_type']
             lines.append(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
         result[cat] = '\n'.join(lines) + '\n'
 

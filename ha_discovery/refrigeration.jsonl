@@ -1,6 +1,6 @@
 {"i":"1004","n":"Display Temperature - Fresh Food Display Temperature (fahrenheit)","d":"sensor","ds":2,"u":"°F","dc":"temperature","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"1004","n":"Display Temperature - Freezer Display Temperature (fahrenheit)","d":"sensor","ds":2,"u":"°F","vt":"{{ value[2:4] | int(base=16) }}","fi":"freezer_display_temperature_fahrenheit"}
-{"i":"1005","n":"Desired Temperature","d":"number","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"1005","n":"Desired Temperature","d":"number","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"1006","n":"Door Alarm Alert - Fresh Food Door Alarm","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"fresh_food_door_alarm"}
 {"i":"1006","n":"Door Alarm Alert - Freezer Door Alarm","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}","fi":"freezer_door_alarm"}
 {"i":"1006","n":"Door Alarm Alert - Convertible Drawer Alarm","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 2) & 1 else '00' }}","fi":"convertible_drawer_alarm"}
@@ -31,9 +31,9 @@
 {"i":"1010","n":"Hot Water Status - Hot Water Tank Is Full","d":"sensor","ds":7,"u":"s","vt":"{{ value[8:10] | int(base=16) }}","fi":"hot_water_tank_is_full"}
 {"i":"1010","n":"Hot Water Status - Brew Module","d":"sensor","ds":7,"u":"s","dc":"enum","vt":"{{ {'00': 'Not Present (Hot Water and K-cup capable type)', '01': 'Present (Hot Water and K-cup capable type)', '02': 'Not Present (K-cup only type)', '03': 'Present (K-cup only type)', 'ff': 'Not Applicable'}.get(value[10:12], 'Unknown') }}","fi":"brew_module"}
 {"i":"1010","n":"Hot Water Status - Pod Status","d":"sensor","ds":7,"u":"s","dc":"enum","vt":"{{ {'00': 'Needs To Be Replaced', '01': 'Ready', 'ff': 'Not Applicable'}.get(value[12:14], 'Unknown') }}","fi":"pod_status"}
-{"i":"1011","n":"Hot Water Desired Temperature","d":"number","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"1011","n":"Hot Water Desired Temperature","d":"number","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"1012","n":"Deli Pan Selection","d":"select","ds":1,"vt":"{{ {'01': 'Deli Pan Position 1', '02': 'Deli Pan Position 2', '03': 'Deli Pan Position 3', '04': 'Deli Pan Position 4', '05': 'Deli Pan Position 5', 'ff': 'Not Controllable'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Deli Pan Position 1': '01', 'Deli Pan Position 2': '02', 'Deli Pan Position 3': '03', 'Deli Pan Position 4': '04', 'Deli Pan Position 5': '05', 'Not Controllable': 'ff'}[value] }}","o":"[\"Deli Pan Position 1\", \"Deli Pan Position 2\", \"Deli Pan Position 3\", \"Deli Pan Position 4\", \"Deli Pan Position 5\", \"Not Controllable\"]"}
-{"i":"1013","n":"Deli Pan Desired Temperature","d":"number","ds":5,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%010x' % (value | int) }}","mn":0.0,"mx":4294967295.0}
+{"i":"1013","n":"Deli Pan Desired Temperature","d":"number","ds":5,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%010x' % (value | int) }}","dt":"uint32"}
 {"i":"1016","n":"Door Status - Fresh Food Right Door Status","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Closed', '01': 'Open', 'ff': 'Not Applicable'}.get(value[0:2], 'Unknown') }}"}
 {"i":"1016","n":"Door Status - Fresh Food Left Door Status","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Closed', '01': 'Open', 'ff': 'Not Applicable'}.get(value[2:4], 'Unknown') }}","fi":"fresh_food_left_door_status"}
 {"i":"1016","n":"Door Status - Freezer Door Status","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Closed', '01': 'Open', 'ff': 'Not Applicable'}.get(value[4:6], 'Unknown') }}","fi":"freezer_door_status"}
@@ -68,7 +68,7 @@
 {"i":"101d","n":"Refrigerator Model - Application ID","d":"sensor","ds":3,"dc":"enum","vt":"{{ {'00': 'Image ID exceeds 255', '06': 'AP5 (Eagle) model', '0a': 'Fridge Model', '0b': 'Freezer Model', '0c': 'Fridge-Freezer Model', '3c': 'Model T model', '79': 'Multi Door China', 'c0': 'Wine/Bev'}.get(value[2:4], 'Unknown') }}","fi":"application_id"}
 {"i":"101d","n":"Refrigerator Model - Major Configuration Type","d":"sensor","ds":3,"dc":"enum","vt":"{{ {'00': 'Single Evaporator, Variable Speed Comp (SEVS)', '01': 'Dual Evaporator, Single Speed Comp (DESS)', '02': 'Dual Evaporator, Variable Speed Comp(DEVS)', '03': 'Single Evaporator, Single Speed Comp (SESS)', '04': 'Triple Evaporator, Variable Speed Comp (TEVS)', '05': 'Triple Evaporator, Single Speed Comp (TESS)'}.get(value[4:6], 'Unknown') }}","fi":"major_configuration_type"}
 {"i":"101e","n":"Nighttime Snack Mode Status","d":"switch","ds":1}
-{"i":"101f","n":"Nighttime Snack Mode Timeout","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"101f","n":"Nighttime Snack Mode Timeout","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"1020","n":"Convertible Drawer Mode Selection","d":"select","ds":1,"vt":"{{ {'01': 'Convertible Drawer Position 1', '02': 'Convertible Drawer Position 2', '03': 'Convertible Drawer Position 3', '04': 'Convertible Drawer Position 4', '05': 'Convertible Drawer Position 5', '06': 'Convertible Drawer Position 6', '07': 'Convertible Drawer Position 7', 'ff': 'Not Controllable'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Convertible Drawer Position 1': '01', 'Convertible Drawer Position 2': '02', 'Convertible Drawer Position 3': '03', 'Convertible Drawer Position 4': '04', 'Convertible Drawer Position 5': '05', 'Convertible Drawer Position 6': '06', 'Convertible Drawer Position 7': '07', 'Not Controllable': 'ff'}[value] }}","o":"[\"Convertible Drawer Position 1\", \"Convertible Drawer Position 2\", \"Convertible Drawer Position 3\", \"Convertible Drawer Position 4\", \"Convertible Drawer Position 5\", \"Convertible Drawer Position 6\", \"Convertible Drawer Position 7\", \"Not Controllable\"]"}
 {"i":"1021","n":"Convertible Drawer Modes Temperature - Convertible Drawer Mode 1 Temperature (fahrenheit)","d":"sensor","ds":14,"u":"°F","dc":"temperature","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"1021","n":"Convertible Drawer Modes Temperature - Convertible Drawer Mode 1 Label Id","d":"sensor","ds":14,"dc":"enum","vt":"{{ {'00': 'Soft Freeze', '01': 'Meat', '02': 'Beverages', '03': 'Snacks', '04': 'Wine', '05': 'Freezer', '06': 'Ice Cream', '07': 'Drinks', '08': 'Produce', 'ff': 'Not Used'}.get(value[2:4], 'Unknown') }}","fi":"convertible_drawer_mode_1_label_id"}
@@ -102,7 +102,7 @@
 {"i":"1023","n":"Adjustable Convertible Drawer Temperature Limits - Adjustable Convertible Drawer Mode 4 Minimum Temperature (fahrenheit)","d":"sensor","ds":16,"u":"°F","vt":"{{ value[26:28] | int(base=16) }}","fi":"adjustable_convertible_drawer_mode_4_minimum_temperature_fahrenh"}
 {"i":"1023","n":"Adjustable Convertible Drawer Temperature Limits - Adjustable Convertible Drawer Mode 4 Maximum Temperature (fahrenheit)","d":"sensor","ds":16,"u":"°F","vt":"{{ value[28:30] | int(base=16) }}","fi":"adjustable_convertible_drawer_mode_4_maximum_temperature_fahrenh"}
 {"i":"1023","n":"Adjustable Convertible Drawer Temperature Limits - Adjustable Convertible Drawer Mode 4 Label Id","d":"sensor","ds":16,"dc":"enum","vt":"{{ {'00': 'Freezer', '01': 'Refrigerator', '02': 'Chiller', '03': 'Soft Freeze', '04': 'Gentle Freeze', '0a': 'Fruit and Vegetables', '0b': 'Beverage', '0c': 'Meat and Seafood', 'ff': 'Not Used'}.get(value[30:32], 'Unknown') }}","fi":"adjustable_convertible_drawer_mode_4_label_id"}
-{"i":"1024","n":"Fresh food cabinet backlight status","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"1024","n":"Fresh food cabinet backlight status","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"1025","n":"Door In Door Status","d":"binary_sensor","ds":1,"dc":"door"}
 {"i":"1026","n":"ConvertibleDrawer Actual Temperature","d":"sensor","ds":2,"dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
 {"i":"1028","n":"Recess Light On when presence is sensed","d":"switch","ds":1}
@@ -136,9 +136,9 @@
 {"i":"103b","n":"Max Cool/Fast Freeze Upper Compartment","d":"switch","ds":1}
 {"i":"103c","n":"Max Cool/Fast Freeze Lower Compartment","d":"switch","ds":1}
 {"i":"103d","n":"Max Cool/Fast Freeze Middle Compartment","d":"switch","ds":1}
-{"i":"103e","n":"Desired Temperature Setpoint (Kelvin) Upper Compartment","d":"number","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
-{"i":"103f","n":"Desired Temperature Setpoint (Kelvin) Lower Compartment","d":"number","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
-{"i":"1040","n":"Desired Temperature Setpoint (Kelvin) Middle Compartment","d":"number","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"103e","n":"Desired Temperature Setpoint (Kelvin) Upper Compartment","d":"number","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
+{"i":"103f","n":"Desired Temperature Setpoint (Kelvin) Lower Compartment","d":"number","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
+{"i":"1040","n":"Desired Temperature Setpoint (Kelvin) Middle Compartment","d":"number","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"1041","n":"Water Filter Reset Request","d":"button","ds":1,"dc":"restart"}
 {"i":"1042","n":"Food Mode Upper Compartment (Desired)","d":"select","ds":1,"vt":"{{ {'00': 'Fridge', '01': 'Pantry', '02': 'Chill', '03': 'Freezer', '04': 'Soft Freeze', '05': 'Deep Freeze', '06': 'Cellar Wine', '07': 'Red Wine', '08': 'White Wine', '09': 'Sparkling Wine', '0a': 'Beverage', 'ff': 'Not Applicable'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Fridge': '00', 'Pantry': '01', 'Chill': '02', 'Freezer': '03', 'Soft Freeze': '04', 'Deep Freeze': '05', 'Cellar Wine': '06', 'Red Wine': '07', 'White Wine': '08', 'Sparkling Wine': '09', 'Beverage': '0a', 'Not Applicable': 'ff'}[value] }}","o":"[\"Fridge\", \"Pantry\", \"Chill\", \"Freezer\", \"Soft Freeze\", \"Deep Freeze\", \"Cellar Wine\", \"Red Wine\", \"White Wine\", \"Sparkling Wine\", \"Beverage\", \"Not Applicable\"]"}
 {"i":"1043","n":"Food Mode Lower Compartment (Desired)","d":"select","ds":1,"vt":"{{ {'00': 'Fridge', '01': 'Pantry', '02': 'Chill', '03': 'Freezer', '04': 'Soft Freeze', '05': 'Deep Freeze', '06': 'Cellar Wine', '07': 'Red Wine', '08': 'White Wine', '09': 'Sparkling Wine', '0a': 'Beverage', 'ff': 'Not Applicable'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Fridge': '00', 'Pantry': '01', 'Chill': '02', 'Freezer': '03', 'Soft Freeze': '04', 'Deep Freeze': '05', 'Cellar Wine': '06', 'Red Wine': '07', 'White Wine': '08', 'Sparkling Wine': '09', 'Beverage': '0a', 'Not Applicable': 'ff'}[value] }}","o":"[\"Fridge\", \"Pantry\", \"Chill\", \"Freezer\", \"Soft Freeze\", \"Deep Freeze\", \"Cellar Wine\", \"Red Wine\", \"White Wine\", \"Sparkling Wine\", \"Beverage\", \"Not Applicable\"]"}
@@ -146,10 +146,10 @@
 {"i":"1045","n":"Actual Temperature Setpoint (Kelvin) Upper Compartment","d":"sensor","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"1046","n":"Actual Temperature Setpoint (Kelvin) Lower Compartment","d":"sensor","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"1047","n":"Actual Temperature Setpoint (Kelvin) Middle Compartment","d":"sensor","ds":2,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
-{"i":"1048","n":"Desired Light Control Upper Compartment 1","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
-{"i":"1049","n":"Desired Light Control Upper Compartment 2","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
-{"i":"104a","n":"Desired Light Control Display","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
-{"i":"104b","n":"Desired Light Control Lower Compartment","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"1048","n":"Desired Light Control Upper Compartment 1","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"1049","n":"Desired Light Control Upper Compartment 2","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"104a","n":"Desired Light Control Display","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"104b","n":"Desired Light Control Lower Compartment","d":"number","ds":1,"u":"%","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"104c","n":"Actual Light Control Upper Compartment 1","d":"sensor","ds":1,"u":"%","vt":"{{ value | int(base=16) }}"}
 {"i":"104d","n":"Actual Light Control Upper Compartment 2","d":"sensor","ds":1,"u":"%","vt":"{{ value | int(base=16) }}"}
 {"i":"104e","n":"Actual Light Control Display","d":"sensor","ds":1,"u":"%","vt":"{{ value | int(base=16) }}"}
@@ -491,7 +491,7 @@
 {"i":"116e","n":"Leak Validity Confirmation","d":"binary_sensor","ds":1,"dc":"moisture"}
 {"i":"116f","n":"Unlock Request","d":"switch","ds":1}
 {"i":"1170","n":"Go Box Mode Request","d":"select","ds":1,"vt":"{{ {'00': 'Standby', '01': 'Fresh', '02': 'Freeze'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Standby': '00', 'Fresh': '01', 'Freeze': '02'}[value] }}","o":"[\"Standby\", \"Fresh\", \"Freeze\"]"}
-{"i":"1171","n":"Keypad Pin Number","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"1171","n":"Keypad Pin Number","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"1172","n":"Package Zone Status - Zone 1 Occupied","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:8] | int(base=16)) >> 0) & 1 else '00' }}","fi":"zone_1_occupied"}
 {"i":"1172","n":"Package Zone Status - Zone 2 Occupied","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:8] | int(base=16)) >> 1) & 1 else '00' }}","fi":"zone_2_occupied"}
 {"i":"1172","n":"Package Zone Status - Zone 3 Occupied","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:8] | int(base=16)) >> 2) & 1 else '00' }}","fi":"zone_3_occupied"}
@@ -554,7 +554,7 @@
 {"i":"121b","n":"Turbo Freeze","d":"binary_sensor","ds":1,"p":"121a","r":"status"}
 {"i":"121c","n":"Current Flowmeter Ounces Dispensed","d":"sensor","ds":2,"sf":100,"vt":"{{ (value | int(base=16)) / 100 | round(2) }}"}
 {"i":"121d","n":"Last Flowmeter Ounces Dispensed","d":"sensor","ds":2,"sf":100,"vt":"{{ (value | int(base=16)) / 100 | round(2) }}"}
-{"i":"121e","n":"Dimmable Lighting 0 Percent Level","d":"number","ds":1,"p":"121f","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"121e","n":"Dimmable Lighting 0 Percent Level","d":"number","ds":1,"p":"121f","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"121f","n":"Dimmable Lighting 0 Percent Level Setting","d":"sensor","ds":1,"p":"121e","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"1220","n":"Dimmable Lighting 0 Configuration - Fresh Food Back Light","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"fresh_food_back_light"}
 {"i":"1220","n":"Dimmable Lighting 0 Configuration - Fresh Food Top Light","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}","fi":"fresh_food_top_light"}
@@ -615,7 +615,7 @@
 {"i":"122e","n":"V2 Refrigeration Notification - Secondary Feature Pan High Temperature Alert","d":"binary_sensor","ds":32,"vt":"{{ '01' if ((value[32:64] | int(base=16)) >> 109) & 1 else '00' }}","fi":"secondary_feature_pan_high_temperature_alert"}
 {"i":"1255","n":"Kitchen Illumination Feature Enable","d":"switch","ds":1,"p":"1256","r":"request"}
 {"i":"1256","n":"Kitchen Illumination Feature Enable","d":"binary_sensor","ds":1,"p":"1255","r":"status"}
-{"i":"1258","n":"Door Alarm Timer Timeout","d":"number","ds":1,"u":"min","dc":"duration","p":"1259","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"1258","n":"Door Alarm Timer Timeout","d":"number","ds":1,"u":"min","dc":"duration","p":"1259","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"1259","n":"Door Alarm Timer Timeout","d":"sensor","ds":1,"p":"1258","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"125a","n":"Door Alarm Timer Timeout Range Data - Door Alarm Timer Maximum Setting in Minutes","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"125a","n":"Door Alarm Timer Timeout Range Data - Door Alarm Timer Default Setting in Minutes","d":"sensor","ds":2,"u":"min","vt":"{{ value[2:4] | int(base=16) }}","fi":"door_alarm_timer_default_setting_in_minutes"}
@@ -628,7 +628,7 @@
 {"i":"1264","n":"Barcode Scanner Device Power","d":"binary_sensor","ds":1,"p":"1263","r":"status"}
 {"i":"1267","n":"Single Door Status","d":"binary_sensor","ds":1,"dc":"door"}
 {"i":"1268","n":"Recess Light Resolved Brightness Status","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"1269","n":"Recess Light SBC Brightness","d":"number","ds":1,"p":"126a","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"1269","n":"Recess Light SBC Brightness","d":"number","ds":1,"p":"126a","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"126a","n":"Recess Light SBC Brightness","d":"sensor","ds":1,"p":"1269","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"1273","n":"Ambient Humidity Percent","d":"sensor","ds":2,"u":"%","dc":"humidity","vt":"{{ value | int(base=16) }}"}
 {"i":"1279","n":"Fresh Food Door 2 Opening Counts","d":"sensor","ds":4,"sc":"total","vt":"{{ value | int(base=16) }}"}
@@ -644,12 +644,12 @@
 {"i":"128b","n":"Total Convertible Compartment Door 1 Open Counts","d":"sensor","ds":4,"sc":"total","vt":"{{ value | int(base=16) }}"}
 {"i":"128e","n":"Total Single Door Open Time In Seconds","d":"sensor","ds":4,"vt":"{{ value | int(base=16) }}"}
 {"i":"128f","n":"Total Single Door Open Counts","d":"sensor","ds":4,"sc":"total","vt":"{{ value | int(base=16) }}"}
-{"i":"129e","n":"Recess Light User Brightness Level","d":"number","ds":1,"p":"129f","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"129e","n":"Recess Light User Brightness Level","d":"number","ds":1,"p":"129f","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"129f","n":"Recess Light User Brightness Level Setting","d":"sensor","ds":1,"p":"129e","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"12a6","n":"Freezer Ice Rate Is Active","d":"binary_sensor","ds":1}
 {"i":"12b9","n":"Variable Cube Size Setting Data - Number of Cube Size Settings","d":"sensor","ds":2,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"12b9","n":"Variable Cube Size Setting Data - Cube Size Default Setting","d":"sensor","ds":2,"vt":"{{ value[2:4] | int(base=16) }}","fi":"cube_size_default_setting"}
-{"i":"12ba","n":"Variable Cube Size","d":"number","ds":1,"p":"12bb","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"12ba","n":"Variable Cube Size","d":"number","ds":1,"p":"12bb","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"12bb","n":"Variable Cube Size","d":"sensor","ds":1,"p":"12ba","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"12d0","n":"Turbo Cool Cycles Count","d":"sensor","ds":2,"sc":"total","vt":"{{ value | int(base=16) }}"}
 {"i":"12d1","n":"Turbo Freeze Cycles Count","d":"sensor","ds":2,"sc":"total","vt":"{{ value | int(base=16) }}"}
@@ -673,7 +673,7 @@
 {"i":"1307","n":"Grow State","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Stopped', '01': 'Running'}.get(value[:2], 'Unknown') }}"}
 {"i":"1308","n":"Displayed Grow Chamber Request","d":"select","ds":1,"vt":"{{ {'00': 'None', '01': 'Section 1', '02': 'Section 2', '03': 'Section 3', '04': 'Stop'}.get(value[:2], 'Unknown') }}","ct":"{{ {'None': '00', 'Section 1': '01', 'Section 2': '02', 'Section 3': '03', 'Stop': '04'}[value] }}","o":"[\"None\", \"Section 1\", \"Section 2\", \"Section 3\", \"Stop\"]"}
 {"i":"1309","n":"Displayed Grow Chamber","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Stopped Unknown Section', '01': 'Section 1', '02': 'Section 2', '03': 'Section 3', '04': 'Stopped between Section 1 and 2', '05': 'Stopped between Section 2 and 3', '06': 'Stopped between Section 3 and 1', '07': 'Moving'}.get(value[:2], 'Unknown') }}"}
-{"i":"130a","n":"Display Light Intensity Setting Request","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"130a","n":"Display Light Intensity Setting Request","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"130b","n":"Actual Display Light Intensity","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"130c","n":"In Home Grower Door Status - Top Right Door status","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Closed', '01': 'Open'}.get(value[0:2], 'Unknown') }}"}
 {"i":"130c","n":"In Home Grower Door Status - Top Left Door status","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'Closed', '01': 'Open'}.get(value[2:4], 'Unknown') }}","fi":"top_left_door_status"}
@@ -1436,8 +1436,8 @@
 {"i":"131d","n":"Nutrient Cartridge Level 6 - Cartridge Type","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Not Used', '01': 'Nutrient', '02': 'Cleaning Solution'}.get(value[0:2], 'Unknown') }}"}
 {"i":"131d","n":"Nutrient Cartridge Level 6 - Cartridge State","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Order', '02': 'Replace', '03': 'Error'}.get(value[2:4], 'Unknown') }}","fi":"cartridge_state"}
 {"i":"131e","n":"Air Filter Status","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Good', '01': 'Order', '02': 'Replace', '03': 'Error', 'ff': 'Not Applicable'}.get(value[:2], 'Unknown') }}"}
-{"i":"131f","n":"Reset Water Filter Timer Request","d":"number","ds":8,"dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%016x' % (value | int) }}","mn":0.0,"mx":4294967295.0}
-{"i":"1320","n":"Reset Air Filter Timer Request","d":"number","ds":8,"dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%016x' % (value | int) }}","mn":0.0,"mx":4294967295.0}
+{"i":"131f","n":"Reset Water Filter Timer Request","d":"number","ds":8,"dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%016x' % (value | int) }}","dt":"uint32"}
+{"i":"1320","n":"Reset Air Filter Timer Request","d":"number","ds":8,"dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%016x' % (value | int) }}","dt":"uint32"}
 {"i":"1321","n":"Reset Nutrient Cartridge Request - Request Type","d":"sensor","ds":8,"dc":"enum","vt":"{{ {'00': 'No action required', '01': 'Reset Filter'}.get(value[0:2], 'Unknown') }}"}
 {"i":"1321","n":"Reset Nutrient Cartridge Request - Nutrient Cartridge Id","d":"sensor","ds":8,"dc":"enum","vt":"{{ {'00': 'All Nutrient Cartridges', '01': 'Nutrient Cartridge 1', '02': 'Nutrient Cartridge 2', '03': 'Nutrient Cartridge 3', '04': 'Nutrient Cartridge 4', '05': 'Nutrient Cartridge 5', '06': 'Nutrient Cartridge 6'}.get(value[2:4], 'Unknown') }}","fi":"nutrient_cartridge_id"}
 {"i":"1321","n":"Reset Nutrient Cartridge Request - padding","d":"sensor","ds":8,"vt":"{{ value[4:8] | int(base=16) }}","fi":"padding"}

@@ -437,8 +437,8 @@
 {"i":"3219","n":"Cycle Definition 9 - saniAndBoost","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[4:6] | int(base=16)) >> 3) & 1 else '00' }}","fi":"saniandboost"}
 {"i":"3219","n":"Cycle Definition 9 - intensive","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[6:8] | int(base=16)) >> 0) & 1 else '00' }}","fi":"intensive"}
 {"i":"3219","n":"Cycle Definition 9 - gentle","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[6:8] | int(base=16)) >> 1) & 1 else '00' }}","fi":"gentle"}
-{"i":"321a","n":"Delay Start Value","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
-{"i":"321b","n":"Selected Cycle Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"321a","n":"Delay Start Value","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
+{"i":"321b","n":"Selected Cycle Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"321c","n":"Wash Temperature Setting","d":"sensor","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"321d","n":"Heated Dry Setting","d":"select","ds":1,"vt":"{{ {'00': 'eHeatedDry_None', '01': 'eHeatedDry_AddedHeat', '02': 'eHeatedDry_MaxDry'}.get(value[:2], 'Unknown') }}","ct":"{{ {'eHeatedDry_None': '00', 'eHeatedDry_AddedHeat': '01', 'eHeatedDry_MaxDry': '02'}[value] }}","o":"[\"eHeatedDry_None\", \"eHeatedDry_AddedHeat\", \"eHeatedDry_MaxDry\"]"}
 {"i":"321e","n":"Wash Zone Selection","d":"select","ds":1,"vt":"{{ {'00': 'eWashZone_Both', '01': 'eWashZone_Lower', '02': 'eWashZone_Upper'}.get(value[:2], 'Unknown') }}","ct":"{{ {'eWashZone_Both': '00', 'eWashZone_Lower': '01', 'eWashZone_Upper': '02'}[value] }}","o":"[\"eWashZone_Both\", \"eWashZone_Lower\", \"eWashZone_Upper\"]"}
@@ -496,7 +496,7 @@
 {"i":"322a","n":"Motor Identification Data - inputA","d":"sensor","ds":4,"vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"322a","n":"Motor Identification Data - inputB","d":"sensor","ds":4,"vt":"{{ value[4:8] | int(base=16) }}","fi":"inputb"}
 {"i":"322b","n":"Silverware Wash Option State","d":"switch","ds":1}
-{"i":"322c","n":"Custom Cycle Index","d":"number","ds":1,"p":"322d","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"322c","n":"Custom Cycle Index","d":"number","ds":1,"p":"322d","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"322d","n":"Custom Cycle Index","d":"sensor","ds":1,"p":"322c","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"322e","n":"Dish Favorite Settings","d":"sensor","ds":12,"p":"322f","r":"request","vt":"{{ value[6:8] | int(base=16) }}"}
 {"i":"322e","n":"Dish Favorite Settings - validStoredSettings","d":"binary_sensor","ds":12,"p":"322f","r":"request","vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"validstoredsettings"}
@@ -788,7 +788,7 @@
 {"i":"3619","n":"Tub 1 Cycle Definition 9 - saniAndBoost","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[4:6] | int(base=16)) >> 3) & 1 else '00' }}","fi":"saniandboost"}
 {"i":"3619","n":"Tub 1 Cycle Definition 9 - intensive","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[6:8] | int(base=16)) >> 0) & 1 else '00' }}","fi":"intensive"}
 {"i":"3619","n":"Tub 1 Cycle Definition 9 - gentle","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[6:8] | int(base=16)) >> 1) & 1 else '00' }}","fi":"gentle"}
-{"i":"361a","n":"Tub 1 Delay Start Value","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
-{"i":"361b","n":"Tub 1 Selected Cycle Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"361a","n":"Tub 1 Delay Start Value","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
+{"i":"361b","n":"Tub 1 Selected Cycle Index","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"361c","n":"Tub 1 Wash Temperature Setting","d":"sensor","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"361d","n":"Tub 1 Heated Dry Setting","d":"select","ds":1,"vt":"{{ {'00': 'eHeatedDry_None', '01': 'eHeatedDry_AddedHeat', '02': 'eHeatedDry_MaxDry'}.get(value[:2], 'Unknown') }}","ct":"{{ {'eHeatedDry_None': '00', 'eHeatedDry_AddedHeat': '01', 'eHeatedDry_MaxDry': '02'}[value] }}","o":"[\"eHeatedDry_None\", \"eHeatedDry_AddedHeat\", \"eHeatedDry_MaxDry\"]"}

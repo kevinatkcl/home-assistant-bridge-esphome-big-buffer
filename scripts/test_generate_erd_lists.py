@@ -23,8 +23,9 @@ from generate_erd_lists import (
     _byte_subfield_value_template,
     _number_command_template,
     _number_min_max,
-    _infer_min_max_from_jsonl_entry,
-    backfill_ha_discovery_jsonl_min_max,
+    _effective_dtype,
+    _infer_dtype_from_jsonl_entry,
+    backfill_ha_discovery_jsonl_data_type,
     _collect_ha_discovery_entries,
 )
 
@@ -460,10 +461,9 @@ class TestCollectHaDiscoveryEntriesSigned(unittest.TestCase):
         # command_template: 32767 → '7fff'
         self.assertEqual(_render_number(ct, 32767), '7fff')
 
-        # Number entity must carry min/max/step so HA does not default to 0-100.
-        self.assertIsNotNone(e['min_val'])
-        self.assertIsNotNone(e['max_val'])
-        self.assertIsNotNone(e['step_val'])
+        # Number entity must carry a data_type so the C++ runtime can derive
+        # the correct min/max bounds (not the HA default 0-100 range).
+        self.assertEqual(e['data_type'], 'int16')
 
 
 class TestNumberMinMax(unittest.TestCase):
@@ -512,46 +512,75 @@ class TestNumberMinMax(unittest.TestCase):
         self.assertAlmostEqual(st, 0.1)
 
 
-class TestInferMinMaxFromJsonlEntry(unittest.TestCase):
-    """Verify that _infer_min_max_from_jsonl_entry reads ds/sf/vt correctly."""
+class TestEffectiveDtype(unittest.TestCase):
+    """Verify _effective_dtype maps byte counts and signedness to type strings."""
 
-    def test_unsigned_1byte_no_vt(self):
-        mn, mx, st = _infer_min_max_from_jsonl_entry({'ds': 1, 'vt': '{{ value | int(base=16) }}'})
-        self.assertEqual(mn, 0.0)
-        self.assertEqual(mx, 255.0)
-        self.assertEqual(st, 1.0)
+    def test_unsigned_1byte(self):
+        self.assertEqual(_effective_dtype(1, False), 'uint8')
 
-    def test_unsigned_2byte_no_sf(self):
-        mn, mx, st = _infer_min_max_from_jsonl_entry({'ds': 2, 'vt': '{{ value | int(base=16) }}'})
-        self.assertEqual(mn, 0.0)
-        self.assertEqual(mx, 65535.0)
+    def test_unsigned_2byte(self):
+        self.assertEqual(_effective_dtype(2, False), 'uint16')
 
-    def test_unsigned_2byte_scale10(self):
+    def test_unsigned_3byte(self):
+        self.assertEqual(_effective_dtype(3, False), 'uint24')
+
+    def test_unsigned_4byte(self):
+        self.assertEqual(_effective_dtype(4, False), 'uint32')
+
+    def test_unsigned_large_capped_to_uint32(self):
+        self.assertEqual(_effective_dtype(8, False), 'uint32')
+
+    def test_signed_1byte(self):
+        self.assertEqual(_effective_dtype(1, True), 'int8')
+
+    def test_signed_2byte(self):
+        self.assertEqual(_effective_dtype(2, True), 'int16')
+
+    def test_signed_4byte(self):
+        self.assertEqual(_effective_dtype(4, True), 'int32')
+
+    def test_signed_large_capped_to_int32(self):
+        self.assertEqual(_effective_dtype(8, True), 'int32')
+
+
+class TestInferDtypeFromJsonlEntry(unittest.TestCase):
+    """Verify _infer_dtype_from_jsonl_entry reads ds/vt to produce the right type string."""
+
+    def test_unsigned_1byte(self):
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 1, 'vt': '{{ value | int(base=16) }}'}), 'uint8')
+
+    def test_unsigned_2byte(self):
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 2, 'vt': '{{ value | int(base=16) }}'}), 'uint16')
+
+    def test_unsigned_2byte_with_scale(self):
         vt = '{{ (value | int(base=16)) / 10 | round(1) }}'
-        mn, mx, st = _infer_min_max_from_jsonl_entry({'ds': 2, 'sf': 10, 'vt': vt})
-        self.assertAlmostEqual(mx, 6553.5)
-        self.assertAlmostEqual(st, 0.1)
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 2, 'sf': 10, 'vt': vt}), 'uint16')
 
     def test_slice_notation_limits_effective_bytes(self):
-        # value[0:4] = 2 bytes, even though ds=4
+        # value[0:4] = 2 bytes effective, even though ds=4
         vt = '{{ value[0:4] | int(base=16) }}'
-        mn, mx, _ = _infer_min_max_from_jsonl_entry({'ds': 4, 'vt': vt})
-        self.assertEqual(mx, 65535.0)  # 2-byte max, not 4-byte
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 4, 'vt': vt}), 'uint16')
 
     def test_signed_vt_detected(self):
-        # sign-extension pattern from _compute_sensor_value_template
         vt = '{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}'
-        mn, mx, _ = _infer_min_max_from_jsonl_entry({'ds': 2, 'vt': vt})
-        self.assertEqual(mn, -32768.0)
-        self.assertEqual(mx, 32767.0)
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 2, 'vt': vt}), 'int16')
 
-    def test_missing_ds_defaults_to_1(self):
-        mn, mx, _ = _infer_min_max_from_jsonl_entry({'vt': '{{ value | int(base=16) }}'})
-        self.assertEqual(mx, 255.0)
+    def test_signed_1byte(self):
+        vt = '{{ (value | int(base=16)) - 256 if (value | int(base=16)) >= 128 else (value | int(base=16)) }}'
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 1, 'vt': vt}), 'int8')
+
+    def test_missing_ds_defaults_to_uint8(self):
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'vt': '{{ value | int(base=16) }}'}), 'uint8')
+
+    def test_3byte_yields_uint24(self):
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 3, 'vt': '{{ value | int(base=16) }}'}), 'uint24')
+
+    def test_large_ds_capped_to_uint32(self):
+        self.assertEqual(_infer_dtype_from_jsonl_entry({'ds': 8, 'vt': '{{ value | int(base=16) }}'}), 'uint32')
 
 
-class TestBackfillHaDiscoveryJsonlMinMax(unittest.TestCase):
-    """Verify backfill_ha_discovery_jsonl_min_max updates JSONL files correctly."""
+class TestBackfillHaDiscoveryJsonlDataType(unittest.TestCase):
+    """Verify backfill_ha_discovery_jsonl_data_type updates JSONL files correctly."""
 
     def setUp(self):
         import tempfile
@@ -569,51 +598,62 @@ class TestBackfillHaDiscoveryJsonlMinMax(unittest.TestCase):
     def _read_jsonl(self, path: Path) -> list:
         return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
 
-    def test_adds_mn_mx_to_number_entities(self):
+    def test_adds_dt_to_number_entities(self):
         p = self._write_jsonl('test.jsonl', [
             {'i': '1234', 'n': 'Widget', 'd': 'number', 'ds': 1, 'vt': '{{ value | int(base=16) }}', 'ct': '{{ \'%02x\' % (value | int) }}'},
             {'i': '5678', 'n': 'Sensor', 'd': 'sensor', 'ds': 2},
         ])
-        n = backfill_ha_discovery_jsonl_min_max(self.tmpdir)
+        n = backfill_ha_discovery_jsonl_data_type(self.tmpdir)
         self.assertEqual(n, 1)
         entries = self._read_jsonl(p)
         number_e = next(e for e in entries if e['d'] == 'number')
-        self.assertEqual(number_e['mn'], 0.0)
-        self.assertEqual(number_e['mx'], 255.0)
-        # st=1.0 is not emitted (it's the HA default)
+        self.assertEqual(number_e['dt'], 'uint8')
+        # mn/mx/st must not be present
+        self.assertNotIn('mn', number_e)
+        self.assertNotIn('mx', number_e)
         self.assertNotIn('st', number_e)
 
-    def test_does_not_overwrite_existing_mn_mx(self):
+    def test_removes_old_mn_mx_st_fields(self):
         p = self._write_jsonl('test.jsonl', [
-            {'i': '1234', 'n': 'Widget', 'd': 'number', 'ds': 1, 'mn': 5.0, 'mx': 50.0,
+            {'i': '1234', 'n': 'Widget', 'd': 'number', 'ds': 1,
+             'mn': 0.0, 'mx': 255.0,
              'vt': '{{ value | int(base=16) }}', 'ct': '{{ \'%02x\' % (value | int) }}'},
         ])
-        n = backfill_ha_discovery_jsonl_min_max(self.tmpdir)
+        backfill_ha_discovery_jsonl_data_type(self.tmpdir)
+        entries = self._read_jsonl(p)
+        self.assertEqual(entries[0].get('dt'), 'uint8')
+        self.assertNotIn('mn', entries[0])
+        self.assertNotIn('mx', entries[0])
+
+    def test_does_not_overwrite_existing_dt(self):
+        p = self._write_jsonl('test.jsonl', [
+            {'i': '1234', 'n': 'Widget', 'd': 'number', 'ds': 1, 'dt': 'int8',
+             'vt': '{{ value | int(base=16) }}', 'ct': '{{ \'%02x\' % (value | int) }}'},
+        ])
+        n = backfill_ha_discovery_jsonl_data_type(self.tmpdir)
         self.assertEqual(n, 0)
         entries = self._read_jsonl(p)
-        self.assertEqual(entries[0]['mn'], 5.0)
-        self.assertEqual(entries[0]['mx'], 50.0)
+        self.assertEqual(entries[0]['dt'], 'int8')  # unchanged
 
-    def test_emits_st_when_not_1(self):
+    def test_uint16_with_scale(self):
         p = self._write_jsonl('test.jsonl', [
             {'i': 'abcd', 'n': 'Temp', 'd': 'number', 'ds': 2, 'sf': 10,
              'vt': '{{ (value | int(base=16)) / 10 | round(1) }}', 'ct': '{{ \'%04x\' % ((value | float) * 10 | int) }}'},
         ])
-        backfill_ha_discovery_jsonl_min_max(self.tmpdir)
+        backfill_ha_discovery_jsonl_data_type(self.tmpdir)
         entries = self._read_jsonl(p)
-        self.assertIn('st', entries[0])
-        self.assertAlmostEqual(entries[0]['st'], 0.1)
+        self.assertEqual(entries[0]['dt'], 'uint16')
 
     def test_non_number_entities_unchanged(self):
         p = self._write_jsonl('test.jsonl', [
             {'i': '0001', 'n': 'Switch', 'd': 'switch', 'ds': 1},
             {'i': '0002', 'n': 'Sensor', 'd': 'sensor', 'ds': 2},
         ])
-        n = backfill_ha_discovery_jsonl_min_max(self.tmpdir)
+        n = backfill_ha_discovery_jsonl_data_type(self.tmpdir)
         self.assertEqual(n, 0)
         entries = self._read_jsonl(p)
         for e in entries:
-            self.assertNotIn('mn', e)
+            self.assertNotIn('dt', e)
 
 
 if __name__ == '__main__':

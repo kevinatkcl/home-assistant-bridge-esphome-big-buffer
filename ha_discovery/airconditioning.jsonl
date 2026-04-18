@@ -145,7 +145,7 @@
 {"i":"7464","n":"Make-up Air Fan Cfm - Minimum Allowed Cfm","d":"sensor","ds":8,"u":"CFM","p":"7465","r":"status","vt":"{{ value[4:8] | int(base=16) }}","fi":"minimum_allowed_cfm"}
 {"i":"7464","n":"Make-up Air Fan Cfm - Maximum Allowed Cfm","d":"sensor","ds":8,"u":"CFM","p":"7465","r":"status","vt":"{{ value[8:12] | int(base=16) }}","fi":"maximum_allowed_cfm"}
 {"i":"7464","n":"Make-up Air Fan Cfm - Cfm Step Size","d":"sensor","ds":8,"u":"CFM","p":"7465","r":"status","vt":"{{ value[12:14] | int(base=16) }}","fi":"cfm_step_size"}
-{"i":"7465","n":"Make-up Air Fan Cfm","d":"number","ds":2,"u":"CFM","p":"7464","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"7465","n":"Make-up Air Fan Cfm","d":"number","ds":2,"u":"CFM","p":"7464","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"7466","n":"Make-up Air Filter Type","d":"sensor","ds":5,"dc":"enum","p":"7467","r":"status","vt":"{{ {'00': 'No Filter', '01': 'MERV 13 Filter'}.get(value[0:2], 'Unknown') }}"}
 {"i":"7466","n":"Make-up Air Filter Type - No Filter Option Present","d":"binary_sensor","ds":5,"p":"7467","r":"status","vt":"{{ '01' if ((value[2:10] | int(base=16)) >> 24) & 1 else '00' }}","fi":"no_filter_option_present"}
 {"i":"7466","n":"Make-up Air Filter Type - MERV13 Filter Option Present","d":"binary_sensor","ds":5,"p":"7467","r":"status","vt":"{{ '01' if ((value[2:10] | int(base=16)) >> 25) & 1 else '00' }}","fi":"merv13_filter_option_present"}
@@ -168,9 +168,9 @@
 {"i":"750b","n":"Make-up Air fan 1 actual speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ value | int(base=16) }}"}
 {"i":"7511","n":"EEV Control Type","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Idle', '01': 'Linear Control', '02': 'Constant Control', '03': 'PI Control', '04': 'High-gain PI Control'}.get(value[:2], 'Unknown') }}"}
 {"i":"7512","n":"EEV1 Desired Position","d":"sensor","ds":2,"u":"steps","vt":"{{ value | int(base=16) }}"}
-{"i":"7513","n":"EEV2 Desired Position","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"7513","n":"EEV2 Desired Position","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"7514","n":"EEV1 Actual Position","d":"sensor","ds":2,"u":"steps","vt":"{{ value | int(base=16) }}"}
-{"i":"7515","n":"EEV2 Actual Position","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"7515","n":"EEV2 Actual Position","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"7516","n":"Target Superheat Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
 {"i":"7517","n":"Current Superheat Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
 {"i":"7518","n":"EEV Linear Controller Desired Position","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
@@ -191,27 +191,27 @@
 {"i":"7705","n":"Temperature Setpoint Step Size Status - Minimum Step Size in Fahrenheit operation in Fahrenheit x 10","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value[0:2] | int(base=16)) / 10 | round(1) }}"}
 {"i":"7705","n":"Temperature Setpoint Step Size Status - Minimum Step Size in Celsius operation in Celsius x 10","d":"sensor","ds":2,"u":"°C","sf":10,"vt":"{{ (value[2:4] | int(base=16)) / 10 | round(1) }}","fi":"minimum_step_size_in_celsius_operation_in_celsius_x_10"}
 {"i":"7706","n":"User Heating Setpoint","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"p":"7707","r":"status","vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
-{"i":"7707","n":"User Heating Setpoint","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"p":"7706","r":"request","vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","mn":0.0,"mx":6553.5,"st":0.1}
+{"i":"7707","n":"User Heating Setpoint","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"p":"7706","r":"request","vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","dt":"uint16"}
 {"i":"7708","n":"User Heating Setpoint Configured Range - User Heating Minimum Allowed Setpoint in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}"}
 {"i":"7708","n":"User Heating Setpoint Configured Range - User Heating Maximum Allowed Setpoint in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","sf":10,"vt":"{{ (value[4:8] | int(base=16)) / 10 | round(1) }}","fi":"user_heating_maximum_allowed_setpoint_in_fahrenheit_x_10"}
 {"i":"7709","n":"User Cooling Setpoint","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"p":"770a","r":"status","vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
-{"i":"770a","n":"User Cooling Setpoint","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"p":"7709","r":"request","vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","mn":0.0,"mx":6553.5,"st":0.1}
+{"i":"770a","n":"User Cooling Setpoint","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"p":"7709","r":"request","vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","dt":"uint16"}
 {"i":"770b","n":"User Cooling Setpoint Configured Range - User Cooling Minimum Allowed Setpoint in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}"}
 {"i":"770b","n":"User Cooling Setpoint Configured Range - User Cooling Maximum Allowed Setpoint in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","sf":10,"vt":"{{ (value[4:8] | int(base=16)) / 10 | round(1) }}","fi":"user_cooling_maximum_allowed_setpoint_in_fahrenheit_x_10"}
 {"i":"770c","n":"User Temperature Setpoint Limit Configurable Bitmap - User Heating Setpoint Minimum Limit is Configurable","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:8] | int(base=16)) >> 24) & 1 else '00' }}","fi":"user_heating_setpoint_minimum_limit_is_configurable"}
 {"i":"770c","n":"User Temperature Setpoint Limit Configurable Bitmap - User Heating Setpoint Maximum Limit is Configurable","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:8] | int(base=16)) >> 25) & 1 else '00' }}","fi":"user_heating_setpoint_maximum_limit_is_configurable"}
 {"i":"770c","n":"User Temperature Setpoint Limit Configurable Bitmap - User Cooling Setpoint Minimum Limit is Configurable","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:8] | int(base=16)) >> 26) & 1 else '00' }}","fi":"user_cooling_setpoint_minimum_limit_is_configurable"}
 {"i":"770c","n":"User Temperature Setpoint Limit Configurable Bitmap - User Cooling Setpoint Maximum Limit is Configurable","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:8] | int(base=16)) >> 27) & 1 else '00' }}","fi":"user_cooling_setpoint_maximum_limit_is_configurable"}
-{"i":"770d","n":"User Heating Setpoint Minimum Limit Request","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","mn":0.0,"mx":6553.5,"st":0.1}
+{"i":"770d","n":"User Heating Setpoint Minimum Limit Request","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","dt":"uint16"}
 {"i":"770e","n":"User Heating Setpoint Minimum Limit Allowed Range - User Heating Setpoint Minimum Limit - Minimum Allowed Value in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}"}
 {"i":"770e","n":"User Heating Setpoint Minimum Limit Allowed Range - User Heating Setpoint Minimum Limit - Maximum Allowed Value in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","sf":10,"vt":"{{ (value[4:8] | int(base=16)) / 10 | round(1) }}","fi":"user_heating_setpoint_minimum_limit_maximum_allowed_value_in_fah"}
-{"i":"770f","n":"User Heating Setpoint Maximum Limit Request","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","mn":0.0,"mx":6553.5,"st":0.1}
+{"i":"770f","n":"User Heating Setpoint Maximum Limit Request","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","dt":"uint16"}
 {"i":"7710","n":"User Heating Setpoint Maximum Limit Allowed Range - User Heating Setpoint Maximum Limit - Minimum Allowed Value in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}"}
 {"i":"7710","n":"User Heating Setpoint Maximum Limit Allowed Range - User Heating Setpoint Maximum Limit - Maximum Allowed Value in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","sf":10,"vt":"{{ (value[4:8] | int(base=16)) / 10 | round(1) }}","fi":"user_heating_setpoint_maximum_limit_maximum_allowed_value_in_fah"}
-{"i":"7711","n":"User Cooling Setpoint Minimum Limit Request","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","mn":0.0,"mx":6553.5,"st":0.1}
+{"i":"7711","n":"User Cooling Setpoint Minimum Limit Request","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","dt":"uint16"}
 {"i":"7712","n":"User Cooling Setpoint Minimum Limit Allowed Range - User Cooling Setpoint Minimum Limit - Minimum Allowed Value in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}"}
 {"i":"7712","n":"User Cooling Setpoint Minimum Limit Allowed Range - User Cooling Setpoint Minimum Limit - Maximum Allowed Value in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","sf":10,"vt":"{{ (value[4:8] | int(base=16)) / 10 | round(1) }}","fi":"user_cooling_setpoint_minimum_limit_maximum_allowed_value_in_fah"}
-{"i":"7713","n":"User Cooling Setpoint Maximum Limit Request","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","mn":0.0,"mx":6553.5,"st":0.1}
+{"i":"7713","n":"User Cooling Setpoint Maximum Limit Request","d":"number","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}","ct":"{{ '%04x' % ((value | float) * 10 | int) }}","dt":"uint16"}
 {"i":"7714","n":"User Cooling Setpoint Maximum Limit Allowed Range - User Cooling Setpoint Maximum Limit - Minimum Allowed Value in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}"}
 {"i":"7714","n":"User Cooling Setpoint Maximum Limit Allowed Range - User Cooling Setpoint Maximum Limit - Maximum Allowed Value in Fahrenheit x 10","d":"sensor","ds":4,"u":"°F","sf":10,"vt":"{{ (value[4:8] | int(base=16)) / 10 | round(1) }}","fi":"user_cooling_setpoint_maximum_limit_maximum_allowed_value_in_fah"}
 {"i":"7718","n":"Heat System Mode Fan Setting","d":"sensor","ds":1,"dc":"enum","p":"7719","r":"status","vt":"{{ {'00': 'Low', '01': 'High'}.get(value[:2], 'Unknown') }}"}
@@ -396,7 +396,7 @@
 {"i":"7905","n":"Compressor Suction Temperature (Ts) and Discharge Temperature (Td) - Td Temperature (F x 10)","d":"sensor","ds":4,"dc":"temperature","sf":10,"vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}"}
 {"i":"7905","n":"Compressor Suction Temperature (Ts) and Discharge Temperature (Td) - Ts Temperature (F x 10)","d":"sensor","ds":4,"sf":10,"vt":"{{ (value[4:8] | int(base=16)) / 10 | round(1) }}","fi":"ts_temperature_f_x_10"}
 {"i":"7906","n":"Outdoor Pipe temperature (Toci)","d":"sensor","ds":2,"dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
-{"i":"7907","n":"Position of Expansion valve EEV0","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"7907","n":"Position of Expansion valve EEV0","d":"number","ds":2,"vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"790d","n":"High and Low Pressure switch status - High Pressure Switch Status","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Pressure Switch open', '01': 'Pressure Switch closed'}.get(value[0:2], 'Unknown') }}"}
 {"i":"790d","n":"High and Low Pressure switch status - Low Pressure Switch Status","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Pressure Switch open', '01': 'Pressure Switch closed'}.get(value[2:4], 'Unknown') }}","fi":"low_pressure_switch_status"}
 {"i":"790e","n":"ODU Gas Pipe temperatures (Tc1 - A,B,C,D,E) - Tc1-A Temperature (F x 10)","d":"sensor","ds":10,"dc":"temperature","sf":10,"vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}"}
@@ -521,7 +521,7 @@
 {"i":"7976","n":"Vacation Mode (10C Heating Mode) Control","d":"switch","ds":1}
 {"i":"7977","n":"Service Mode Electric Room Heater Request","d":"switch","ds":1}
 {"i":"7978","n":"Self Clean Request","d":"select","ds":1,"vt":"{{ {'00': 'No Request', '01': 'Request Self Clean Cycle To Occur'}.get(value[:2], 'Unknown') }}","ct":"{{ {'No Request': '00', 'Request Self Clean Cycle To Occur': '01'}[value] }}","o":"[\"No Request\", \"Request Self Clean Cycle To Occur\"]"}
-{"i":"7979","n":"Self Clean Reminder Timer Duration Selection","d":"number","ds":1,"dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"7979","n":"Self Clean Reminder Timer Duration Selection","d":"number","ds":1,"dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"797a","n":"Self Clean Alert Countdown","d":"sensor","ds":4,"sc":"total","vt":"{{ value | int(base=16) }}"}
 {"i":"797b","n":"Alerts - Self Clean First Alert","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 8) & 1 else '00' }}","fi":"self_clean_first_alert"}
 {"i":"797b","n":"Alerts - Self Clean Second Alert","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 9) & 1 else '00' }}","fi":"self_clean_second_alert"}
@@ -543,7 +543,7 @@
 {"i":"7990","n":"RS485 Communication Status","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Unconnected', '01': 'Connected', 'fe': 'Communication Error', 'ff': 'Not Available'}.get(value[:2], 'Unknown') }}"}
 {"i":"7991","n":"Outdoor Unit Model Number","d":"sensor","ds":32}
 {"i":"7992","n":"Outdoor Unit Serial Number","d":"sensor","ds":32}
-{"i":"79a0","n":"Filter Replacement Interval Reminder","d":"number","ds":2,"p":"79a1","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"79a0","n":"Filter Replacement Interval Reminder","d":"number","ds":2,"p":"79a1","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"79a1","n":"Filter Replacement Interval Reminder","d":"sensor","ds":2,"p":"79a0","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"79a2","n":"Local Schedule Enable Request","d":"switch","ds":1}
 {"i":"79a3","n":"Local Schedule Enabled Status","d":"binary_sensor","ds":1}
@@ -562,13 +562,13 @@
 {"i":"79a7","n":"Filter Operating Hours","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
 {"i":"79a8","n":"IDU Control Count","d":"sensor","ds":1,"sc":"total","vt":"{{ value | int(base=16) }}"}
 {"i":"79a9","n":"Auto Mode Temperature Deadband","d":"sensor","ds":1,"u":"°F","dc":"temperature","p":"79aa","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79aa","n":"Auto Mode Temperature Deadband","d":"number","ds":1,"u":"°F","dc":"temperature","p":"79a9","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"79aa","n":"Auto Mode Temperature Deadband","d":"number","ds":1,"u":"°F","dc":"temperature","p":"79a9","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"79ab","n":"Compressor Minimum Runtime","d":"sensor","ds":1,"p":"79ac","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79ac","n":"Compressor Minimum Runtime","d":"number","ds":1,"p":"79ab","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"79ac","n":"Compressor Minimum Runtime","d":"number","ds":1,"p":"79ab","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"79ad","n":"Compressor Minimum Idle Time","d":"sensor","ds":1,"p":"79ae","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79ae","n":"Compressor Minimum Idle Time","d":"number","ds":1,"p":"79ad","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"79ae","n":"Compressor Minimum Idle Time","d":"number","ds":1,"p":"79ad","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"79af","n":"Compressor Maximum Stage1 Runtime","d":"sensor","ds":1,"p":"79b0","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79b0","n":"Compressor Maximum Stage1 Runtime","d":"number","ds":1,"p":"79af","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"79b0","n":"Compressor Maximum Stage1 Runtime","d":"number","ds":1,"p":"79af","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"79b3","n":"Compressor Minimum Runtime allowable range - Compressor Minimum Runtime minimum allowable in minutes","d":"sensor","ds":3,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"79b3","n":"Compressor Minimum Runtime allowable range - Compressor Minimum Runtime maximum allowable in minutes","d":"sensor","ds":3,"vt":"{{ value[2:4] | int(base=16) }}","fi":"compressor_minimum_runtime_maximum_allowable_in_minutes"}
 {"i":"79b3","n":"Compressor Minimum Runtime allowable range - Compressor Minimum Runtime step size (X10) for min/max allowable","d":"sensor","ds":3,"vt":"{{ value[4:6] | int(base=16) }}","fi":"compressor_minimum_runtime_step_size_x10_for_min_max_allowable"}
@@ -605,20 +605,20 @@
 {"i":"79bf","n":"Available Fan Operating Modes - Fan On Present","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}","fi":"fan_on_present"}
 {"i":"79bf","n":"Available Fan Operating Modes - Fan Circulate Present","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 2) & 1 else '00' }}","fi":"fan_circulate_present"}
 {"i":"79c0","n":"Indoor Temperature Chassis/Install Adjustment","d":"sensor","ds":4,"dc":"temperature","sf":10,"p":"79c1","r":"status","vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
-{"i":"79c1","n":"Indoor Temperature Chassis/Install Adjustment","d":"number","ds":4,"dc":"temperature","sf":10,"p":"79c0","r":"request","vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}","ct":"{{ '%08x' % ((value | float) * 10 | int) }}","mn":0.0,"mx":6553.5,"st":0.1}
+{"i":"79c1","n":"Indoor Temperature Chassis/Install Adjustment","d":"number","ds":4,"dc":"temperature","sf":10,"p":"79c0","r":"request","vt":"{{ (value[0:4] | int(base=16)) / 10 | round(1) }}","ct":"{{ '%08x' % ((value | float) * 10 | int) }}","dt":"uint16"}
 {"i":"79c2","n":"Ambient Temperature Sensor Status","d":"sensor","ds":2,"dc":"temperature","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
 {"i":"79c3","n":"Compressor Minimum Stage2 Temperature Delta","d":"sensor","ds":1,"u":"°F","dc":"temperature","p":"79c4","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79c4","n":"Compressor Minimum Stage2 Temperature Delta","d":"number","ds":1,"u":"°F","dc":"temperature","p":"79c3","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"79c4","n":"Compressor Minimum Stage2 Temperature Delta","d":"number","ds":1,"u":"°F","dc":"temperature","p":"79c3","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"79c5","n":"Blower Minimum Runtime","d":"sensor","ds":2,"p":"79c6","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79c6","n":"Blower Minimum Runtime","d":"number","ds":2,"p":"79c5","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"79c6","n":"Blower Minimum Runtime","d":"number","ds":2,"p":"79c5","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"79c7","n":"Indoor Fan Delay","d":"sensor","ds":2,"p":"79c8","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79c8","n":"Indoor Fan Delay","d":"number","ds":2,"p":"79c7","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"79c8","n":"Indoor Fan Delay","d":"number","ds":2,"p":"79c7","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"79c9","n":"Minimum Heat Time","d":"sensor","ds":2,"p":"79ca","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79ca","n":"Minimum Heat Time","d":"number","ds":2,"p":"79c9","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"79ca","n":"Minimum Heat Time","d":"number","ds":2,"p":"79c9","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"79cb","n":"Auxiliary Heat Minimum Temperature Delta","d":"sensor","ds":2,"u":"°F","dc":"temperature","p":"79cc","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79cc","n":"Auxiliary Heat Minimum Temperature Delta","d":"number","ds":2,"u":"°F","dc":"temperature","p":"79cb","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"79cc","n":"Auxiliary Heat Minimum Temperature Delta","d":"number","ds":2,"u":"°F","dc":"temperature","p":"79cb","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"79cd","n":"Indoor Ambient Temperature Sensor Calibration","d":"sensor","ds":2,"u":"°F","dc":"temperature","p":"79ce","r":"status","vt":"{{ value | int(base=16) }}"}
-{"i":"79ce","n":"Indoor Ambient Temperature Sensor Calibration","d":"number","ds":2,"u":"°F","dc":"temperature","p":"79cd","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"79ce","n":"Indoor Ambient Temperature Sensor Calibration","d":"number","ds":2,"u":"°F","dc":"temperature","p":"79cd","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"7a00","n":"WAC Fan Setting","d":"select","ds":1,"vt":"{{ {'01': 'Auto', '02': 'Low', '04': 'Medium', '08': 'High', '10': 'Smart Dry'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Auto': '01', 'Low': '02', 'Medium': '04', 'High': '08', 'Smart Dry': '10'}[value] }}","o":"[\"Auto\", \"Low\", \"Medium\", \"High\", \"Smart Dry\"]"}
 {"i":"7a01","n":"WAC Operation Mode","d":"select","ds":1,"vt":"{{ {'00': 'Cool', '01': 'Fan Only', '02': 'Energy Saver', '03': 'Heat', '04': 'Dehumidify/Dry', '05': 'Auto', '06': 'Turbo Cool', '07': 'Silent'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Cool': '00', 'Fan Only': '01', 'Energy Saver': '02', 'Heat': '03', 'Dehumidify/Dry': '04', 'Auto': '05', 'Turbo Cool': '06', 'Silent': '07'}[value] }}","o":"[\"Cool\", \"Fan Only\", \"Energy Saver\", \"Heat\", \"Dehumidify/Dry\", \"Auto\", \"Turbo Cool\", \"Silent\"]"}
 {"i":"7a02","n":"WAC Ambient Temperature","d":"sensor","ds":1,"dc":"temperature","vt":"{{ value | int(base=16) }}"}
@@ -630,12 +630,12 @@
 {"i":"7a10","n":"Compressor Error Status","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'No Compressor Error', '01': 'Compressor Error Detected'}.get(value[:2], 'Unknown') }}"}
 {"i":"7a12","n":"Cumulative Energy","d":"sensor","ds":4,"u":"Wh","dc":"energy","sc":"total","vt":"{{ value | int(base=16) }}"}
 {"i":"7a13","n":"WAC Save Energy Info Indicator","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'No action required', '01': 'Cloud to save energy data'}.get(value[:2], 'Unknown') }}"}
-{"i":"7a14","n":"WAC Save Energy Time","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"7a14","n":"WAC Save Energy Time","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"7a20","n":"Matter Thermostat Cluster Local Temperature","d":"sensor","ds":2,"u":"°C","dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"7a21","n":"Matter Thermostat Cluster Minimum Cooling Setpoint","d":"sensor","ds":2,"u":"°C","dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"7a22","n":"Matter Thermostat Cluster Maximum Cooling Setpoint","d":"sensor","ds":2,"u":"°C","dc":"temperature","vt":"{{ value | int(base=16) }}"}
 {"i":"7a23","n":"Matter Thermostat Cluster PI Cooling Demand","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"7a24","n":"Matter Thermostat Cluster Occupied Cooling Setpoint","d":"number","ds":2,"u":"°C","dc":"temperature","p":"7a25","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","mn":0.0,"mx":65535.0}
+{"i":"7a24","n":"Matter Thermostat Cluster Occupied Cooling Setpoint","d":"number","ds":2,"u":"°C","dc":"temperature","p":"7a25","r":"request","vt":"{{ value[0:4] | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
 {"i":"7a25","n":"Matter Thermostat Cluster Occupied Cooling Setpoint Actual","d":"sensor","ds":2,"u":"°C","dc":"temperature","p":"7a24","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"7a26","n":"Matter Thermostat Cluster Control Sequence of Operation","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Cooling only', '01': 'Cooling with Reheat', '02': 'Heating only', '03': 'Heating with Reheat', '04': 'Cooling and Heating', '05': 'Cooling and Heating with Reheat'}.get(value[:2], 'Unknown') }}"}
 {"i":"7a27","n":"Matter Thermostat Cluster System Mode","d":"select","ds":1,"p":"7a28","r":"request","vt":"{{ {'00': 'Off', '01': 'Auto', '02': 'Undefined', '03': 'Cool', '04': 'Heat', '05': 'Emergency Heat', '06': 'Precooling', '07': 'Fan only', '08': 'Dry', '09': 'Sleep'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Off': '00', 'Auto': '01', 'Undefined': '02', 'Cool': '03', 'Heat': '04', 'Emergency Heat': '05', 'Precooling': '06', 'Fan only': '07', 'Dry': '08', 'Sleep': '09'}[value] }}","o":"[\"Off\", \"Auto\", \"Undefined\", \"Cool\", \"Heat\", \"Emergency Heat\", \"Precooling\", \"Fan only\", \"Dry\", \"Sleep\"]"}
@@ -643,7 +643,7 @@
 {"i":"7a40","n":"Matter Fan Control Cluster Fan Mode","d":"select","ds":1,"p":"7a41","r":"request","vt":"{{ {'00': 'Off', '01': 'Low', '02': 'Medium', '03': 'High', '04': 'On', '05': 'Auto', '06': 'Smart'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Off': '00', 'Low': '01', 'Medium': '02', 'High': '03', 'On': '04', 'Auto': '05', 'Smart': '06'}[value] }}","o":"[\"Off\", \"Low\", \"Medium\", \"High\", \"On\", \"Auto\", \"Smart\"]"}
 {"i":"7a41","n":"Matter Fan Control Cluster Fan Mode Actual","d":"sensor","ds":1,"dc":"enum","p":"7a40","r":"status","vt":"{{ {'00': 'Off', '01': 'Low', '02': 'Medium', '03': 'High', '04': 'On', '05': 'Auto', '06': 'Smart'}.get(value[:2], 'Unknown') }}"}
 {"i":"7a42","n":"Matter Fan Control Cluster Fan Mode Sequence","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Off/Low/Med/High', '01': 'Off/Low/High', '02': 'Off/Low/Med/High/Auto', '03': 'Off/Low/High/Auto', '04': 'Off/High/Auto', '05': 'Off/High'}.get(value[:2], 'Unknown') }}"}
-{"i":"7a43","n":"Matter Fan Control Cluster Percent Setting","d":"number","ds":1,"p":"7a44","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","mn":0.0,"mx":255.0}
+{"i":"7a43","n":"Matter Fan Control Cluster Percent Setting","d":"number","ds":1,"p":"7a44","r":"request","vt":"{{ value[0:2] | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
 {"i":"7a44","n":"Matter Fan Control Cluster Percent Setting Actual","d":"sensor","ds":1,"p":"7a43","r":"status","vt":"{{ value | int(base=16) }}"}
 {"i":"7a45","n":"Matter Fan Control Cluster Percent Current","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"7b00","n":"Available AC Modes - Heat","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"heat"}
