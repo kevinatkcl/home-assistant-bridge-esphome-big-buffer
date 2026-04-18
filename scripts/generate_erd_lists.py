@@ -796,6 +796,11 @@ def _number_min_max(effective_bytes: int, scale_factor: int, signed: bool):
     when only a slice of the payload is used).  The step equals 1/scale_factor
     so that fractional increments are correct when a scaling factor is present.
 
+    The byte count is capped at 4 (uint32 / int32 range) so the resulting max
+    value fits exactly in a JSON double (IEEE 754 doubles represent integers
+    exactly up to 2^53).  Values beyond 4.3 billion are not realistic for any
+    appliance sensor or control, so the cap has no practical impact.
+
     Returned values are Python floats; callers should round to avoid tiny
     floating-point artefacts.
     """
