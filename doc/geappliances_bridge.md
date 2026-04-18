@@ -104,6 +104,8 @@ The three library layers under the bridge:
 | `mode` | `set_mode()` | `AUTO` | `POLL=0`, `SUBSCRIBE=1`, `AUTO=2` |
 | `polling_interval` | `set_polling_interval()` | `10000` ms | ERD poll period |
 | `polling_onlypublish_onchange` | `set_polling_only_publish_on_change()` | `false` | When `true`, only publish ERD values to MQTT when the value changes (suppress duplicate publishes) |
+| `appliance_api_parsing` | `set_appliance_api_parsing()` | `true` | When `true`, reads appliance API feature-bit ERDs (0x0092–0x010D) and restricts polling to only ERDs advertised by the appliance |
+| `generate_device_config` | `set_generate_device_config()` | `false` | When `true`, generates and publishes a device configuration file to MQTT after initialization |
 
 The discovered appliance's address becomes `host_address_` and is used for all subsequent ERD reads/writes.
 
