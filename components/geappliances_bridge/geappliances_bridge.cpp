@@ -1437,6 +1437,24 @@ bool GeappliancesBridge::process_jsonl_line_(const char* line,
       payload += ",\"" + std::string(key) + "\":\"" + escape_json_str(std::string(val)) + "\"";
   };
 
+  // Helper: format a double as a compact decimal string (no trailing zeros).
+  auto fmt_double = [](double v) -> std::string {
+    char buf[32];
+    if (v == static_cast<double>(static_cast<long long>(v))) {
+      snprintf(buf, sizeof(buf), "%.0f", v);
+    } else {
+      snprintf(buf, sizeof(buf), "%.6f", v);
+      // Strip trailing zeros after decimal point.
+      char* dot = strchr(buf, '.');
+      if (dot) {
+        char* end = buf + strlen(buf) - 1;
+        while (end > dot && *end == '0') *end-- = '\0';
+        if (*end == '.') *end = '\0';
+      }
+    }
+    return std::string(buf);
+  };
+
   if (strcmp(domain, "sensor") == 0) {
     payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
     payload += ",\"state_topic\":\"" + state_topic + "\"";
@@ -1477,6 +1495,52 @@ bool GeappliancesBridge::process_jsonl_line_(const char* line,
     payload += ",\"device\":" + device_json + "}";
 
   } else if (strcmp(domain, "number") == 0) {
+    // Determine min/max/step.  Prefer explicit mn/mx/st fields from the JSONL
+    // (emitted by recent versions of generate_erd_lists.py).  Fall back to
+    // computing from data_size (ds) and scale_factor (sf) for older JSONL files
+    // that do not carry those fields.  Without explicit min/max, HA defaults to
+    // the range 0-100 and rejects any value outside it.
+    cJSON* mn_item = cJSON_GetObjectItemCaseSensitive(root, "mn");
+    cJSON* mx_item = cJSON_GetObjectItemCaseSensitive(root, "mx");
+    cJSON* st_item = cJSON_GetObjectItemCaseSensitive(root, "st");
+
+    double min_val, max_val, step_val;
+
+    if (mn_item && cJSON_IsNumber(mn_item) && mx_item && cJSON_IsNumber(mx_item)) {
+      // Explicit range from JSONL.
+      min_val  = mn_item->valuedouble;
+      max_val  = mx_item->valuedouble;
+      step_val = (st_item && cJSON_IsNumber(st_item)) ? st_item->valuedouble : 1.0;
+    } else {
+      // Compute from ds / sf.
+      cJSON* ds_item = cJSON_GetObjectItemCaseSensitive(root, "ds");
+      cJSON* sf_item = cJSON_GetObjectItemCaseSensitive(root, "sf");
+      int data_size    = (ds_item && cJSON_IsNumber(ds_item)) ? static_cast<int>(ds_item->valuedouble) : 1;
+      int scale_factor = (sf_item && cJSON_IsNumber(sf_item)) ? static_cast<int>(sf_item->valuedouble) : 1;
+      if (data_size    < 1) data_size    = 1;
+      if (scale_factor < 1) scale_factor = 1;
+
+      // When the value_template reads only a leading slice of the payload (e.g.
+      // "value[0:4]"), determine the effective byte count from the slice length.
+      // Otherwise the full data_size bytes govern the range.
+      int effective_bytes = data_size;
+      if (vt && vt[0] != '\0') {
+        const char* slice = strstr(vt, "[0:");
+        if (slice) {
+          int hex_chars = atoi(slice + 3);
+          if (hex_chars >= 2 && (hex_chars % 2) == 0)
+            effective_bytes = hex_chars / 2;
+        }
+      }
+      // Cap at 4 bytes so the max fits comfortably in a double (uint32 max ≈ 4.3 B).
+      if (effective_bytes > 4) effective_bytes = 4;
+
+      double raw_max = static_cast<double>((1ULL << (8 * effective_bytes)) - 1);
+      min_val  = 0.0;
+      max_val  = raw_max / scale_factor;
+      step_val = (scale_factor > 1) ? (1.0 / scale_factor) : 1.0;
+    }
+
     payload  = "{\"name\":\"" + escape_json_str(std::string(name)) + "\"";
     payload += ",\"state_topic\":\"" + state_topic + "\"";
     payload += ",\"command_topic\":\"" + command_topic + "\"";
@@ -1486,6 +1550,9 @@ bool GeappliancesBridge::process_jsonl_line_(const char* line,
     add_field("unit_of_measurement", unit);
     add_field("device_class", dc);
     payload += ",\"mode\":\"box\"";
+    payload += ",\"min\":"  + fmt_double(min_val);
+    payload += ",\"max\":"  + fmt_double(max_val);
+    payload += ",\"step\":" + fmt_double(step_val);
     payload += ",\"device\":" + device_json + "}";
 
   } else if (strcmp(domain, "button") == 0) {

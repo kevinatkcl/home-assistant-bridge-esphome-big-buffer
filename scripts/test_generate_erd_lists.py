@@ -21,6 +21,7 @@ from generate_erd_lists import (
     _compute_sensor_value_template,
     _byte_subfield_value_template,
     _number_command_template,
+    _number_min_max,
     _collect_ha_discovery_entries,
 )
 
@@ -455,6 +456,57 @@ class TestCollectHaDiscoveryEntriesSigned(unittest.TestCase):
         self.assertEqual(_render_number(ct, -32768), '8000')
         # command_template: 32767 → '7fff'
         self.assertEqual(_render_number(ct, 32767), '7fff')
+
+        # Number entity must carry min/max/step so HA does not default to 0-100.
+        self.assertIsNotNone(e['min_val'])
+        self.assertIsNotNone(e['max_val'])
+        self.assertIsNotNone(e['step_val'])
+
+
+class TestNumberMinMax(unittest.TestCase):
+    """Verify _number_min_max returns correct ranges and step values."""
+
+    def test_unsigned_1byte(self):
+        mn, mx, st = _number_min_max(1, 1, False)
+        self.assertEqual(mn, 0.0)
+        self.assertEqual(mx, 255.0)
+        self.assertEqual(st, 1.0)
+
+    def test_unsigned_2byte(self):
+        mn, mx, st = _number_min_max(2, 1, False)
+        self.assertEqual(mn, 0.0)
+        self.assertEqual(mx, 65535.0)
+        self.assertEqual(st, 1.0)
+
+    def test_unsigned_2byte_scale10(self):
+        mn, mx, st = _number_min_max(2, 10, False)
+        self.assertAlmostEqual(mn, 0.0)
+        self.assertAlmostEqual(mx, 6553.5)
+        self.assertAlmostEqual(st, 0.1)
+
+    def test_signed_1byte(self):
+        mn, mx, st = _number_min_max(1, 1, True)
+        self.assertEqual(mn, -128.0)
+        self.assertEqual(mx, 127.0)
+        self.assertEqual(st, 1.0)
+
+    def test_signed_2byte(self):
+        mn, mx, st = _number_min_max(2, 1, True)
+        self.assertEqual(mn, -32768.0)
+        self.assertEqual(mx, 32767.0)
+
+    def test_large_effective_bytes_capped_at_4(self):
+        # ds=20 should be capped at 4 bytes (uint32 max)
+        mn, mx, _ = _number_min_max(20, 1, False)
+        self.assertEqual(mx, 4294967295.0)
+
+    def test_step_equals_1_when_no_scaling(self):
+        _, _, st = _number_min_max(2, 1, False)
+        self.assertEqual(st, 1.0)
+
+    def test_step_equals_01_when_scale10(self):
+        _, _, st = _number_min_max(2, 10, False)
+        self.assertAlmostEqual(st, 0.1)
 
 
 if __name__ == '__main__':

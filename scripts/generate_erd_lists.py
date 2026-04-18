@@ -788,12 +788,38 @@ def _get_primary_field(erd_by_id: Dict[str, Dict], paired_erd_str: str):
     )
 
 
+def _number_min_max(effective_bytes: int, scale_factor: int, signed: bool):
+    """Compute (min_val, max_val, step_val) for a number entity.
+
+    *effective_bytes* is the number of bytes whose value the Home Assistant
+    value_template will actually read (may differ from the full ERD data_size
+    when only a slice of the payload is used).  The step equals 1/scale_factor
+    so that fractional increments are correct when a scaling factor is present.
+
+    Returned values are Python floats; callers should round to avoid tiny
+    floating-point artefacts.
+    """
+    # Cap at 4 bytes so results fit cleanly in a JSON float (uint32 max ≈ 4.3 B).
+    capped = min(effective_bytes, 4)
+    if signed:
+        half = 2 ** (capped * 8 - 1)
+        min_val = -half / scale_factor
+        max_val = (half - 1) / scale_factor
+    else:
+        raw_max = (1 << (capped * 8)) - 1
+        min_val = 0.0
+        max_val = raw_max / scale_factor
+    step_val = 1.0 / scale_factor if scale_factor > 1 else 1.0
+    return min_val, max_val, step_val
+
+
 def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
     """Process all ERDs with ha_domain metadata and return a list of entry dicts.
 
     Each dict has the keys: erd_id, name, domain, unit, device_class,
     state_class, scaling_factor, data_size, paired_erd_id, pair_role,
-    value_template, command_template, options_json, field_id.
+    value_template, command_template, options_json, field_id,
+    min_val, max_val, step_val.
 
     This is the single source of truth for ha-discovery data; both the C header
     generator and the JSONL generator call this function.
@@ -805,7 +831,8 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
     def collect(erd_id_int: int, name: str, domain: str, unit: str,
                 dev_cls: str, state_cls: str, scaling: int, d_size: int,
                 paired_id: int, role: str, val_tmpl: str, cmd_tmpl: str,
-                opts: str, field_id: str) -> None:
+                opts: str, field_id: str,
+                min_val=None, max_val=None, step_val=None) -> None:
         entries.append({
             'erd_id': erd_id_int,
             'name': name,
@@ -821,6 +848,9 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
             'command_template': cmd_tmpl,
             'options_json': opts,
             'field_id': field_id,
+            'min_val': min_val,
+            'max_val': max_val,
+            'step_val': step_val,
         })
 
     for erd in ha_erds:
@@ -870,20 +900,27 @@ def _collect_ha_discovery_entries(erds: List[Dict]) -> List[Dict]:
                     p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
                     vt = _byte_subfield_value_template(pf, p_scale)
                     signed = _is_signed_type(pf.get('type', 'u8'))
+                    eff_bytes = pf.get('size', 1)
                 elif paired_erd_str and paired_erd_str in erd_by_id:
                     p_scale = int(erd_by_id[paired_erd_str].get('scaling_factor') or 1)
                     paired_type = _get_primary_data_type(erd_by_id[paired_erd_str].get('data', []))
                     signed = _is_signed_type(paired_type)
                     vt = _compute_sensor_value_template(p_scale, data_size, signed)
+                    eff_bytes = data_size
                 else:
                     signed = _is_signed_type(_get_primary_data_type(erd_data))
                     vt = _compute_sensor_value_template(scaling_factor, data_size, signed)
+                    eff_bytes = data_size
                 ct = _number_command_template(data_size, scaling_factor, signed)
+                mn, mx, st = _number_min_max(eff_bytes, scaling_factor, signed)
             # button: no templates
 
             collect(erd_id_int, display_name, ha_domain, unit, device_class,
                     state_class, scaling_factor, data_size, paired_erd_id,
-                    pair_role, vt, ct, opts, '')
+                    pair_role, vt, ct, opts, '',
+                    mn if ha_domain == 'number' else None,
+                    mx if ha_domain == 'number' else None,
+                    st if ha_domain == 'number' else None)
 
         elif classification == 'byte_offset':
             nr_fields = _get_non_reserved_fields(erd_data)
@@ -997,6 +1034,12 @@ def generate_ha_discovery_jsonl_by_category(erds: List[Dict]) -> Dict[str, str]:
             if e['command_template']:             obj['ct'] = e['command_template']
             if e['options_json']:                 obj['o']  = e['options_json']
             if e['field_id']:                     obj['fi'] = e['field_id']
+            # Emit min/max/step for number entities so HA accepts values outside
+            # the default 0-100 range.  Stored as numbers, not strings.
+            if e.get('min_val') is not None:      obj['mn'] = e['min_val']
+            if e.get('max_val') is not None:      obj['mx'] = e['max_val']
+            if e.get('step_val') is not None and e['step_val'] != 1.0:
+                obj['st'] = e['step_val']
             lines.append(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
         result[cat] = '\n'.join(lines) + '\n'
 
