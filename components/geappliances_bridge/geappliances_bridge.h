@@ -144,8 +144,8 @@ class GeappliancesBridge : public Component {
   BridgeMode mode_{BRIDGE_MODE_AUTO};
   uint32_t polling_interval_ms_{10000};
   bool polling_only_publish_on_change_{false};
-  bool appliance_api_parsing_{false};
-  bool generate_device_config_{true};
+  bool appliance_api_parsing_{true};
+  bool generate_device_config_{false};
   // User-configured custom ERDs to poll in addition to the standard list.
   // Populated by add_custom_erd() calls generated from the YAML custom_erds option.
   std::vector<tiny_erd_t> custom_erds_vec_;

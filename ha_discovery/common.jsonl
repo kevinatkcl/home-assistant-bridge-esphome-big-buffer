@@ -1,20 +1,20 @@
 {"i":"0001","n":"Model Number","d":"sensor","ds":32}
 {"i":"0002","n":"Serial Number","d":"sensor","ds":32}
-{"i":"0004","n":"Control User Interface Locked","d":"switch","ds":1}
+{"i":"0004","n":"Control User Interface Locked","d":"binary_sensor","ds":1}
 {"i":"0005","n":"Clock Time - Hours (hours)","d":"sensor","ds":3,"u":"h","dc":"duration","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"0005","n":"Clock Time - Minutes (minutes)","d":"sensor","ds":3,"u":"h","vt":"{{ value[2:4] | int(base=16) }}","fi":"minutes_minutes"}
 {"i":"0005","n":"Clock Time - Seconds (seconds)","d":"sensor","ds":3,"u":"h","vt":"{{ value[4:6] | int(base=16) }}","fi":"seconds_seconds"}
-{"i":"0006","n":"Clock Format","d":"select","ds":1,"vt":"{{ {'00': '12 Hour Time', '01': '24 Hour Time', '02': 'No Clock Display'}.get(value[:2], 'Unknown') }}","ct":"{{ {'12 Hour Time': '00', '24 Hour Time': '01', 'No Clock Display': '02'}[value] }}","o":"[\"12 Hour Time\", \"24 Hour Time\", \"No Clock Display\"]"}
-{"i":"0007","n":"Temperature Display Units","d":"select","ds":1,"vt":"{{ {'00': 'Fahrenheit', '01': 'Celsius'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Fahrenheit': '00', 'Celsius': '01'}[value] }}","o":"[\"Fahrenheit\", \"Celsius\"]"}
+{"i":"0006","n":"Clock Format","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
+{"i":"0007","n":"Temperature Display Units","d":"binary_sensor","ds":1}
 {"i":"0008","n":"Appliance Type","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Water Heater', '01': 'Clothes Dryer', '02': 'Clothes Washer', '03': 'Refrigerator', '04': 'Microwave', '05': 'Advantium', '06': 'Dishwasher', '07': 'Oven', '08': 'Electric Range', '09': 'Gas Range', '0a': 'Thermostat/RAC', '0b': 'Electric Cooktop', '0c': 'Pizza Oven', '0d': 'Gas Cooktop', '0e': 'Split / DFS (Duct-Free Split) AC', '0f': 'Hood', '10': 'Point of Entry Water Filter', '11': 'Induction Cooktop', '12': 'Delivery Box', '13': 'Kitchen Hub Vent Hood', '14': 'Zoneline/PTAC', '15': 'Water Softener', '16': 'Portable AC', '17': 'Combination Washer Dryer', '18': 'Dual Zone Wine Chiller', '19': 'Beverage Center', '1a': 'Coffee Brewer', '1b': 'Opal Nugget Ice Maker', '1c': 'In-Home Grower', '1d': 'Dehumidifer', '1e': 'Under Counter Ice Maker', '1f': 'Through Wall AC', '20': 'F&P DishDrawer', '21': 'Espresso Coffee Maker', '22': 'Toaster Oven', '23': 'Zoneline/Vertical', '24': 'Central DFS (Duct-Free Split) Controller', '25': 'BLE Mesh Gateway', '26': 'Stand Mixer', '27': 'Fisher & Paykel Cooktop', '28': 'F&P Cooktop Teppanyaki', '29': 'F&P Ventilation Downdraft', '2a': 'Smart Plug', '2b': 'Smoker', '2c': 'Air Handler VRF', '2d': 'Fabric Care Cabinet Closet', '2e': 'Laundry Center', '2f': 'Grill', '30': 'Freezer', '31': 'Warming Drawer', '32': 'Vacuum Seal Drawer', '33': 'Wine Cabinet', '34': 'Central AC', '35': 'Soft Starter', '36': 'Hearth Pizza Oven', '37': 'Sourdough Starter', '38': 'Thermostat', 'ff': 'Unknown'}.get(value[:2], 'Unknown') }}"}
-{"i":"0009","n":"Sabbath Mode","d":"switch","ds":1}
-{"i":"000a","n":"Sound Level","d":"select","ds":1,"vt":"{{ {'00': 'Off/Mute', '01': 'Low', '02': 'Medium', '03': 'High'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Off/Mute': '00', 'Low': '01', 'Medium': '02', 'High': '03'}[value] }}","o":"[\"Off/Mute\", \"Low\", \"Medium\", \"High\"]"}
+{"i":"0009","n":"Sabbath Mode","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
+{"i":"000a","n":"Sound Level","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"000e","n":"Line Input Voltage","d":"sensor","ds":2,"u":"V","dc":"voltage","sf":100,"vt":"{{ (value | int(base=16)) / 100 | round(2) }}"}
 {"i":"0030","n":"Ready to Enter Boot Loader","d":"binary_sensor","ds":1}
-{"i":"0032","n":"Reset Board","d":"button","ds":1,"dc":"restart"}
+{"i":"0032","n":"Reset Board","d":"sensor","ds":1,"dc":"restart","vt":"{{ value | int(base=16) }}"}
 {"i":"0034","n":"System Current","d":"sensor","ds":2,"u":"A","dc":"current","sf":100,"vt":"{{ (value | int(base=16)) / 100 | round(2) }}"}
 {"i":"0035","n":"Personality (32-bit)","d":"sensor","ds":4,"vt":"{{ value | int(base=16) }}"}
-{"i":"0036","n":"Service Mode State Request","d":"select","ds":1,"vt":"{{ {'00': 'Exit service mode', '01': 'Enter service mode'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Exit service mode': '00', 'Enter service mode': '01'}[value] }}","o":"[\"Exit service mode\", \"Enter service mode\"]"}
+{"i":"0036","n":"Service Mode State Request","d":"binary_sensor","ds":1}
 {"i":"0037","n":"Service Mode State","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Service mode inactive', '01': 'Service mode active', '02': 'Entering service mode', '03': 'Exiting service mode'}.get(value[:2], 'Unknown') }}"}
 {"i":"0038","n":"Supported Image Types - Boot Loader","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"boot_loader"}
 {"i":"0038","n":"Supported Image Types - Application","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}","fi":"application"}
@@ -36,8 +36,8 @@
 {"i":"003c","n":"Auxiliary Version - Critical Minor","d":"sensor","ds":4,"vt":"{{ value[2:4] | int(base=16) }}","fi":"critical_minor"}
 {"i":"003c","n":"Auxiliary Version - Non-Critical Major","d":"sensor","ds":4,"vt":"{{ value[4:6] | int(base=16) }}","fi":"non_critical_major"}
 {"i":"003c","n":"Auxiliary Version - Non-Critical Minor","d":"sensor","ds":4,"vt":"{{ value[6:8] | int(base=16) }}","fi":"non_critical_minor"}
-{"i":"004f","n":"Enhanced Sabbath Mode Status","d":"switch","ds":1}
-{"i":"0050","n":"Timer","d":"number","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}","ct":"{{ '%04x' % (value | int) }}","dt":"uint16"}
+{"i":"004f","n":"Enhanced Sabbath Mode Status","d":"binary_sensor","ds":1}
+{"i":"0050","n":"Timer","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
 {"i":"0051","n":"Available Sound Levels - Off","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 8) & 1 else '00' }}","fi":"off"}
 {"i":"0051","n":"Available Sound Levels - Low","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 9) & 1 else '00' }}","fi":"low"}
 {"i":"0051","n":"Available Sound Levels - Medium","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 10) & 1 else '00' }}","fi":"medium"}
@@ -45,7 +45,7 @@
 {"i":"0060","n":"Configuration Hash","d":"sensor","ds":32}
 {"i":"0099","n":"Brand ID","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Unknown', '01': 'GEA - Covers all GEA Brands (GE, Profile, Cafe, Monogram, Hotpoint)', '02': 'Haier', '03': 'Mabe', '04': 'Fisher & Paykel', '05': 'GE', '06': 'Profile', '07': 'Cafe', '08': 'Monogram', '09': 'Hotpoint', '0a': 'Haier FPA', '0b': 'Adora', '0c': 'Allied', '0d': 'Lennox', '0e': 'FirstBuild'}.get(value[:2], 'Unknown') }}"}
 {"i":"009c","n":"Matter Product ID","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
-{"i":"0105","n":"Hosted Firmware Status","d":"select","ds":1,"vt":"{{ {'00': 'Idle', '01': 'Upgrade', '02': 'Image Error', '03': 'Write Error', '04': 'Downloading', '05': 'Appliance Busy', '06': 'Incompatible Update', '07': 'Delayed Upgrade'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Idle': '00', 'Upgrade': '01', 'Image Error': '02', 'Write Error': '03', 'Downloading': '04', 'Appliance Busy': '05', 'Incompatible Update': '06', 'Delayed Upgrade': '07'}[value] }}","o":"[\"Idle\", \"Upgrade\", \"Image Error\", \"Write Error\", \"Downloading\", \"Appliance Busy\", \"Incompatible Update\", \"Delayed Upgrade\"]"}
+{"i":"0105","n":"Hosted Firmware Status","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"0117","n":"Camera Configuration Personality","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
 {"i":"0300","n":"Alexa Registration Request - Request ID","d":"sensor","ds":4,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"0300","n":"Alexa Registration Request - Request","d":"sensor","ds":4,"dc":"enum","vt":"{{ {'00': 'None', '01': 'Begin', '02': 'Reset'}.get(value[2:4], 'Unknown') }}","fi":"request"}
@@ -60,7 +60,7 @@
 {"i":"0410","n":"Matter Device On-Off Request - RequestId","d":"sensor","ds":2,"vt":"{{ value[2:4] | int(base=16) }}","fi":"requestid"}
 {"i":"0411","n":"Matter Device On-Off State - On-Off State","d":"sensor","ds":2,"vt":"{{ '01' if value[0:2] != '00' else '00' }}"}
 {"i":"0411","n":"Matter Device On-Off State - RequestId","d":"sensor","ds":2,"vt":"{{ value[2:4] | int(base=16) }}","fi":"requestid"}
-{"i":"0412","n":"Matter Device Temperature Display Mode","d":"select","ds":1,"p":"0413","r":"request","vt":"{{ {'00': 'Celsius', '01': 'Fahrenheit'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Celsius': '00', 'Fahrenheit': '01'}[value] }}","o":"[\"Celsius\", \"Fahrenheit\"]"}
+{"i":"0412","n":"Matter Device Temperature Display Mode","d":"binary_sensor","ds":1,"p":"0413","r":"request"}
 {"i":"0413","n":"Matter Device Temperature Display Mode Actual","d":"sensor","ds":1,"dc":"enum","p":"0412","r":"status","vt":"{{ {'00': 'Celsius', '01': 'Fahrenheit'}.get(value[:2], 'Unknown') }}"}
 {"i":"0414","n":"Matter Device Keypad Lockout","d":"binary_sensor","ds":1,"dc":"lock"}
 {"i":"0415","n":"Matter Device Onboarding Pairing Code","d":"sensor","ds":21}
@@ -69,7 +69,7 @@
 {"i":"0417","n":"Matter Commissioning Window State - Request ID","d":"sensor","ds":2,"vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"0417","n":"Matter Commissioning Window State - State","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Closed', '01': 'Open'}.get(value[2:4], 'Unknown') }}","fi":"state"}
 {"i":"0418","n":"Matter Fabric Count","d":"sensor","ds":1,"sc":"total","vt":"{{ value | int(base=16) }}"}
-{"i":"0501","n":"Video Stream","d":"select","ds":1,"vt":"{{ {'00': 'Stopped', '01': 'Running 720p', '02': 'Running 480p'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Stopped': '00', 'Running 720p': '01', 'Running 480p': '02'}[value] }}","o":"[\"Stopped\", \"Running 720p\", \"Running 480p\"]"}
+{"i":"0501","n":"Video Stream","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"0502","n":"Still Frame - Still Capture","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Idle', '01': 'Capture'}.get(value[0:2], 'Unknown') }}"}
 {"i":"0502","n":"Still Frame - JPEG Resolution","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': '320x240', '01': '640x480', '02': '1280x720', '03': '1920x1080'}.get(value[2:4], 'Unknown') }}","fi":"jpeg_resolution"}
 {"i":"0503","n":"Camera Stream Authentication Status","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'None', '01': 'Pending', '02': 'Failure', '03': 'Success'}.get(value[:2], 'Unknown') }}"}
@@ -240,16 +240,16 @@
 {"i":"070f","n":"Non-Volatile Usage Warning Threshold Exceeded","d":"binary_sensor","ds":1}
 {"i":"0710","n":"Non-Volatile Usage Error Threshold Exceeded","d":"binary_sensor","ds":1}
 {"i":"0800","n":"Current Sound Theme","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Default', '01': 'Classical', '02': 'Morse Code'}.get(value[:2], 'Unknown') }}"}
-{"i":"0801","n":"Sound Theme Request","d":"select","ds":1,"vt":"{{ {'00': 'Default', '01': 'Classical', '02': 'Morse Code'}.get(value[:2], 'Unknown') }}","ct":"{{ {'Default': '00', 'Classical': '01', 'Morse Code': '02'}[value] }}","o":"[\"Default\", \"Classical\", \"Morse Code\"]"}
+{"i":"0801","n":"Sound Theme Request","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"0802","n":"Supported Sound Themes - Default Theme","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 56) & 1 else '00' }}","fi":"default_theme"}
 {"i":"0802","n":"Supported Sound Themes - Classical Theme","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 57) & 1 else '00' }}","fi":"classical_theme"}
 {"i":"0802","n":"Supported Sound Themes - Morse Code Theme","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 58) & 1 else '00' }}","fi":"morse_code_theme"}
 {"i":"0900","n":"Sign of Life","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"0902","n":"UI Sound Level Request","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"0902","n":"UI Sound Level Request","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"0903","n":"UI Sound Level State","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"0904","n":"Number of Sound Level Settings","d":"number","ds":1,"vt":"{{ value | int(base=16) }}","ct":"{{ '%02x' % (value | int) }}","dt":"uint8"}
+{"i":"0904","n":"Number of Sound Level Settings","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"0910","n":"Battery Level","d":"sensor","ds":1,"u":"%","dc":"battery","vt":"{{ value | int(base=16) }}"}
 {"i":"0911","n":"Battery Is Charging","d":"binary_sensor","ds":1,"dc":"battery_charging"}
 {"i":"0912","n":"Appliance Is Plugged Into Wall","d":"binary_sensor","ds":1,"dc":"plug"}
-{"i":"0913","n":"Battery Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}"}
+{"i":"0913","n":"Battery Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
 {"i":"0914","n":"Battery Health","d":"sensor","ds":1,"u":"%","dc":"battery","vt":"{{ value | int(base=16) }}"}
