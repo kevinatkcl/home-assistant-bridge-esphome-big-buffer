@@ -774,6 +774,23 @@ void GeappliancesBridge::parse_and_log_feature_bits_() {
     }
   }
 
+  // Mandatory ERDs must always be published regardless of feature bit results:
+  // model number, serial number, appliance type, and all appliance API feature bit ERDs.
+  this->appliance_api_valid_erds_.insert(ERD_MODEL_NUMBER);
+  this->appliance_api_valid_erds_.insert(ERD_SERIAL_NUMBER);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_TYPE);
+  this->appliance_api_valid_erds_.insert(ERD_COMMON_FEATURE_API);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_0);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_1);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_2);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_3);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_4);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_5);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_6);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_7);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_8);
+  this->appliance_api_valid_erds_.insert(ERD_APPLIANCE_FEATURE_API_9);
+
   // Build the sorted vector for passing to the polling bridge
   this->appliance_api_valid_erds_vec_.assign(
     this->appliance_api_valid_erds_.begin(),

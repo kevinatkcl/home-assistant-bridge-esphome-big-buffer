@@ -12,8 +12,8 @@
 #include "tiny_erd.h"
 
 // Maximum number of ERDs that can be held in the polling list.
-// Sized for the worst case: common ERDs + energy ERDs + largest appliance-specific ERD list.
-#define POLLING_LIST_MAX_SIZE 635
+// Sized for the worst case: common ERDs + energy ERDs + appliance API feature ERDs + largest appliance-specific ERD list.
+#define POLLING_LIST_MAX_SIZE 645
 
 // 0x0000 to 0x0FFF: common ERDs (all appliance types)
 const tiny_erd_t commonErds[] = {
@@ -249,12 +249,6 @@ const tiny_erd_t refrigerationErds[] = {
   0x1173,
   0x1174,
   0x1175,
-  0x1176,
-  0x1177,
-  0x1178,
-  0x1179,
-  0x117a,
-  0x117b,
   0x120c,
   0x120d,
   0x120e,
@@ -848,7 +842,6 @@ const tiny_erd_t dishWasherErds[] = {
   0x3085,
   0x3086,
   0x3087,
-  0x3088,
   0x3100,
   0x3101,
   0x3103,
@@ -1104,7 +1097,6 @@ const tiny_erd_t rangeErds[] = {
   0x5126,
   0x5127,
   0x5128,
-  0x512c,
   0x5150,
   0x5151,
   0x5200,
@@ -2183,6 +2175,24 @@ const tiny_erd_t energyErds[] = {
   0xd207,
 };
 const uint16_t energyErdCount = sizeof(energyErds) / sizeof(energyErds[0]);
+
+// Appliance API feature bit ERDs (all appliance types)
+// These ERDs carry feature bitmaps used to determine which appliance API features are active.
+// Not generated from appliance_api_erd_definitions.json; hard-coded here.
+const tiny_erd_t applianceApiFeatureErds[] = {
+  0x0092,  // Common feature API
+  0x0093,  // Appliance feature API group 0
+  0x0094,  // Appliance feature API group 1
+  0x0095,  // Appliance feature API group 2
+  0x0096,  // Appliance feature API group 3
+  0x0097,  // Appliance feature API group 4
+  0x0109,  // Appliance feature API group 5
+  0x010a,  // Appliance feature API group 6
+  0x010b,  // Appliance feature API group 7
+  0x010c,  // Appliance feature API group 8
+  0x010d,  // Appliance feature API group 9
+};
+const uint16_t applianceApiFeatureErdCount = sizeof(applianceApiFeatureErds) / sizeof(applianceApiFeatureErds[0]);
 
 typedef struct {
   const tiny_erd_t* erdList;

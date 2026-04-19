@@ -292,6 +292,7 @@ static tiny_hsm_result_t poll_state_top(tiny_hsm_t* hsm, tiny_hsm_signal_t signa
 static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_energy_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
+static tiny_hsm_result_t state_add_appliance_api_feature_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_appliance_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 
@@ -369,12 +370,11 @@ static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_sign
         self->erd_host_address = args->address;
         self->appliance_type = *reinterpret_cast<const uint8_t*>(args->read_completed.data);
       }
-      // If an API-parsed ERD list is available, skip ERD discovery and go
-      // directly to polling using that list.
+      // If an API-parsed ERD list is available, run the appliance API feature ERD state
+      // (mandatory for all appliances) and then go directly to polling. Otherwise,
+      // run the full discovery chain: common → energy → appliance_api_feature → appliance.
       if(self->api_parsed_list != nullptr) {
-        self->erd_index = 0;
-        self->polling_retries = 0;
-        tiny_hsm_transition(hsm, state_polling);
+        tiny_hsm_transition(hsm, state_add_appliance_api_feature_erds);
       }
       else {
         tiny_hsm_transition(hsm, state_add_common_erds);
@@ -475,9 +475,30 @@ static tiny_hsm_result_t state_add_energy_erds(tiny_hsm_t* hsm, tiny_hsm_signal_
 
   if(signal == tiny_hsm_signal_entry) {
     self->current_state_name = "add_energy_erds";
-    self->next_discovery_state = state_add_appliance_erds;
+    self->next_discovery_state = state_add_appliance_api_feature_erds;
     self->appliance_erd_list = energyErds;
     self->appliance_erd_list_count = energyErdCount;
+    self->erd_index = 0;
+    tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
+    arm_timer(self, retry_delay);
+    return tiny_hsm_result_signal_consumed;
+  }
+
+  return handle_discovery_list_signals(hsm, signal, data);
+}
+
+static tiny_hsm_result_t state_add_appliance_api_feature_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
+{
+  mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
+
+  if(signal == tiny_hsm_signal_entry) {
+    self->current_state_name = "add_appliance_api_feature_erds";
+    // When reached via api_parsed_list path (from state_identify_appliance), go directly
+    // to polling after discovering the mandatory feature bit ERDs. When reached via the
+    // full discovery chain (from state_add_energy_erds), continue to appliance-specific ERDs.
+    self->next_discovery_state = (self->api_parsed_list != nullptr) ? state_polling : state_add_appliance_erds;
+    self->appliance_erd_list = applianceApiFeatureErds;
+    self->appliance_erd_list_count = applianceApiFeatureErdCount;
     self->erd_index = 0;
     tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
     arm_timer(self, retry_delay);
@@ -619,6 +640,7 @@ static const tiny_hsm_state_descriptor_t poll_hsm_state_descriptors[] = {
   { .state = state_identify_appliance, .parent = poll_state_top },
   { .state = state_add_common_erds, .parent = poll_state_top },
   { .state = state_add_energy_erds, .parent = poll_state_top },
+  { .state = state_add_appliance_api_feature_erds, .parent = poll_state_top },
   { .state = state_add_appliance_erds, .parent = poll_state_top },
   { .state = state_polling, .parent = poll_state_top }
 };

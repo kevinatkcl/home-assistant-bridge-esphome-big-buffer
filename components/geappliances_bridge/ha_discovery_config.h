@@ -17,6 +17,22 @@
 // ERDs whose value is a null-terminated ASCII string.
 // The MQTT adapter publishes these as text rather than hex.
 static const uint16_t ha_string_erd_ids[] = {
+  0x0001,  /* Model Number */
+  0x0002,  /* Serial Number */
+  0x0301,  /* Alexa Status */
+  0x0415,  /* Matter Device Onboarding Pairing Code */
+  0x301c,  /* Cycle Names */
+  0x5061,  /* AI Bake Cloud Status */
+  0x5119,  /* Session ID for Cavity 1 */
+  0x5121,  /* Upper Cavity Cook Recipe Request */
+  0x5219,  /* Session ID for Cavity 2 */
+  0x5221,  /* Lower Cavity Cook Recipe Request */
+  0x5410,  /* Precision Cooking Short Name Cavity 1 Request */
+  0x5411,  /* Precision Cooking Short Name Cavity 1 Status */
+  0x5420,  /* Precision Cooking Short Name Cavity 2 Request */
+  0x5421,  /* Precision Cooking Short Name Cavity 2 Status */
+  0x7991,  /* Outdoor Unit Model Number */
+  0x7992,  /* Outdoor Unit Serial Number */
 };
 static const uint16_t ha_string_erd_count =
   (uint16_t)(sizeof(ha_string_erd_ids) / sizeof(ha_string_erd_ids[0]));
