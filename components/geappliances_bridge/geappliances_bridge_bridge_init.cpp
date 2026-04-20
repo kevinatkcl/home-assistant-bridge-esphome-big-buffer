@@ -136,20 +136,11 @@ void GeappliancesBridge::initialize_mqtt_bridge_()
       &this->mqtt_client_adapter_.interface,
       this->host_address_);
 
-    // Custom ERDs must be polled even in subscription mode.
+    // Custom ERDs are started after the subscription quiet window settles
+    // (in run_ha_discovery_()) so their values are polled in sequence, not
+    // simultaneously with the initial subscription burst.
     if (!this->custom_erds_vec_.empty()) {
-      mqtt_bridge_polling_init(
-        &this->custom_erd_bridge_,
-        &this->timer_group_,
-        this->active_erd_client_,
-        &this->mqtt_client_adapter_.interface,
-        this->polling_interval_ms_,
-        this->polling_only_publish_on_change_);
-      this->custom_erd_bridge_.api_parsed_list       = this->custom_erds_vec_.data();
-      this->custom_erd_bridge_.api_parsed_list_count =
-        static_cast<uint16_t>(this->custom_erds_vec_.size());
-      this->custom_erd_polling_active_ = true;
-      ESP_LOGI(TAG, "Custom ERD polling enabled alongside subscription mode: %zu ERD(s)",
+      ESP_LOGI(TAG, "Custom ERD polling (%zu ERD(s)) will start after subscription settles",
                this->custom_erds_vec_.size());
     }
   }
@@ -191,6 +182,30 @@ void GeappliancesBridge::configure_polling_optional_lists_()
       static_cast<uint16_t>(this->custom_erds_vec_.size());
     ESP_LOGI(TAG, "Polling with %u custom ERD(s)", this->mqtt_bridge_polling_.custom_erd_list_count);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Start custom ERD polling bridge (deferred: called after subscription settles)
+// ---------------------------------------------------------------------------
+
+void GeappliancesBridge::start_custom_erd_polling_()
+{
+  if (this->custom_erd_polling_active_ || this->custom_erds_vec_.empty()) {
+    return;
+  }
+  mqtt_bridge_polling_init(
+    &this->custom_erd_bridge_,
+    &this->timer_group_,
+    this->active_erd_client_,
+    &this->mqtt_client_adapter_.interface,
+    this->polling_interval_ms_,
+    this->polling_only_publish_on_change_);
+  this->custom_erd_bridge_.custom_erd_list       = this->custom_erds_vec_.data();
+  this->custom_erd_bridge_.custom_erd_list_count =
+    static_cast<uint16_t>(this->custom_erds_vec_.size());
+  this->custom_erd_polling_active_ = true;
+  ESP_LOGI(TAG, "Started custom ERD polling (%zu ERD(s)) after subscription settled",
+           this->custom_erds_vec_.size());
 }
 
 // ---------------------------------------------------------------------------

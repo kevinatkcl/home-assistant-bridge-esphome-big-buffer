@@ -63,6 +63,7 @@ class GeappliancesBridge : public Component {
   void handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args);
   void initialize_mqtt_client_();
   void initialize_mqtt_bridge_();
+  void start_custom_erd_polling_();
   void publish_ha_discovery_();
   void publish_next_ha_discovery_entity_();
   void configure_polling_optional_lists_();
