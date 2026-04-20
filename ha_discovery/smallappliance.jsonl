@@ -237,7 +237,7 @@
 {"i":"9051","n":"Coffee Brewer Current Brew Settings - Temperature (F)","d":"sensor","ds":12,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"temperature_f"}
 {"i":"9051","n":"Coffee Brewer Current Brew Settings - Single Volume (oz)","d":"sensor","ds":12,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"single_volume_oz"}
 {"i":"9051","n":"Coffee Brewer Current Brew Settings - Carafe Volume (cups)","d":"sensor","ds":12,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"carafe_volume_cups"}
-{"i":"9051","n":"Coffee Brewer Current Brew Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"grind_time_delta_seconds"}
+{"i":"9051","n":"Coffee Brewer Current Brew Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"grind_time_delta_seconds"}
 {"i":"9051","n":"Coffee Brewer Current Brew Settings - Bloom Dwell Time (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"bloom_dwell_time_seconds"}
 {"i":"9052","n":"Coffee Brewer Request Brew Settings - Setting Gold","d":"sensor","ds":14,"u":"s","dc":"duration","vt":"{{ '01' if value[0:2] != '00' else '00' }}"}
 {"i":"9052","n":"Coffee Brewer Request Brew Settings - Setting Bloom Dwell","d":"sensor","ds":14,"u":"s","vt":"{{ '01' if value[2:4] != '00' else '00' }}","fi":"setting_bloom_dwell"}
@@ -247,7 +247,7 @@
 {"i":"9052","n":"Coffee Brewer Request Brew Settings - Temperature (F)","d":"sensor","ds":14,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"temperature_f"}
 {"i":"9052","n":"Coffee Brewer Request Brew Settings - Single Volume (oz)","d":"sensor","ds":14,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"single_volume_oz"}
 {"i":"9052","n":"Coffee Brewer Request Brew Settings - Carafe Volume (cups)","d":"sensor","ds":14,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"carafe_volume_cups"}
-{"i":"9052","n":"Coffee Brewer Request Brew Settings - Grind Time Delta (Seconds)","d":"sensor","ds":14,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"grind_time_delta_seconds"}
+{"i":"9052","n":"Coffee Brewer Request Brew Settings - Grind Time Delta (Seconds)","d":"sensor","ds":14,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"grind_time_delta_seconds"}
 {"i":"9052","n":"Coffee Brewer Request Brew Settings - Bloom Dwell Time (Seconds)","d":"sensor","ds":14,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"bloom_dwell_time_seconds"}
 {"i":"9052","n":"Coffee Brewer Request Brew Settings - Padding","d":"sensor","ds":14,"u":"s","vt":"{{ value[24:26] | int(base=16) }}","fi":"padding"}
 {"i":"9052","n":"Coffee Brewer Request Brew Settings - Action","d":"sensor","ds":14,"u":"s","dc":"enum","vt":"{{ {'00': 'Update Settings', '01': 'Start Brew'}.get(value[26:28], 'Unknown') }}","fi":"action"}
@@ -260,7 +260,7 @@
 {"i":"9054","n":"Coffee Brewer Favorite Brew 1 Current Settings - Temperature (F)","d":"sensor","ds":12,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"temperature_f"}
 {"i":"9054","n":"Coffee Brewer Favorite Brew 1 Current Settings - Single Volume (oz)","d":"sensor","ds":12,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"single_volume_oz"}
 {"i":"9054","n":"Coffee Brewer Favorite Brew 1 Current Settings - Carafe Volume (cups)","d":"sensor","ds":12,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"carafe_volume_cups"}
-{"i":"9054","n":"Coffee Brewer Favorite Brew 1 Current Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"grind_time_delta_seconds"}
+{"i":"9054","n":"Coffee Brewer Favorite Brew 1 Current Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"grind_time_delta_seconds"}
 {"i":"9054","n":"Coffee Brewer Favorite Brew 1 Current Settings - Bloom Dwell Time (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"bloom_dwell_time_seconds"}
 {"i":"9055","n":"Coffee Brewer Favorite Brew 1 Request Settings - Setting Gold","d":"sensor","ds":12,"u":"s","dc":"duration","vt":"{{ '01' if value[0:2] != '00' else '00' }}"}
 {"i":"9055","n":"Coffee Brewer Favorite Brew 1 Request Settings - Setting Bloom Dwell","d":"sensor","ds":12,"u":"s","vt":"{{ '01' if value[2:4] != '00' else '00' }}","fi":"setting_bloom_dwell"}
@@ -270,7 +270,7 @@
 {"i":"9055","n":"Coffee Brewer Favorite Brew 1 Request Settings - Temperature (F)","d":"sensor","ds":12,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"temperature_f"}
 {"i":"9055","n":"Coffee Brewer Favorite Brew 1 Request Settings - Single Volume (oz)","d":"sensor","ds":12,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"single_volume_oz"}
 {"i":"9055","n":"Coffee Brewer Favorite Brew 1 Request Settings - Carafe Volume (cups)","d":"sensor","ds":12,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"carafe_volume_cups"}
-{"i":"9055","n":"Coffee Brewer Favorite Brew 1 Request Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"grind_time_delta_seconds"}
+{"i":"9055","n":"Coffee Brewer Favorite Brew 1 Request Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"grind_time_delta_seconds"}
 {"i":"9055","n":"Coffee Brewer Favorite Brew 1 Request Settings - Bloom Dwell Time (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"bloom_dwell_time_seconds"}
 {"i":"9056","n":"Coffee Brewer Favorite Brew 2 Current Settings - Setting Gold","d":"sensor","ds":12,"u":"s","dc":"duration","vt":"{{ '01' if value[0:2] != '00' else '00' }}"}
 {"i":"9056","n":"Coffee Brewer Favorite Brew 2 Current Settings - Setting Bloom Dwell","d":"sensor","ds":12,"u":"s","vt":"{{ '01' if value[2:4] != '00' else '00' }}","fi":"setting_bloom_dwell"}
@@ -280,7 +280,7 @@
 {"i":"9056","n":"Coffee Brewer Favorite Brew 2 Current Settings - Temperature (F)","d":"sensor","ds":12,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"temperature_f"}
 {"i":"9056","n":"Coffee Brewer Favorite Brew 2 Current Settings - Single Volume (oz)","d":"sensor","ds":12,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"single_volume_oz"}
 {"i":"9056","n":"Coffee Brewer Favorite Brew 2 Current Settings - Carafe Volume (cups)","d":"sensor","ds":12,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"carafe_volume_cups"}
-{"i":"9056","n":"Coffee Brewer Favorite Brew 2 Current Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"grind_time_delta_seconds"}
+{"i":"9056","n":"Coffee Brewer Favorite Brew 2 Current Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"grind_time_delta_seconds"}
 {"i":"9056","n":"Coffee Brewer Favorite Brew 2 Current Settings - Bloom Dwell Time (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"bloom_dwell_time_seconds"}
 {"i":"9057","n":"Coffee Brewer Favorite Brew 2 Request Settings - Setting Gold","d":"sensor","ds":12,"u":"s","dc":"duration","vt":"{{ '01' if value[0:2] != '00' else '00' }}"}
 {"i":"9057","n":"Coffee Brewer Favorite Brew 2 Request Settings - Setting Bloom Dwell","d":"sensor","ds":12,"u":"s","vt":"{{ '01' if value[2:4] != '00' else '00' }}","fi":"setting_bloom_dwell"}
@@ -290,7 +290,7 @@
 {"i":"9057","n":"Coffee Brewer Favorite Brew 2 Request Settings - Temperature (F)","d":"sensor","ds":12,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"temperature_f"}
 {"i":"9057","n":"Coffee Brewer Favorite Brew 2 Request Settings - Single Volume (oz)","d":"sensor","ds":12,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"single_volume_oz"}
 {"i":"9057","n":"Coffee Brewer Favorite Brew 2 Request Settings - Carafe Volume (cups)","d":"sensor","ds":12,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"carafe_volume_cups"}
-{"i":"9057","n":"Coffee Brewer Favorite Brew 2 Request Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"grind_time_delta_seconds"}
+{"i":"9057","n":"Coffee Brewer Favorite Brew 2 Request Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"grind_time_delta_seconds"}
 {"i":"9057","n":"Coffee Brewer Favorite Brew 2 Request Settings - Bloom Dwell Time (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"bloom_dwell_time_seconds"}
 {"i":"9058","n":"Coffee Brewer Favorite Brew 3 Current Settings - Setting Gold","d":"sensor","ds":12,"u":"s","dc":"duration","vt":"{{ '01' if value[0:2] != '00' else '00' }}"}
 {"i":"9058","n":"Coffee Brewer Favorite Brew 3 Current Settings - Setting Bloom Dwell","d":"sensor","ds":12,"u":"s","vt":"{{ '01' if value[2:4] != '00' else '00' }}","fi":"setting_bloom_dwell"}
@@ -300,7 +300,7 @@
 {"i":"9058","n":"Coffee Brewer Favorite Brew 3 Current Settings - Temperature (F)","d":"sensor","ds":12,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"temperature_f"}
 {"i":"9058","n":"Coffee Brewer Favorite Brew 3 Current Settings - Single Volume (oz)","d":"sensor","ds":12,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"single_volume_oz"}
 {"i":"9058","n":"Coffee Brewer Favorite Brew 3 Current Settings - Carafe Volume (cups)","d":"sensor","ds":12,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"carafe_volume_cups"}
-{"i":"9058","n":"Coffee Brewer Favorite Brew 3 Current Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"grind_time_delta_seconds"}
+{"i":"9058","n":"Coffee Brewer Favorite Brew 3 Current Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"grind_time_delta_seconds"}
 {"i":"9058","n":"Coffee Brewer Favorite Brew 3 Current Settings - Bloom Dwell Time (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"bloom_dwell_time_seconds"}
 {"i":"9059","n":"Coffee Brewer Favorite Brew 3 Request Settings - Setting Gold","d":"sensor","ds":12,"u":"s","dc":"duration","vt":"{{ '01' if value[0:2] != '00' else '00' }}"}
 {"i":"9059","n":"Coffee Brewer Favorite Brew 3 Request Settings - Setting Bloom Dwell","d":"sensor","ds":12,"u":"s","vt":"{{ '01' if value[2:4] != '00' else '00' }}","fi":"setting_bloom_dwell"}
@@ -310,7 +310,7 @@
 {"i":"9059","n":"Coffee Brewer Favorite Brew 3 Request Settings - Temperature (F)","d":"sensor","ds":12,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"temperature_f"}
 {"i":"9059","n":"Coffee Brewer Favorite Brew 3 Request Settings - Single Volume (oz)","d":"sensor","ds":12,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"single_volume_oz"}
 {"i":"9059","n":"Coffee Brewer Favorite Brew 3 Request Settings - Carafe Volume (cups)","d":"sensor","ds":12,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"carafe_volume_cups"}
-{"i":"9059","n":"Coffee Brewer Favorite Brew 3 Request Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"grind_time_delta_seconds"}
+{"i":"9059","n":"Coffee Brewer Favorite Brew 3 Request Settings - Grind Time Delta (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"grind_time_delta_seconds"}
 {"i":"9059","n":"Coffee Brewer Favorite Brew 3 Request Settings - Bloom Dwell Time (Seconds)","d":"sensor","ds":12,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"bloom_dwell_time_seconds"}
 {"i":"905a","n":"Coffee Brewer Brew Setting Limits - Min Strength","d":"sensor","ds":16,"u":"s","dc":"duration","vt":"{{ value[0:2] | int(base=16) }}"}
 {"i":"905a","n":"Coffee Brewer Brew Setting Limits - Max Strength","d":"sensor","ds":16,"u":"s","vt":"{{ value[2:4] | int(base=16) }}","fi":"max_strength"}
@@ -320,8 +320,8 @@
 {"i":"905a","n":"Coffee Brewer Brew Setting Limits - Max Single Volume (oz)","d":"sensor","ds":16,"u":"s","vt":"{{ value[10:12] | int(base=16) }}","fi":"max_single_volume_oz"}
 {"i":"905a","n":"Coffee Brewer Brew Setting Limits - Min Carafe Volume (Cups)","d":"sensor","ds":16,"u":"s","vt":"{{ value[12:14] | int(base=16) }}","fi":"min_carafe_volume_cups"}
 {"i":"905a","n":"Coffee Brewer Brew Setting Limits - Max Carafe Volume (Cups)","d":"sensor","ds":16,"u":"s","vt":"{{ value[14:16] | int(base=16) }}","fi":"max_carafe_volume_cups"}
-{"i":"905a","n":"Coffee Brewer Brew Setting Limits - Min Grind Time Delta (Seconds)","d":"sensor","ds":16,"u":"s","vt":"{{ (value[16:18] | int(base=16)) - 256 if (value[16:18] | int(base=16)) >= 128 else (value[16:18] | int(base=16)) }}","fi":"min_grind_time_delta_seconds"}
-{"i":"905a","n":"Coffee Brewer Brew Setting Limits - Max Grind Time Delta (Seconds)","d":"sensor","ds":16,"u":"s","vt":"{{ (value[18:20] | int(base=16)) - 256 if (value[18:20] | int(base=16)) >= 128 else (value[18:20] | int(base=16)) }}","fi":"max_grind_time_delta_seconds"}
+{"i":"905a","n":"Coffee Brewer Brew Setting Limits - Min Grind Time Delta (Seconds)","d":"sensor","ds":16,"u":"s","vt":"{{ ((value[16:18] | int(base=16)) + 128) % 256 - 128 }}","fi":"min_grind_time_delta_seconds"}
+{"i":"905a","n":"Coffee Brewer Brew Setting Limits - Max Grind Time Delta (Seconds)","d":"sensor","ds":16,"u":"s","vt":"{{ ((value[18:20] | int(base=16)) + 128) % 256 - 128 }}","fi":"max_grind_time_delta_seconds"}
 {"i":"905a","n":"Coffee Brewer Brew Setting Limits - Min Bloom Dwell Time (Seconds)","d":"sensor","ds":16,"u":"s","vt":"{{ value[24:28] | int(base=16) }}","fi":"min_bloom_dwell_time_seconds"}
 {"i":"905a","n":"Coffee Brewer Brew Setting Limits - Max Bloom Dwell Time (Seconds)","d":"sensor","ds":16,"u":"s","vt":"{{ value[28:32] | int(base=16) }}","fi":"max_bloom_dwell_time_seconds"}
 {"i":"905b","n":"Coffee Brewer Supported Features","d":"sensor","ds":2,"dc":"enum","vt":"{{ {'00': 'Display As Numeric', '01': 'Display As List: Light, Medium, Bold (enum starting at 0 w/Light)'}.get(value[0:2], 'Unknown') }}"}
@@ -859,7 +859,7 @@
 {"i":"9301","n":"Mixer Control Current Settings - Direction","d":"sensor","ds":10,"u":"A","dc":"enum","vt":"{{ {'00': 'Not Applicable', '01': 'Forward', '02': 'Reverse'}.get(value[0:2], 'Unknown') }}"}
 {"i":"9301","n":"Mixer Control Current Settings - Speed","d":"sensor","ds":10,"u":"A","vt":"{{ value[2:4] | int(base=16) }}","fi":"speed"}
 {"i":"9301","n":"Mixer Control Current Settings - Timer Set Value (Seconds)","d":"sensor","ds":10,"u":"A","vt":"{{ value[4:8] | int(base=16) }}","fi":"timer_set_value_seconds"}
-{"i":"9301","n":"Mixer Control Current Settings - Torque Profile Delta Torque (mN-m)","d":"sensor","ds":10,"u":"A","vt":"{{ (value[8:12] | int(base=16)) - 65536 if (value[8:12] | int(base=16)) >= 32768 else (value[8:12] | int(base=16)) }}","fi":"torque_profile_delta_torque_mn_m"}
+{"i":"9301","n":"Mixer Control Current Settings - Torque Profile Delta Torque (mN-m)","d":"sensor","ds":10,"u":"A","vt":"{{ ((value[8:12] | int(base=16)) + 32768) % 65536 - 32768 }}","fi":"torque_profile_delta_torque_mn_m"}
 {"i":"9301","n":"Mixer Control Current Settings - Torque Profile Baseline Sample Time (Seconds)","d":"sensor","ds":10,"u":"A","vt":"{{ value[12:16] | int(base=16) }}","fi":"torque_profile_baseline_sample_time_seconds"}
 {"i":"9302","n":"Mixer Control Requested Settings","d":"sensor","ds":12,"u":"s","dc":"duration","vt":"{{ value[2:4] | int(base=16) }}"}
 {"i":"9302","n":"Mixer Control Requested Settings - Direction Requested","d":"binary_sensor","ds":12,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"direction_requested"}
@@ -870,8 +870,8 @@
 {"i":"9303","n":"Mixer Control Settings Limits - Max Speed","d":"sensor","ds":18,"u":"s","vt":"{{ value[2:4] | int(base=16) }}","fi":"max_speed"}
 {"i":"9303","n":"Mixer Control Settings Limits - Min Timer Set Value (Seconds)","d":"sensor","ds":18,"u":"s","vt":"{{ value[4:8] | int(base=16) }}","fi":"min_timer_set_value_seconds"}
 {"i":"9303","n":"Mixer Control Settings Limits - Max Timer Set Value (Seconds)","d":"sensor","ds":18,"u":"s","vt":"{{ value[8:12] | int(base=16) }}","fi":"max_timer_set_value_seconds"}
-{"i":"9303","n":"Mixer Control Settings Limits - Torque Profile Min Delta Torque (mN-m)","d":"sensor","ds":18,"u":"s","vt":"{{ (value[12:16] | int(base=16)) - 65536 if (value[12:16] | int(base=16)) >= 32768 else (value[12:16] | int(base=16)) }}","fi":"torque_profile_min_delta_torque_mn_m"}
-{"i":"9303","n":"Mixer Control Settings Limits - Torque Profile Max Delta Torque (mN-m)","d":"sensor","ds":18,"u":"s","vt":"{{ (value[16:20] | int(base=16)) - 65536 if (value[16:20] | int(base=16)) >= 32768 else (value[16:20] | int(base=16)) }}","fi":"torque_profile_max_delta_torque_mn_m"}
+{"i":"9303","n":"Mixer Control Settings Limits - Torque Profile Min Delta Torque (mN-m)","d":"sensor","ds":18,"u":"s","vt":"{{ ((value[12:16] | int(base=16)) + 32768) % 65536 - 32768 }}","fi":"torque_profile_min_delta_torque_mn_m"}
+{"i":"9303","n":"Mixer Control Settings Limits - Torque Profile Max Delta Torque (mN-m)","d":"sensor","ds":18,"u":"s","vt":"{{ ((value[16:20] | int(base=16)) + 32768) % 65536 - 32768 }}","fi":"torque_profile_max_delta_torque_mn_m"}
 {"i":"9303","n":"Mixer Control Settings Limits - Torque Profile Min Baseline Sample Time (Seconds)","d":"sensor","ds":18,"u":"s","vt":"{{ value[20:24] | int(base=16) }}","fi":"torque_profile_min_baseline_sample_time_seconds"}
 {"i":"9303","n":"Mixer Control Settings Limits - Torque Profile Max Baseline Sample Time (Seconds)","d":"sensor","ds":18,"u":"s","vt":"{{ value[24:28] | int(base=16) }}","fi":"torque_profile_max_baseline_sample_time_seconds"}
 {"i":"9304","n":"Mixer Pause Mixing Cycle","d":"binary_sensor","ds":1}
@@ -902,8 +902,8 @@
 {"i":"930a","n":"Cycle Timer Absolute Time Modification - Sequence Number","d":"sensor","ds":8,"u":"min","vt":"{{ value[8:16] | int(base=16) }}","fi":"sequence_number"}
 {"i":"930b","n":"Scale Mode Current Units","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Metric', '01': 'US Standard'}.get(value[:2], 'Unknown') }}"}
 {"i":"930c","n":"Scale Mode Requested Units","d":"binary_sensor","ds":1}
-{"i":"930d","n":"Scale Current Target Weight","d":"sensor","ds":2,"vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
-{"i":"930e","n":"Scale Requested Target Weight","d":"sensor","ds":2,"vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
+{"i":"930d","n":"Scale Current Target Weight","d":"sensor","ds":2,"vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
+{"i":"930e","n":"Scale Requested Target Weight","d":"sensor","ds":2,"vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
 {"i":"930f","n":"Scale Mode Enable","d":"binary_sensor","ds":1}
 {"i":"9310","n":"Tare Scale","d":"binary_sensor","ds":1}
 {"i":"9311","n":"Scale Action Availability - Enable Scale Mode Available","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 8) & 1 else '00' }}","fi":"enable_scale_mode_available"}
@@ -918,7 +918,7 @@
 {"i":"9314","n":"Mixer Control v2 Current - Direction","d":"sensor","ds":96,"u":"s","dc":"enum","vt":"{{ {'00': 'Not Applicable', '01': 'Forward', '02': 'Reverse', '03': 'Toggle', '04': 'Active Stir'}.get(value[0:2], 'Unknown') }}"}
 {"i":"9314","n":"Mixer Control v2 Current - Speed (Speed * 10)","d":"sensor","ds":96,"u":"s","vt":"{{ value[2:4] | int(base=16) }}","fi":"speed_speed_10"}
 {"i":"9314","n":"Mixer Control v2 Current - Timer Set Value (Seconds)","d":"sensor","ds":96,"u":"s","vt":"{{ value[4:8] | int(base=16) }}","fi":"timer_set_value_seconds"}
-{"i":"9314","n":"Mixer Control v2 Current - Auto Sense Torque Delta","d":"sensor","ds":96,"u":"s","vt":"{{ (value[8:12] | int(base=16)) - 65536 if (value[8:12] | int(base=16)) >= 32768 else (value[8:12] | int(base=16)) }}","fi":"auto_sense_torque_delta"}
+{"i":"9314","n":"Mixer Control v2 Current - Auto Sense Torque Delta","d":"sensor","ds":96,"u":"s","vt":"{{ ((value[8:12] | int(base=16)) + 32768) % 65536 - 32768 }}","fi":"auto_sense_torque_delta"}
 {"i":"9314","n":"Mixer Control v2 Current - Auto Sense Baseline Start Time (Seconds)","d":"sensor","ds":96,"u":"s","vt":"{{ value[12:16] | int(base=16) }}","fi":"auto_sense_baseline_start_time_seconds"}
 {"i":"9314","n":"Mixer Control v2 Current - Active Stir Time A (Seconds)","d":"sensor","ds":96,"u":"s","vt":"{{ value[20:22] | int(base=16) }}","fi":"active_stir_time_a_seconds"}
 {"i":"9314","n":"Mixer Control v2 Current - Active Stir Time B (Seconds)","d":"sensor","ds":96,"u":"s","vt":"{{ value[22:24] | int(base=16) }}","fi":"active_stir_time_b_seconds"}
@@ -931,8 +931,8 @@
 {"i":"9314","n":"Mixer Control v2 Current - Auto Sense Time After Peak Enabled","d":"sensor","ds":96,"u":"s","vt":"{{ '01' if value[38:40] != '00' else '00' }}","fi":"auto_sense_time_after_peak_enabled"}
 {"i":"9314","n":"Mixer Control v2 Current - Auto Sense Time After Peak (Seconds)","d":"sensor","ds":96,"u":"s","vt":"{{ value[40:44] | int(base=16) }}","fi":"auto_sense_time_after_peak_seconds"}
 {"i":"9314","n":"Mixer Control v2 Current - Auto Sense Time Extend (Seconds)","d":"sensor","ds":96,"u":"s","vt":"{{ value[44:48] | int(base=16) }}","fi":"auto_sense_time_extend_seconds"}
-{"i":"9314","n":"Mixer Control v2 Current - Auto Sense Error Detect Min Valid Torque (mN-m)","d":"sensor","ds":96,"u":"s","vt":"{{ (value[48:52] | int(base=16)) - 65536 if (value[48:52] | int(base=16)) >= 32768 else (value[48:52] | int(base=16)) }}","fi":"auto_sense_error_detect_min_valid_torque_mn_m"}
-{"i":"9314","n":"Mixer Control v2 Current - Auto Sense Error Detect Max Valid Torque (mN-m)","d":"sensor","ds":96,"u":"s","vt":"{{ (value[52:56] | int(base=16)) - 65536 if (value[52:56] | int(base=16)) >= 32768 else (value[52:56] | int(base=16)) }}","fi":"auto_sense_error_detect_max_valid_torque_mn_m"}
+{"i":"9314","n":"Mixer Control v2 Current - Auto Sense Error Detect Min Valid Torque (mN-m)","d":"sensor","ds":96,"u":"s","vt":"{{ ((value[48:52] | int(base=16)) + 32768) % 65536 - 32768 }}","fi":"auto_sense_error_detect_min_valid_torque_mn_m"}
+{"i":"9314","n":"Mixer Control v2 Current - Auto Sense Error Detect Max Valid Torque (mN-m)","d":"sensor","ds":96,"u":"s","vt":"{{ ((value[52:56] | int(base=16)) + 32768) % 65536 - 32768 }}","fi":"auto_sense_error_detect_max_valid_torque_mn_m"}
 {"i":"9314","n":"Mixer Control v2 Current - Auto Sense Error Detect Start Time (Seconds)","d":"sensor","ds":96,"u":"s","vt":"{{ value[56:60] | int(base=16) }}","fi":"auto_sense_error_detect_start_time_seconds"}
 {"i":"9314","n":"Mixer Control v2 Current - Auto Sense Error Detect Duration (Seconds)","d":"sensor","ds":96,"u":"s","vt":"{{ value[60:64] | int(base=16) }}","fi":"auto_sense_error_detect_duration_seconds"}
 {"i":"9315","n":"Mixer Control v2 Requested","d":"sensor","ds":100,"u":"s","dc":"enum","vt":"{{ {'00': 'Not Applicable', '01': 'Forward', '02': 'Reverse', '03': 'Toggle', '04': 'Active Stir'}.get(value[8:10], 'Unknown') }}"}
@@ -1148,10 +1148,10 @@
 {"i":"9500","n":"Sourdough Starter Status - Feeding Frequency (Minutes)","d":"sensor","ds":26,"u":"min","vt":"{{ value[32:36] | int(base=16) }}","fi":"feeding_frequency_minutes"}
 {"i":"9500","n":"Sourdough Starter Status - Current Starter Mass (grams)","d":"sensor","ds":26,"u":"min","vt":"{{ value[36:40] | int(base=16) }}","fi":"current_starter_mass_grams"}
 {"i":"9501","n":"Ambient Temperature","d":"sensor","ds":1,"u":"°F","dc":"temperature","vt":"{{ value | int(base=16) }}"}
-{"i":"9502","n":"Temperature Offset","d":"sensor","ds":1,"u":"°F","dc":"temperature","p":"9503","r":"status","vt":"{{ (value | int(base=16)) - 256 if (value | int(base=16)) >= 128 else (value | int(base=16)) }}"}
-{"i":"9503","n":"Temperature Offset","d":"number","ds":1,"u":"°F","dc":"temperature","p":"9502","r":"request","vt":"{{ (value[0:2] | int(base=16)) - 256 if (value[0:2] | int(base=16)) >= 128 else (value[0:2] | int(base=16)) }}","ct":"{{ '%02x' % ((value | int) % 256) }}","dt":"int8"}
-{"i":"9504","n":"Temperature Offset Limits - Minimum Supported Temperature Offset (signed fahrenheit)","d":"sensor","ds":2,"u":"°F","dc":"temperature","vt":"{{ (value[0:2] | int(base=16)) - 256 if (value[0:2] | int(base=16)) >= 128 else (value[0:2] | int(base=16)) }}"}
-{"i":"9504","n":"Temperature Offset Limits - Maximum Supported Temperature Offset (signed fahrenheit)","d":"sensor","ds":2,"u":"°F","vt":"{{ (value[2:4] | int(base=16)) - 256 if (value[2:4] | int(base=16)) >= 128 else (value[2:4] | int(base=16)) }}","fi":"maximum_supported_temperature_offset_signed_fahrenheit"}
+{"i":"9502","n":"Temperature Offset","d":"sensor","ds":1,"u":"°F","dc":"temperature","p":"9503","r":"status","vt":"{{ ((value | int(base=16)) + 128) % 256 - 128 }}"}
+{"i":"9503","n":"Temperature Offset","d":"number","ds":1,"u":"°F","dc":"temperature","p":"9502","r":"request","vt":"{{ ((value[0:2] | int(base=16)) + 128) % 256 - 128 }}","ct":"{{ '%02x' % ((value | int) % 256) }}","dt":"int8"}
+{"i":"9504","n":"Temperature Offset Limits - Minimum Supported Temperature Offset (signed fahrenheit)","d":"sensor","ds":2,"u":"°F","dc":"temperature","vt":"{{ ((value[0:2] | int(base=16)) + 128) % 256 - 128 }}"}
+{"i":"9504","n":"Temperature Offset Limits - Maximum Supported Temperature Offset (signed fahrenheit)","d":"sensor","ds":2,"u":"°F","vt":"{{ ((value[2:4] | int(base=16)) + 128) % 256 - 128 }}","fi":"maximum_supported_temperature_offset_signed_fahrenheit"}
 {"i":"9505","n":"Sourdough Starter Push Notifications - Mode Complete Alert","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 8) & 1 else '00' }}","fi":"mode_complete_alert"}
 {"i":"9505","n":"Sourdough Starter Push Notifications - Crock Nearly Full Alert","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 9) & 1 else '00' }}","fi":"crock_nearly_full_alert"}
 {"i":"9505","n":"Sourdough Starter Push Notifications - Crock Full Alert","d":"binary_sensor","ds":4,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 10) & 1 else '00' }}","fi":"crock_full_alert"}

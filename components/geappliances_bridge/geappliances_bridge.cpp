@@ -1348,8 +1348,10 @@ bool GeappliancesBridge::fetch_category_(const std::string& url,
   // Read response body line by line.  Each JSONL line is one entity.
   // We use a modest stack-allocated read buffer and a heap-allocated line
   // accumulator (lines can be several KB for complex value templates).
+  // The largest JSONL lines are for select entities with many enum values;
+  // LINE_BUF must be large enough to hold these (currently up to ~7200 bytes).
   static constexpr int READ_BUF  = 512;
-  static constexpr int LINE_BUF  = 4096;
+  static constexpr int LINE_BUF  = 8192;
   char  read_buf[READ_BUF];
   char* line_buf = static_cast<char*>(malloc(LINE_BUF));
   if (!line_buf) {
