@@ -32,6 +32,13 @@ typedef struct {
   // Optional output set: when non-null, every ERD passed to register_erd() is
   // added here so the bridge can track which ERDs the device has registered.
   std::set<tiny_erd_t>* registered_erds_out;
+  // Tracks ERDs for which write-topic MQTT subscriptions have already been
+  // established. Unlike the polling bridge's erd_set (which is cleared on every
+  // MQTT disconnect to rebuild the polling list), this set is never cleared.
+  // ESPHome's MQTT client automatically re-subscribes on reconnect, so calling
+  // subscribe() again on reconnect would leak callback closures and duplicate
+  // write handlers — one extra set per reconnect cycle.
+  std::set<tiny_erd_t>* subscribed_write_erds;
 } esphome_mqtt_client_adapter_t;
 
 #ifdef __cplusplus

@@ -41,7 +41,21 @@ static void register_erd(i_mqtt_client_t* _self, tiny_erd_t erd)
   std::string write_topic = build_topic(self, (std::string(topic_suffix) + "/write").c_str());
   
   ESP_LOGD(TAG, "Registered ERD 0x%04X", erd);
-  
+
+  // Only subscribe once per ERD lifetime. The polling bridge clears its own
+  // erd_set on every MQTT disconnect so that it can rebuild the polling list,
+  // which causes register_erd() to be called again for every ERD on each
+  // reconnect. ESPHome's MQTT client re-establishes all previous subscriptions
+  // automatically on reconnect, so calling subscribe() again would leak a new
+  // closure and register a duplicate write-command handler per reconnect cycle.
+  if (self->subscribed_write_erds != nullptr &&
+      self->subscribed_write_erds->count(erd)) {
+    return;
+  }
+  if (self->subscribed_write_erds != nullptr) {
+    self->subscribed_write_erds->insert(erd);
+  }
+
   // Subscribe to write topic for this ERD
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client != nullptr) {
@@ -222,6 +236,7 @@ extern "C" void esphome_mqtt_client_adapter_init(
   self->valid_erds_filter = nullptr;
   self->string_erds_filter = nullptr;
   self->registered_erds_out = nullptr;
+  self->subscribed_write_erds = new std::set<tiny_erd_t>();
 
   tiny_event_init(&self->on_write_request_event);
   tiny_event_init(&self->on_mqtt_disconnect_event);
@@ -287,5 +302,9 @@ extern "C" void esphome_mqtt_client_adapter_destroy(
   if (self->pending_updates != nullptr) {
     delete self->pending_updates;
     self->pending_updates = nullptr;
+  }
+  if (self->subscribed_write_erds != nullptr) {
+    delete self->subscribed_write_erds;
+    self->subscribed_write_erds = nullptr;
   }
 }
