@@ -8,10 +8,10 @@
  * and to gate HA discovery to only supported entities.
  *
  * Startup phase order:
- *   run_autodiscovery_() → start_feature_bit_reading_()
+ *   run_autodiscovery_() → start_feature_bit_reading_()     (called by device_id.cpp)
  *                        → run_feature_bit_reading_()   ← (this file)
  *                        → parse_and_log_feature_bits_() ← (this file)
- *                        → start_device_id_generation_()
+ *                        → bridge_init_state_ = WAITING_FOR_MQTT
  */
 
 #include "geappliances_bridge.h"
@@ -60,7 +60,7 @@ void GeappliancesBridge::run_feature_bit_reading_()
   if (this->feature_bit_state_ == FEATURE_BIT_STATE_COMPLETE && this->feature_bit_parse_pending_) {
     this->feature_bit_parse_pending_ = false;
     this->parse_and_log_feature_bits_();
-    this->start_device_id_generation_();
+    this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
     return;
   }
 

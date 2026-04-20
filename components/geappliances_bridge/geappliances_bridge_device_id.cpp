@@ -9,9 +9,9 @@
  * directly.
  *
  * Startup phase order:
- *   parse_and_log_feature_bits_() → start_device_id_generation_()
- *                                 → run_device_id_generation_()  ← (this file)
- *                                 → initialize_mqtt_bridge_()
+ *   run_autodiscovery_() → start_device_id_generation_()
+ *                        → run_device_id_generation_()   ← (this file)
+ *                        → start_feature_bit_reading_()
  */
 
 #include "geappliances_bridge.h"
@@ -42,7 +42,7 @@ void GeappliancesBridge::start_device_id_generation_()
     ESP_LOGI(TAG, "Using configured device_id: %s", this->configured_device_id_.c_str());
     this->final_device_id_  = this->configured_device_id_;
     this->device_id_state_  = DEVICE_ID_STATE_COMPLETE;
-    this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
+    this->start_feature_bit_reading_();
     return;
   }
 
@@ -125,7 +125,7 @@ void GeappliancesBridge::process_device_id_erd_response_(
     ESP_LOGI(TAG, "Generated device ID: %s", this->final_device_id_.c_str());
 
     this->device_id_state_  = DEVICE_ID_STATE_COMPLETE;
-    this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
+    this->start_feature_bit_reading_();
   }
 }
 
@@ -169,7 +169,7 @@ void GeappliancesBridge::handle_device_id_read_failure_(tiny_erd_t erd)
     ESP_LOGI(TAG, "Generated device ID (with fallback): %s", this->final_device_id_.c_str());
 
     this->device_id_state_  = DEVICE_ID_STATE_COMPLETE;
-    this->bridge_init_state_ = BRIDGE_INIT_STATE_WAITING_FOR_MQTT;
+    this->start_feature_bit_reading_();
   }
 }
 

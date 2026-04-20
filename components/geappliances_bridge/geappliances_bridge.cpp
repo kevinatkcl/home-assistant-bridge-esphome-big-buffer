@@ -168,8 +168,8 @@ void GeappliancesBridge::loop() {
 
   run_protocol_stack_();          // Phase 0: drive GEA2/GEA3 hardware
   run_autodiscovery_();           // Phase 1: find appliance on bus
-  run_feature_bit_reading_();     // Phase 2: read appliance API feature bits
-  run_device_id_generation_();    // Phase 3: assemble device ID from ERDs
+  run_device_id_generation_();    // Phase 2: assemble device ID from ERDs
+  run_feature_bit_reading_();     // Phase 3: read appliance API feature bits
 
   // Phase 4: initialize bridge once device ID + MQTT are ready.
   // Autodiscovery must complete first so active_erd_client_ and host_address_

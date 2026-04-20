@@ -86,7 +86,7 @@ void GeappliancesBridge::run_autodiscovery_()
           ESP_LOGI(TAG, "GEA3 board discovered at 0x%02X, autodiscovery complete",
                    this->host_address_);
           this->autodiscovery_state_ = AUTODISCOVERY_COMPLETE;
-          this->start_feature_bit_reading_();
+          this->start_device_id_generation_();
         } else if (this->gea2_uart_ != nullptr) {
           ESP_LOGW(TAG, "No GEA3 boards found, trying GEA2...");
           this->autodiscovery_state_ = AUTODISCOVERY_GEA2_BROADCAST_PENDING;
@@ -118,7 +118,7 @@ void GeappliancesBridge::run_autodiscovery_()
                    this->host_address_);
           this->autodiscovery_state_ = AUTODISCOVERY_COMPLETE;
           this->gea2_protocol_active_ = true;
-          this->start_feature_bit_reading_();
+          this->start_device_id_generation_();
         } else if (this->uart_ != nullptr) {
           ESP_LOGW(TAG, "No GEA2 boards found, retrying GEA3...");
           this->autodiscovery_state_ = AUTODISCOVERY_GEA3_BROADCAST_PENDING;
