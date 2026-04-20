@@ -66,7 +66,14 @@ class GeappliancesBridge : public Component {
   void publish_next_ha_discovery_entity_();
   void configure_polling_optional_lists_();
   void check_subscription_activity_();
-  void run_autodiscovery_();
+  // ── Per-phase run_*() methods called from loop() ─────────────────────────
+  void run_protocol_stack_();       // Phase 0: drive GEA2/GEA3 hardware
+  void run_autodiscovery_();        // Phase 1: find appliance on bus
+  void run_feature_bit_reading_();  // Phase 2: read appliance API feature bits
+  void run_device_id_generation_(); // Phase 3: assemble device ID from ERDs
+  void run_ha_discovery_();         // Phase 6: publish HA entity configs
+  void log_poll_state_transitions_(); // Debug: log polling HSM state changes
+
   void start_feature_bit_reading_();
   void start_device_id_generation_();
   void process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size);
@@ -77,6 +84,7 @@ class GeappliancesBridge : public Component {
   void parse_and_log_feature_bits_();
   std::string bytes_to_string_(const uint8_t* data, size_t size);
   std::string sanitize_for_mqtt_topic_(const std::string& input);
+  void on_ha_discovery_erd_seen_(tiny_erd_t erd);
   bool try_read_erd_with_retry_(tiny_erd_t erd, const char* erd_name);
 
   enum DeviceIdState {
