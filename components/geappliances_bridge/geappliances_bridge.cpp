@@ -166,20 +166,20 @@ void GeappliancesBridge::loop() {
     this->mqtt_was_connected_ = is_connected;
   }
 
-  run_protocol_stack_();          // Phase 0: drive GEA2/GEA3 hardware
-  run_autodiscovery_();           // Phase 1: find appliance on bus
-  run_device_id_generation_();    // Phase 2: assemble device ID from ERDs
+  run_protocol_stack_();          // Phase 1: drive GEA2/GEA3 hardware
+  run_autodiscovery_();           // Phase 2: find appliance on bus
+  run_device_id_generation_();    // Phase 3: assemble device ID from ERDs
 
-  // Phase 2.5: initialize MQTT client adapter as soon as device ID is ready,
+  // Phase 4: initialize MQTT client adapter as soon as device ID is ready,
   // so feature bit ERDs can be published over MQTT as they are read.
   if (this->device_id_state_ == DEVICE_ID_STATE_COMPLETE &&
       !this->mqtt_client_adapter_initialized_) {
     this->initialize_mqtt_client_();
   }
 
-  run_feature_bit_reading_();     // Phase 3: read appliance API feature bits
+  run_feature_bit_reading_();     // Phase 5: read appliance API feature bits
 
-  // Phase 4: initialize bridge once device ID + MQTT are ready.
+  // Phase 6: initialize bridge once feature bits + MQTT are ready.
   // Autodiscovery must complete first so active_erd_client_ and host_address_
   // are set to the correct appliance before polling/subscription begins.
   if (this->bridge_init_state_ == BRIDGE_INIT_STATE_WAITING_FOR_MQTT &&
@@ -190,14 +190,14 @@ void GeappliancesBridge::loop() {
     this->bridge_init_state_ = BRIDGE_INIT_STATE_COMPLETE;
   }
 
-  // Phase 5: AUTO mode subscription watchdog — fall back to polling if
+  // Phase 7: AUTO mode subscription watchdog — fall back to polling if
   // no subscription publications arrive within SUBSCRIPTION_TIMEOUT_MS.
   if (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_) {
     this->check_subscription_activity_();
   }
 
   log_poll_state_transitions_();  // Debug: log polling HSM state changes
-  run_ha_discovery_();            // Phase 6: deferred HA entity publish
+  run_ha_discovery_();            // Phase 8: deferred HA entity publish
 }
 
 // ---------------------------------------------------------------------------

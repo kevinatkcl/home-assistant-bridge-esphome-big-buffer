@@ -3,12 +3,12 @@
  * @brief MQTT client adapter initialization and bridge mode management.
  *
  * initialize_mqtt_client_() runs once as soon as the device ID is ready
- * (Phase 2.5), before feature bit reading.  It binds the MQTT client adapter
+ * (Phase 4), before feature bit reading.  It binds the MQTT client adapter
  * to the device ID, sets up registered-ERD tracking, and configures the
  * string-ERD filter so the adapter is ready to publish ERD values immediately.
  *
  * initialize_mqtt_bridge_() runs once after feature bit reading and MQTT are
- * both ready (Phase 4).  It applies the valid-ERD filter (built from feature
+ * both ready (Phase 6).  It applies the valid-ERD filter (built from feature
  * bit results), selects the operating mode (poll / subscribe / auto), and
  * initializes the appropriate bridge HSMs.
  *
@@ -27,7 +27,7 @@ namespace geappliances_bridge {
 static const char* const TAG = "geappliances_bridge";
 
 // ---------------------------------------------------------------------------
-// Phase 2.5: Initialize the MQTT client adapter (called once from loop())
+// Phase 4: Initialize the MQTT client adapter (called once from loop())
 // ---------------------------------------------------------------------------
 
 void GeappliancesBridge::initialize_mqtt_client_()
