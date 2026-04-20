@@ -172,7 +172,7 @@ def load_appliance_types():
     # If local paths failed, try fetching from GitHub as fallback
     if data is None:
         url = "https://raw.githubusercontent.com/joshualongenecker/public-appliance-api-documentation/main/appliance_api_erd_definitions.json"
-        _LOGGER.warning("Could not find local library. Fetching from GitHub as fallback: %s", url)
+        _LOGGER.info("Fetching ERD definitions from GitHub: %s", url)
         
         try:
             with urllib.request.urlopen(url, timeout=10) as response:
