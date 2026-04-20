@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include <deque>
+#include <map>
 #include <set>
 
 extern "C" {
@@ -19,7 +19,10 @@ typedef struct {
   std::string* device_id;
   tiny_event_t on_write_request_event;
   tiny_event_t on_mqtt_disconnect_event;
-  std::deque<PendingErdUpdate>* pending_updates;
+  // Keyed by ERD so repeated updates while MQTT is down keep only the latest
+  // value per ERD. This prevents the queue from filling with duplicates during
+  // a polling reconnect cycle and bounds its size to the number of distinct ERDs.
+  std::map<tiny_erd_t, PendingErdUpdate>* pending_updates;
   // Optional filter: when non-null, update_erd only publishes ERDs that are
   // present in this set. Used when appliance_api_parsing is enabled.
   const std::set<tiny_erd_t>* valid_erds_filter;

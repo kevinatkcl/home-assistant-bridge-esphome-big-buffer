@@ -11,12 +11,13 @@ extern "C" {
 #include <cstdio>
 #include <string>
 #include <cctype>
-#include <deque>
+#include <map>
 
 static const char *const TAG = "geappliances_bridge.mqtt";
 
-// Maximum number of pending updates to queue (prevent memory exhaustion)
-static constexpr size_t MAX_PENDING_UPDATES = 100;
+// Maximum number of distinct ERDs that can be pending (safety bound — in
+// practice bounded by the number of ERDs the appliance registers, typically <100).
+static constexpr size_t MAX_PENDING_UPDATES = 200;
 
 static std::string build_topic(esphome_mqtt_client_adapter_t* self, const char* suffix)
 {
@@ -146,10 +147,13 @@ static void update_erd(i_mqtt_client_t* _self, tiny_erd_t erd, const void* value
   if (mqtt_client != nullptr && mqtt_client->is_connected()) {
     mqtt_client->publish(topic, payload, 2, true);  // QoS 2, retain
   } else {
-    // Queue the update for later when MQTT connects
+    // Queue the update for later when MQTT connects. The map key is the ERD so
+    // a repeated update overwrites the previous pending value instead of
+    // appending — this prevents the queue from filling with stale duplicates
+    // across multiple polling cycles while MQTT is down.
     if (self->pending_updates != nullptr && self->pending_updates->size() < MAX_PENDING_UPDATES) {
-      self->pending_updates->push_back({topic, payload});
-      ESP_LOGD(TAG, "MQTT not connected, queued ERD update for 0x%04X (queue size: %zu)", 
+      (*self->pending_updates)[erd] = {topic, payload};
+      ESP_LOGD(TAG, "MQTT not connected, queued ERD update for 0x%04X (queue size: %zu)",
                erd, self->pending_updates->size());
     } else if (self->pending_updates == nullptr) {
       ESP_LOGW(TAG, "Pending updates queue not initialized, dropping ERD update for 0x%04X", erd);
@@ -214,7 +218,7 @@ extern "C" void esphome_mqtt_client_adapter_init(
 {
   self->interface.api = &api;
   self->device_id = new std::string(device_id);
-  self->pending_updates = new std::deque<PendingErdUpdate>();
+  self->pending_updates = new std::map<tiny_erd_t, PendingErdUpdate>();
   self->valid_erds_filter = nullptr;
   self->string_erds_filter = nullptr;
   self->registered_erds_out = nullptr;
@@ -255,14 +259,17 @@ extern "C" void esphome_mqtt_client_adapter_notify_disconnected(
 extern "C" void esphome_mqtt_client_adapter_notify_connected(
   esphome_mqtt_client_adapter_t* self)
 {
-  // Flush pending updates when MQTT connects
+  // Flush pending updates when MQTT connects.
+  // Use QoS-0 (fire-and-forget) so publishing the full map in one go does not
+  // generate PUBREC/PUBREL/PUBCOMP handshake events for every message; the
+  // retained flag still ensures the broker persists the latest value.
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client != nullptr && mqtt_client->is_connected() && 
       self->pending_updates != nullptr && !self->pending_updates->empty()) {
     ESP_LOGI(TAG, "MQTT connected, flushing %zu pending ERD updates", self->pending_updates->size());
     
-    for (const auto& update : *self->pending_updates) {
-      mqtt_client->publish(update.topic, update.payload, 2, true);  // QoS 2, retain
+    for (const auto& kv : *self->pending_updates) {
+      mqtt_client->publish(kv.second.topic, kv.second.payload, 0, true);  // QoS 0, retain
     }
     
     self->pending_updates->clear();
