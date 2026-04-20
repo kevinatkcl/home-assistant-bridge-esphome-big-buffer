@@ -61,6 +61,7 @@ class GeappliancesBridge : public Component {
   void on_mqtt_connected_();
   void notify_mqtt_disconnected_();
   void handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args);
+  void initialize_mqtt_client_();
   void initialize_mqtt_bridge_();
   void publish_ha_discovery_();
   void publish_next_ha_discovery_entity_();
@@ -148,6 +149,7 @@ class GeappliancesBridge : public Component {
   uint8_t client_address_{0xE4};
   uint8_t host_address_{0xC0};       // Host address for ERD reads (0xC0 fallback; updated during autodiscovery)
   bool mqtt_was_connected_{false};
+  bool mqtt_client_adapter_initialized_{false};
   bool mqtt_bridge_initialized_{false};
   BridgeMode mode_{BRIDGE_MODE_AUTO};
   uint32_t polling_interval_ms_{10000};
