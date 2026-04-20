@@ -36,9 +36,9 @@ void GeappliancesBridge::start_feature_bit_reading_()
   if (this->feature_bit_state_ != FEATURE_BIT_STATE_IDLE) {
     return;
   }
-  ESP_LOGI(TAG, "Reading appliance API feature bits (ERDs 0x0092-0x0097 and 0x0109-0x010D)...");
+  ESP_LOGI(TAG, "Reading device info ERDs for MQTT publish, then appliance API feature bits...");
   this->read_retry_count_ = 0;
-  this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0092;
+  this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0008;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +71,10 @@ void GeappliancesBridge::run_feature_bit_reading_()
   const char* feature_name = nullptr;
 
   switch (this->feature_bit_state_) {
-    case FEATURE_BIT_STATE_READING_0092: feature_erd = ERD_COMMON_FEATURE_API;      feature_name = "common feature API (0x0092)";          break;
+    case FEATURE_BIT_STATE_READING_0008: feature_erd = ERD_APPLIANCE_TYPE;        feature_name = "appliance type (0x0008)";              break;
+    case FEATURE_BIT_STATE_READING_0001: feature_erd = ERD_MODEL_NUMBER;          feature_name = "model number (0x0001)";                break;
+    case FEATURE_BIT_STATE_READING_0002: feature_erd = ERD_SERIAL_NUMBER;         feature_name = "serial number (0x0002)";               break;
+    case FEATURE_BIT_STATE_READING_0092: feature_erd = ERD_COMMON_FEATURE_API;    feature_name = "common feature API (0x0092)";          break;
     case FEATURE_BIT_STATE_READING_0093: feature_erd = ERD_APPLIANCE_FEATURE_API_0; feature_name = "appliance feature API 0 (0x0093)";       break;
     case FEATURE_BIT_STATE_READING_0094: feature_erd = ERD_APPLIANCE_FEATURE_API_1; feature_name = "appliance feature API 1 (0x0094)";       break;
     case FEATURE_BIT_STATE_READING_0095: feature_erd = ERD_APPLIANCE_FEATURE_API_2; feature_name = "appliance feature API 2 (0x0095)";       break;
@@ -127,7 +130,10 @@ void GeappliancesBridge::process_feature_bit_erd_response_(
     }
   };
 
-  if      (erd == ERD_COMMON_FEATURE_API)      { memcpy(this->feature_bit_erd_0092_, data, copy_size); this->feature_bit_erd_0092_size_ = copy_size; ESP_LOGD(TAG, "Read common feature API (0x0092): %u bytes", copy_size);          queue_next(ERD_APPLIANCE_FEATURE_API_0, FEATURE_BIT_STATE_READING_0093); }
+  if      (erd == ERD_APPLIANCE_TYPE)      { ESP_LOGD(TAG, "Re-read appliance type (0x0008): %u bytes", copy_size);         queue_next(ERD_MODEL_NUMBER,           FEATURE_BIT_STATE_READING_0001); }
+  else if (erd == ERD_MODEL_NUMBER)        { ESP_LOGD(TAG, "Re-read model number (0x0001): %u bytes", copy_size);            queue_next(ERD_SERIAL_NUMBER,          FEATURE_BIT_STATE_READING_0002); }
+  else if (erd == ERD_SERIAL_NUMBER)       { ESP_LOGD(TAG, "Re-read serial number (0x0002): %u bytes", copy_size);           queue_next(ERD_COMMON_FEATURE_API,     FEATURE_BIT_STATE_READING_0092); }
+  else if (erd == ERD_COMMON_FEATURE_API)      { memcpy(this->feature_bit_erd_0092_, data, copy_size); this->feature_bit_erd_0092_size_ = copy_size; ESP_LOGD(TAG, "Read common feature API (0x0092): %u bytes", copy_size);          queue_next(ERD_APPLIANCE_FEATURE_API_0, FEATURE_BIT_STATE_READING_0093); }
   else if (erd == ERD_APPLIANCE_FEATURE_API_0) { memcpy(this->feature_bit_erd_0093_, data, copy_size); this->feature_bit_erd_0093_size_ = copy_size; ESP_LOGD(TAG, "Read appliance feature API 0 (0x0093): %u bytes", copy_size);    queue_next(ERD_APPLIANCE_FEATURE_API_1, FEATURE_BIT_STATE_READING_0094); }
   else if (erd == ERD_APPLIANCE_FEATURE_API_1) { memcpy(this->feature_bit_erd_0094_, data, copy_size); this->feature_bit_erd_0094_size_ = copy_size; ESP_LOGD(TAG, "Read appliance feature API 1 (0x0094): %u bytes", copy_size);    queue_next(ERD_APPLIANCE_FEATURE_API_2, FEATURE_BIT_STATE_READING_0095); }
   else if (erd == ERD_APPLIANCE_FEATURE_API_2) { memcpy(this->feature_bit_erd_0095_, data, copy_size); this->feature_bit_erd_0095_size_ = copy_size; ESP_LOGD(TAG, "Read appliance feature API 2 (0x0095): %u bytes", copy_size);    queue_next(ERD_APPLIANCE_FEATURE_API_3, FEATURE_BIT_STATE_READING_0096); }
@@ -169,6 +175,9 @@ void GeappliancesBridge::skip_to_next_feature_erd_(tiny_erd_t failed_erd)
   // chain.  For the last ERD (0x010D) trigger the same deferred-parse path
   // used on a successful final read.
   switch (failed_erd) {
+    case ERD_APPLIANCE_TYPE:          this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0001; break;
+    case ERD_MODEL_NUMBER:            this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0002; break;
+    case ERD_SERIAL_NUMBER:           this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0092; break;
     case ERD_COMMON_FEATURE_API:      this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0093; break;
     case ERD_APPLIANCE_FEATURE_API_0: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0094; break;
     case ERD_APPLIANCE_FEATURE_API_1: this->feature_bit_state_ = FEATURE_BIT_STATE_READING_0095; break;

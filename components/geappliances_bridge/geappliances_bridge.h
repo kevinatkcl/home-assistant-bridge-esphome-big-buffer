@@ -109,6 +109,12 @@ class GeappliancesBridge : public Component {
   //               the next READING state or to COMPLETE/FAILED.
   enum FeatureBitState {
     FEATURE_BIT_STATE_IDLE,          // Not started yet
+    // Re-read device-info ERDs for MQTT publish (values were already parsed
+    // during Phase 2; re-reading avoids storing raw bytes a second time).
+    FEATURE_BIT_STATE_READING_0008,  // Need to queue read for ERD 0x0008 (appliance type)
+    FEATURE_BIT_STATE_READING_0001,  // Need to queue read for ERD 0x0001 (model number)
+    FEATURE_BIT_STATE_READING_0002,  // Need to queue read for ERD 0x0002 (serial number)
+    // Appliance API feature bit ERDs
     FEATURE_BIT_STATE_READING_0092,  // Need to queue read for ERD 0x0092
     FEATURE_BIT_STATE_READING_0093,  // Need to queue read for ERD 0x0093
     FEATURE_BIT_STATE_READING_0094,  // Need to queue read for ERD 0x0094
