@@ -399,15 +399,24 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
 
   // Device ID + feature bit reads (after discovery, before bridge init)
   if (!this->mqtt_bridge_initialized_ && args->address == this->host_address_) {
-    // Route based on ERD value: feature bit ERDs go to the feature bit handler,
-    // device ID ERDs go to the device ID handler. This ensures responses are
-    // processed even when the state is IN_FLIGHT (read already queued).
+    // Route responses to the correct handler.  Device-info ERDs (0x0008/0x0001/0x0002)
+    // are read twice: once during device ID generation and again at the start of feature
+    // bit reading for MQTT publish.  Use device_id_state_ to distinguish the two cases.
+    auto is_device_info_erd = [](tiny_erd_t e) {
+      return e == ERD_APPLIANCE_TYPE || e == ERD_MODEL_NUMBER || e == ERD_SERIAL_NUMBER;
+    };
+
     if (args->type == tiny_gea3_erd_client_activity_type_read_completed) {
       tiny_erd_t erd = args->read_completed.erd;
       bool feature_bit_active = (this->feature_bit_state_ != FEATURE_BIT_STATE_IDLE &&
                                    this->feature_bit_state_ != FEATURE_BIT_STATE_COMPLETE &&
                                    this->feature_bit_state_ != FEATURE_BIT_STATE_FAILED);
-      if (is_feature_bit_erd(erd) && feature_bit_active) {
+      // Route to feature bit handler if: it's a feature bit ERD, OR it's a device-info
+      // ERD being re-read during the feature bit phase (device ID already complete).
+      bool route_to_feature_bits = feature_bit_active &&
+        (is_feature_bit_erd(erd) ||
+         (is_device_info_erd(erd) && this->device_id_state_ == DEVICE_ID_STATE_COMPLETE));
+      if (route_to_feature_bits) {
         this->process_feature_bit_erd_response_(
           erd,
           reinterpret_cast<const uint8_t*>(args->read_completed.data),
@@ -423,8 +432,11 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
       bool feature_bit_active = (this->feature_bit_state_ != FEATURE_BIT_STATE_IDLE &&
                                    this->feature_bit_state_ != FEATURE_BIT_STATE_COMPLETE &&
                                    this->feature_bit_state_ != FEATURE_BIT_STATE_FAILED);
-      if (is_feature_bit_erd(erd) && feature_bit_active) {
-        ESP_LOGW(TAG, "Failed to read feature bit ERD 0x%04X (reason: %u), advancing to next ERD",
+      bool route_to_feature_bits = feature_bit_active &&
+        (is_feature_bit_erd(erd) ||
+         (is_device_info_erd(erd) && this->device_id_state_ == DEVICE_ID_STATE_COMPLETE));
+      if (route_to_feature_bits) {
+        ESP_LOGW(TAG, "Failed to read ERD 0x%04X during feature bit phase (reason: %u), advancing",
                  erd, args->read_failed.reason);
         this->handle_feature_bit_read_failure_(erd);
       } else {
