@@ -9,9 +9,9 @@
  *
  * Startup phase order:
  *   run_autodiscovery_() → start_device_id_generation_()
- *   run_device_id_generation_() → start_feature_bit_reading_()
- *                              → [Phase 2.5] initialize_mqtt_client_()
- *   run_feature_bit_reading_() ← (this file) — publishes each ERD via adapter
+ *   run_device_id_generation_() (Phase 3) → start_feature_bit_reading_()
+ *                              → [Phase 4] initialize_mqtt_client_()
+ *   run_feature_bit_reading_() ← (this file) — Phase 5, publishes each ERD via adapter
  *                              → parse_and_log_feature_bits_() ← (this file)
  *                              → bridge_init_state_ = WAITING_FOR_MQTT
  */
@@ -154,7 +154,7 @@ void GeappliancesBridge::process_feature_bit_erd_response_(
   }
 
   // Publish the raw ERD value over MQTT immediately using the adapter
-  // (initialized in Phase 2.5).  The valid-ERD filter has not been applied
+  // (initialized in Phase 4).  The valid-ERD filter has not been applied
   // yet, so all feature bit ERDs publish freely to {device_id}/erd/0xXXXX/value.
   if (this->mqtt_client_adapter_initialized_ && copy_size > 0) {
     this->mqtt_client_adapter_.interface.api->update_erd(

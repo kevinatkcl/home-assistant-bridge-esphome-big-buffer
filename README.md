@@ -25,7 +25,7 @@ esp32:
 
 # External component configuration
 external_components:
-  - source: github://joshualongenecker/home-assistant-bridge
+  - source: github://joshualongenecker/home-assistant-bridge-esphome
     components: [ geappliances_bridge ]
 
 # MQTT configuration for Home Assistant
@@ -60,6 +60,8 @@ geappliances_bridge:
   # mode: auto                    # Default: auto   Options: auto, subscribe, poll
   # polling_interval: 10000       # Default: 10000 ms (10 seconds), used when in polling mode
   # polling_onlypublish_onchange: false  # Default: false, only publish if value changed
+  # appliance_api_parsing: true   # Default: true, restricts polling to appliance-supported ERDs
+  # generate_device_config: false # Default: false, set to true to enable automatic HA MQTT discovery
 ```
 
 ## Configurable Parameters
@@ -97,6 +99,16 @@ The appliance type names are loaded from the [GE Appliances Public API Documenta
 Generated device ID example: `Dishwasher_ZL4200ABC_12345678` (for appliance type 6 - Dishwasher)
 
 See [doc/example.yaml](doc/example.yaml) for the complete configuration example.
+
+### Appliance API Parsing
+
+The `appliance_api_parsing` parameter is **optional** (default: `true`). When enabled, the component reads appliance API feature bit ERDs (0x0092–0x010D) after discovery to determine which ERDs are actually supported by the connected appliance. In polling mode this restricts polling to only those ERDs, resulting in faster poll cycles and a cleaner MQTT topic namespace. Set to `false` to poll all known ERDs regardless of appliance support.
+
+### Home Assistant Auto-Discovery
+
+The `generate_device_config` parameter is **optional** (default: `false`). When set to `true`, the component automatically publishes [Home Assistant MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) payloads after the appliance's ERD list is fully enumerated. This causes sensors, switches, selects, and other entities to appear in Home Assistant automatically — no manual YAML configuration required.
+
+The entity definitions are downloaded at runtime from compact JSONL files hosted in this repository, so no extra flash space is consumed. Only entities for ERDs actually supported by the connected appliance are published.
 
 ## Development
 

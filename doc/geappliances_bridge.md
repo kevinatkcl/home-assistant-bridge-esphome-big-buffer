@@ -75,14 +75,17 @@ GeappliancesBridge (ESPHome Component)
 │       └── Subscribe: GEA2 raw packet receive   →  handle_gea2_raw_packet_()
 │
 └── loop()  (called every ESPHome tick, non-blocking)
-    ├── tiny_timer_group_run()        ← advances all tiny timers
-    ├── tiny_gea3_interface_run()     ← processes UART RX/TX bytes
-    ├── tiny_gea2_interface_run()     ← (if GEA2)
-    ├── run_autodiscovery_()          ← discovery state machine
-    ├── initialize_mqtt_bridge_()     ← one-shot, when device ID + MQTT ready
-    ├── check_subscription_activity_() ← auto-mode watchdog
-    └── device ID ERD read retries    ← queues next ERD read when state != IDLE
+    ├── Phase 1: run_protocol_stack_()          ← drives UART RX/TX bytes
+    ├── Phase 2: run_autodiscovery_()           ← discovery state machine
+    ├── Phase 3: run_device_id_generation_()    ← reads appliance type/model/serial
+    ├── Phase 4: initialize_mqtt_client_()      ← one-shot when device ID ready
+    ├── Phase 5: run_feature_bit_reading_()     ← reads appliance API feature ERDs
+    ├── Phase 6: initialize_mqtt_bridge_()      ← one-shot when feature bits + MQTT ready
+    ├── Phase 7: check_subscription_activity_() ← auto-mode watchdog
+    └── Phase 8: run_ha_discovery_()            ← deferred HA entity publish
 ```
+
+**Note on FreeRTOS tasks**: When `generate_device_config: true`, Phase 8 spawns a background FreeRTOS task (`ha_fetch`) at priority 1 to download JSONL entity definitions over HTTPS. All other phases run exclusively in ESPHome's cooperative `loop()` with no RTOS tasks or interrupts.
 
 The three library layers under the bridge:
 
@@ -105,7 +108,8 @@ The three library layers under the bridge:
 | `polling_interval` | `set_polling_interval()` | `10000` ms | ERD poll period |
 | `polling_onlypublish_onchange` | `set_polling_only_publish_on_change()` | `false` | When `true`, only publish ERD values to MQTT when the value changes (suppress duplicate publishes) |
 | `appliance_api_parsing` | `set_appliance_api_parsing()` | `true` | When `true`, reads appliance API feature-bit ERDs (0x0092–0x010D) and restricts polling to only ERDs advertised by the appliance |
-| `generate_device_config` | `set_generate_device_config()` | `false` | When `true`, generates and publishes a device configuration file to MQTT after initialization |
+| `generate_device_config` | `set_generate_device_config()` | `false` | When `true`, fetches JSONL entity definitions at runtime and publishes Home Assistant MQTT Discovery payloads after ERD enumeration completes |
+| `ha_discovery_base_url` | `set_ha_discovery_base_url()` | GitHub raw URL to `ha_discovery/` | Base URL for the per-category JSONL entity definition files. Override to target a different branch, tag, or local server |
 
 The discovered appliance's address becomes `host_address_` and is used for all subsequent ERD reads/writes.
 
@@ -120,27 +124,59 @@ Power-on / ESPHome boot
 setup() ──► Hardware init (UART adapters, GEA interfaces, ERD clients, subscriptions)
        │
        ▼
-loop() begins polling
+loop() begins — Phase 1: run_protocol_stack_() always active
        │
-       ├── (if device_id configured) ─► DEVICE_ID_STATE_COMPLETE
-       │                                bridge_init_state_ = WAITING_FOR_MQTT
+       ▼
+Phase 2: run_autodiscovery_()
+       │
+       ├── AUTODISCOVERY_WAITING_FOR_MQTT
+       │          │  (MQTT connects → on_mqtt_connected_())
+       │          ▼
+       │   AUTODISCOVERY_WAITING_5S  ← 5-second stabilization delay
+       │          │  (5 s elapsed)
+       │          ▼
+       │   GEA3_BROADCAST_PENDING/WAITING (then GEA2 if GEA3 fails)
+       │          │  (appliance responds)
+       │          ▼
+       │   AUTODISCOVERY_COMPLETE — host_address_ and active_erd_client_ set
+       │
+       ▼
+Phase 3: run_device_id_generation_()
+       │
+       ├── (device_id configured) ─► final_device_id_ = configured value
+       │                              DEVICE_ID_STATE_COMPLETE
        │
        └── (no device_id)
-              │
-              ▼
-        AUTODISCOVERY_WAITING_FOR_MQTT
-              │
-              ▼ (MQTT connects)
-          AUTODISCOVERY_WAITING_5S  ← 5-second stabilization delay
-                  │
-                  ▼ (5 s elapsed)
-        Autodiscovery begins
-              │
-              ▼
-        Device ID generation
-              │
-              ▼
-        initialize_mqtt_bridge_()
+              ├── Read ERD 0x0008 → appliance type name
+              ├── Read ERD 0x0001 → model number
+              ├── Read ERD 0x0002 → serial number
+              └── DEVICE_ID_STATE_COMPLETE
+       │
+       ▼
+Phase 4: initialize_mqtt_client_()  (one-shot, runs when DEVICE_ID_STATE_COMPLETE)
+       │
+       ├── esphome_mqtt_client_adapter_init() with final_device_id_
+       ├── Wire up ha_registered_erds_ callback
+       └── Configure string-ERD filter
+       │
+       ▼
+Phase 5: run_feature_bit_reading_()
+       │
+       ├── Read ERD 0x0092 (common features)
+       ├── Read ERDs 0x0093–0x0097 (appliance API groups 0–4)
+       ├── Read ERDs 0x0109–0x010D (appliance API groups 5–9)
+       ├── Each value published over MQTT immediately
+       └── parse_and_log_feature_bits_() → builds appliance_api_valid_erds_
+              → bridge_init_state_ = WAITING_FOR_MQTT
+       │
+       ▼
+Phase 6: initialize_mqtt_bridge_()  (one-shot, when BRIDGE_INIT_STATE_WAITING_FOR_MQTT + MQTT ready)
+       │
+       └── See §8 and §9 for details
+       │
+       ▼
+Phase 7: check_subscription_activity_()  (AUTO mode watchdog)
+Phase 8: run_ha_discovery_()             (deferred, when generate_device_config: true)
 ```
 
 The 5-second delay (`STARTUP_DELAY_MS = 5000`) allows the appliance buses to fully initialize and the MQTT broker to stabilize before sending any bus traffic.
@@ -149,109 +185,95 @@ The 5-second delay (`STARTUP_DELAY_MS = 5000`) allows the appliance buses to ful
 
 ## 6. Autodiscovery State Machine
 
-Discovery is a two-phase protocol. The full state machine is:
+The full state machine is:
 
 ```
 AUTODISCOVERY_WAITING_FOR_MQTT
-        │  (MQTT connect event)
+        │  (MQTT connect event → on_mqtt_connected_())
         ▼
 AUTODISCOVERY_WAITING_5S
         │  (5 s elapsed)
         ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│  GEA3 PATH                                                           │
+│  GEA3 PATH (when gea3_uart_id configured)                            │
 │                                                                      │
-│  GEA3_PING_PENDING ──────► GEA3_PING_WAITING                        │
-│  (reset counters,          (send Cmd=0x01 broadcast 5× at 2s         │
-│   send first ping)          intervals; collect all responders        │
-│                             via raw packet subscription;             │
-│                             5 s window)                              │
-│           │ no boards ◄────────────────────────────┘                │
-│           │ (retry GEA3 or try GEA2)                                │
-│           │ boards found                                             │
-│           ▼                                                          │
-│  GEA3_ERD_CHECK_PENDING ──► GEA3_ERD_CHECK_WAITING                  │
-│  (for each board in         (unicast ERD 0x0008 read;                │
-│   response list,            3 s timeout; advance on                  │
-│   queue unicast read)       read_completed / read_failed only)       │
-│           │ all boards checked                                       │
-│           │ ≥1 appliance found → AUTODISCOVERY_COMPLETE             │
-│           │ 0 appliances found → retry GEA3 or try GEA2            │
+│  GEA3_BROADCAST_PENDING                                              │
+│  (queue ERD 0x0008 read to 0xFF; retry until queued)                │
+│          │ queued                                                    │
+│          ▼                                                           │
+│  GEA3_BROADCAST_WAITING                                              │
+│  (wait 5 s for any ERD response from the bus)                        │
+│          │ response received → gea3_board_discovered_ = true        │
+│          │ 5 s window expires                                        │
+│          │                                                           │
+│          ├── board found  → AUTODISCOVERY_COMPLETE                  │
+│          ├── no board + GEA2 configured → GEA2_BROADCAST_PENDING    │
+│          └── no board + GEA3 only      → GEA3_BROADCAST_PENDING     │
+│                                          (retry)                    │
 └──────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────┐
-│  GEA2 PATH (mirror of GEA3 path; triggered when GEA3 finds nothing) │
+│  GEA2 PATH (when gea2_uart_id configured; entered if GEA3 fails)    │
 │                                                                      │
-│  GEA2_PING_PENDING ──────► GEA2_PING_WAITING                        │
-│  (send ERD 0x0008 broadcast  (collect all responders;                │
-│   — GEA2 has no Cmd=0x01)    5 s window)                            │
-│           │                                                          │
-│           ▼                                                          │
-│  GEA2_ERD_CHECK_PENDING ──► GEA2_ERD_CHECK_WAITING                  │
-│           │ all boards checked                                       │
-│           │ ≥1 appliance found → AUTODISCOVERY_COMPLETE             │
-│           │ 0 appliances found → retry GEA2 or restart GEA3        │
+│  GEA2_BROADCAST_PENDING                                              │
+│  (queue ERD 0x0008 read to 0xFF via GEA2 ERD client)                │
+│          │ queued                                                    │
+│          ▼                                                           │
+│  GEA2_BROADCAST_WAITING                                              │
+│  (wait 5 s for any ERD response from the GEA2 bus)                  │
+│          │ response received → gea2_board_discovered_ = true        │
+│          │ 5 s window expires                                        │
+│          │                                                           │
+│          ├── board found  → AUTODISCOVERY_COMPLETE                  │
+│          ├── no board + GEA3 configured → GEA3_BROADCAST_PENDING    │
+│          └── no board + GEA2 only      → GEA2_BROADCAST_PENDING     │
+│                                          (retry)                    │
 └──────────────────────────────────────────────────────────────────────┘
 
-AUTODISCOVERY_COMPLETE → start_device_id_generation_()
+AUTODISCOVERY_COMPLETE → host_address_ set, active_erd_client_ selected
+                       → start_device_id_generation_()
 ```
 
-### Phase 1 — Ping
+### Broadcast mechanism
 
-| Parameter | GEA3 | GEA2 |
-|-----------|------|------|
-| Message sent | Raw `Src=0xE4, Dst=0xFF, Cmd=0x01` (no data) | ERD `0x0008` read to `Dst=0xFF` via ERD client |
-| Repetitions | 5× at 2-second intervals | 5× at 2-second intervals |
-| Window | 5 seconds | 5 seconds |
-| Collection method | Raw packet subscription (`handle_gea3_raw_packet_`) | Raw packet subscription (`handle_gea2_raw_packet_`) |
-| Result | `gea3_board_response_list_[]` + `gea3_board_response_count_` | `gea2_board_response_list_[]` + `gea2_board_response_count_` |
+Both GEA3 and GEA2 use the same approach: send an ERD `0x0008` (appliance type) read to the broadcast address `0xFF`. The first appliance that responds sets `host_address_` and marks the protocol as discovered. The 5-second window (`AUTODISCOVERY_BROADCAST_WINDOW_MS`) collects the response via the ERD client activity callback (`handle_erd_client_activity_()`). Addresses `0xBE`, `0xBF`, `0xE4` (self), and `0xFF` are excluded from being recorded as valid hosts.
 
-Any board that transmits *any* packet back to `0xE4` during the window is added to the response list (deduplicated). Addresses `0xBE`, `0xBF`, `0xE4` (self), and `0xFF` (broadcast) are excluded.
-
-### Phase 2 — Appliance Verification
-
-For each address in the response list, the bridge:
-
-1. Sends a **unicast** ERD `0x0008` (appliance type) read to that specific address.
-2. Waits in `ERD_CHECK_WAITING` for the ERD client activity event.
-3. **Only** a `read_completed` or `read_failed` event for `ERD_APPLIANCE_TYPE` (0x0008) advances the state machine. All other event types (subscription publications, host-came-online, write completions, etc.) are silently ignored — this prevents a race condition where an out-of-band subscription event prematurely skips the board.
-4. A 3-second per-board safety timeout (`ERD_CHECK_TIMEOUT_MS`) moves the state machine forward if the ERD client does not fire.
-
-Boards that respond are added to `gea3_discovered_addresses_[]` / `gea3_discovered_count_` (or GEA2 equivalents). Boards that fail or time out are skipped.
+Discovery repeats (alternating protocols if both are configured) until at least one appliance is found.
 
 ---
 
 ## 7. Device ID Generation
 
-After autodiscovery (`AUTODISCOVERY_COMPLETE`), a sequential per-board device ID generation loop runs.
+After autodiscovery (`AUTODISCOVERY_COMPLETE`), `start_device_id_generation_()` is called.
 
 ### State machine
 
 ```
 start_device_id_generation_()
         │
-        ▼
-DEVICE_ID_STATE_READING_APPLIANCE_TYPE  (ERD 0x0008)
-        │ read_completed
-        ▼
-DEVICE_ID_STATE_READING_MODEL_NUMBER    (ERD 0x0001, 32-byte string)
-        │ read_completed
-        ▼
-DEVICE_ID_STATE_READING_SERIAL_NUMBER   (ERD 0x0002, 32-byte string)
-        │ read_completed
-        ▼
-  device_id = appliance_type_name + "_" + sanitized_model + "_" + sanitized_serial
-  store board_device_ids_[i] and board_appliance_types_[i]
+        ├── device_id configured? → final_device_id_ = configured value
+        │                           DEVICE_ID_STATE_COMPLETE
+        │                           start_feature_bit_reading_()
         │
-        ├── more boards? → advance device_id_gen_address_ → repeat loop
-        │
-        └── all done → DEVICE_ID_STATE_COMPLETE
-                      → bridge_init_state_ = WAITING_FOR_MQTT
+        └── no device_id
+              │
+              ▼
+        DEVICE_ID_STATE_READING_APPLIANCE_TYPE  (ERD 0x0008)
+              │ read_completed
+              ▼
+        DEVICE_ID_STATE_READING_MODEL_NUMBER    (ERD 0x0001, 32-byte string)
+              │ read_completed
+              ▼
+        DEVICE_ID_STATE_READING_SERIAL_NUMBER   (ERD 0x0002, 32-byte string)
+              │ read_completed
+              ▼
+        final_device_id_ = appliance_type_name + "_" + sanitized_model + "_" + sanitized_serial
+        DEVICE_ID_STATE_COMPLETE → start_feature_bit_reading_()
 ```
 
 ### ERD reads
 
-Each ERD read is issued from `loop()` by calling `try_read_erd_with_retry_()`. If the ERD client queue is full, the call returns `false` and is retried on the next `loop()` iteration (up to `MAX_READ_RETRIES = 1000`). The state variable is set to `DEVICE_ID_STATE_IDLE` while the response is in flight so `loop()` does not re-queue a duplicate request.
+Each ERD read is issued from `loop()` (Phase 3) by calling `try_read_erd_with_retry_()`. If the ERD client queue is full, the call returns `false` and is retried on the next `loop()` iteration (up to `MAX_READ_RETRIES = 1000`). When up to `MAX_DEVICE_ID_RESPONSE_RETRIES = 3` consecutive read failures occur for any single ERD, a fallback value is substituted so device ID generation can always complete.
 
 ### Device ID format
 
@@ -259,9 +281,8 @@ Each ERD read is issued from `loop()` by calling `try_read_erd_with_retry_()`. I
 <ApplianceTypeName>_<ModelNumber>_<SerialNumber>
 ```
 
-- `ApplianceTypeName` is produced by the auto-generated `appliance_type_to_string()` function (defined outside this file).
+- `ApplianceTypeName` is produced by the auto-generated `appliance_type_to_string()` function.
 - Model and serial strings are sanitized: characters `+`, `#`, `/`, `$`, ` ` (space), non-printable bytes, and extended ASCII are replaced with `_`.
-- The **primary board** (matching `gea3_address_preference_`) always gets `final_device_id_` without a suffix.
 - If `device_id` was pre-configured in YAML, generation is skipped entirely and the configured string is used directly.
 
 ---
@@ -276,71 +297,64 @@ Each ERD read is issued from `loop()` by calling `try_read_erd_with_retry_()`. I
 
 ### Auto-mode fallback
 
-In `BRIDGE_MODE_AUTO`, `check_subscription_activity_()` is called every `loop()` while `subscription_mode_active_ == true`. If no `subscription_publication_received` event from `host_address_` has been observed within 30 seconds:
+In `BRIDGE_MODE_AUTO`, `check_subscription_activity_()` (Phase 7) is called every `loop()` while `subscription_mode_active_ == true`. If no `subscription_publication_received` event from `host_address_` has been observed within 30 seconds:
 
-1. All subscription bridges (`mqtt_bridge_t`) are destroyed via `mqtt_bridge_destroy()`.
-2. Polling bridges (`mqtt_bridge_polling_t`) are initialized in their place for every board.
+1. The subscription bridge (`mqtt_bridge_t`) is destroyed via `mqtt_bridge_destroy()`.
+2. A polling bridge (`mqtt_bridge_polling_t`) is initialized in its place.
 3. `subscription_mode_active_` is set to `false` so the watchdog no longer runs.
 
 ---
 
-## 9. Per-Board Bridge Initialization
+## 9. Bridge Initialization
 
-`initialize_mqtt_bridge_()` is called once when both conditions are true:
+`initialize_mqtt_bridge_()` (Phase 6) is called once when all three conditions are true:
 
 - `bridge_init_state_ == BRIDGE_INIT_STATE_WAITING_FOR_MQTT`
+- `autodiscovery_state_ == AUTODISCOVERY_COMPLETE`
 - MQTT client is connected
 
-It iterates `discovered_count` boards (from `gea3_discovered_addresses_[]` or `gea2_discovered_addresses_[]`) and for each board:
+It initializes a single MQTT bridge for the discovered appliance:
 
-1. **Allocates** one `esphome_mqtt_client_adapter_t`, one `mqtt_bridge_t` (or `mqtt_bridge_polling_t`) from the pre-allocated arrays in the class.
-2. **Calls** `esphome_mqtt_client_adapter_init()` with the board's unique device ID string — this is the MQTT topic root.
+1. **Applies the valid-ERD filter** (from feature bit parsing) to `mqtt_client_adapter_` when `appliance_api_parsing_` is enabled.
+2. **Selects operating mode**: GEA2 always uses polling; otherwise the configured `mode_` is used (`POLL`, `SUBSCRIBE`, or `AUTO`).
 3. **Calls** `mqtt_bridge_init()` (subscription) or `mqtt_bridge_polling_init()` (polling) with:
    - The shared `tiny_timer_group_t`
-   - The shared `tiny_gea3_erd_client_t`
-   - The per-board `mqtt_client_adapter`
-   - `board_address` — the board's GEA3/GEA2 address
-   - `board_appliance_types_[i]` — passed to polling mode to select the correct ERD polling list
-
-`bridge_count_` tracks the number of initialized bridges so `on_mqtt_connected_()` and `notify_mqtt_disconnected_()` can iterate all of them.
+   - The `active_erd_client_` selected during autodiscovery
+   - The initialized `mqtt_client_adapter_`
+   - `host_address_` — the discovered appliance address
+4. **Custom ERD polling**: if `custom_erds_vec_` is non-empty and the primary bridge is in subscription mode, a separate `custom_erd_bridge_` (`mqtt_bridge_polling_t`) is initialized later (after the subscription quiet window) to poll user-configured additional ERDs.
+5. **Defers HA discovery**: sets `ha_discovery_pending_ = true` when `generate_device_config_` is enabled.
 
 ---
 
 ## 10. Event Handlers
 
-### `handle_gea3_raw_packet_(packet)`
+### `handle_gea3_raw_packet_(packet)` / `handle_gea2_raw_packet_(packet)`
 
-Called for every packet received on the GEA3 bus.
+Called for every raw packet received on the respective bus.
 
-- **During `AUTODISCOVERY_GEA3_PING_WAITING`**: logs the raw packet (DEBUG level), then adds `packet->source` to `gea3_board_response_list_[]` if not already present. Excluded: self (`0xE4`), broadcast (`0xFF`), `0xBE`, `0xBF`.
+- **During `AUTODISCOVERY_GEA3_BROADCAST_WAITING` / `AUTODISCOVERY_GEA2_BROADCAST_WAITING`**: ignored — the broadcast response arrives via the ERD client callback, not the raw packet handler.
 - **All other states**: returns immediately (no-op).
-
-### `handle_gea2_raw_packet_(packet)`
-
-Mirror of the GEA3 handler but operates during `AUTODISCOVERY_GEA2_PING_WAITING` and writes to `gea2_board_response_list_[]`.
 
 ### `handle_erd_client_activity_(args)`
 
-Called for every GEA3 ERD client event (read, write, subscribe completions; subscription publications; host-came-online).
+Called for every ERD client event (read, write, subscribe completions; subscription publications; host-came-online). A single handler services both GEA3 and GEA2 via the `gea2_erd_client_adapter_`.
 
-Three independent responsibilities:
+Key responsibilities:
 
 | State / condition | Action |
 |-------------------|--------|
-| `BRIDGE_MODE_AUTO` + `subscription_mode_active_` + event is `subscription_publication_received` from `host_address_` | Sets `subscription_activity_detected_ = true` (suppresses auto-mode fallback to polling) |
-| `AUTODISCOVERY_GEA3_PING_WAITING` | Returns immediately (raw packet handler handles discovery) |
-| `AUTODISCOVERY_GEA3_ERD_CHECK_WAITING` | If `read_completed` for `ERD_APPLIANCE_TYPE`: adds board to confirmed appliance list; if `read_failed` for `ERD_APPLIANCE_TYPE`: logs skip. Advances `gea3_board_check_index_` and returns to `ERD_CHECK_PENDING`. All other event types: `return` (no advance). |
-| `!mqtt_bridge_initialized_` + address matches `device_id_gen_address_` | Drives device ID generation state machine (reads appliance type → model → serial) |
-
-### `handle_gea2_erd_client_activity_(args)`
-
-Mirror of the GEA3 activity handler for GEA2 events. Additionally handles GEA2-path device ID reads when `use_gea2_for_device_id_ == true`.
+| `AUTODISCOVERY_GEA3_BROADCAST_WAITING` + `read_completed` for `ERD_APPLIANCE_TYPE` | Sets `host_address_` and `gea3_board_discovered_ = true` |
+| `AUTODISCOVERY_GEA2_BROADCAST_WAITING` + `read_completed` for `ERD_APPLIANCE_TYPE` | Sets `host_address_` and `gea2_board_discovered_ = true` |
+| `DEVICE_ID_STATE_READING_*` | Drives device ID generation (appliance type → model → serial); calls `process_device_id_erd_response_()` or `handle_device_id_read_failure_()` |
+| `FEATURE_BIT_STATE_IN_FLIGHT` | Drives feature bit reading; calls `process_feature_bit_erd_response_()` or `skip_to_next_feature_erd_()` |
+| `BRIDGE_MODE_AUTO` + `subscription_mode_active_` + `subscription_publication_received` from `host_address_` | Sets `subscription_activity_detected_ = true` (suppresses auto-mode fallback to polling) |
 
 ---
 
 ## 11. Auto-Mode Subscription Watchdog
 
-`check_subscription_activity_()` runs in `loop()` only when `mode_ == BRIDGE_MODE_AUTO && subscription_mode_active_`.
+`check_subscription_activity_()` (Phase 7) runs in `loop()` only when `mode_ == BRIDGE_MODE_AUTO && subscription_mode_active_`.
 
 ```
 elapsed = millis() - subscription_start_time_
@@ -349,9 +363,8 @@ if subscription_activity_detected_:
     return  (subscription is healthy, do nothing)
 
 if elapsed >= 30000 ms:
-    for each bridge i in [0 .. bridge_count_):
-        mqtt_bridge_destroy(&mqtt_bridges_[i])
-        mqtt_bridge_polling_init(&mqtt_bridge_pollings_[i], ..., board_address, appliance_type)
+    mqtt_bridge_destroy(&mqtt_bridge_)
+    mqtt_bridge_polling_init(&mqtt_bridge_polling_, ..., host_address_, appliance_type_)
     subscription_mode_active_ = false
     log WARNING: "switched to polling mode"
 ```
@@ -366,33 +379,37 @@ The 30-second timeout uses unsigned 32-bit subtraction, so it wraps correctly wh
 Appliance Bus (UART)
         │
         ▼
-esphome_uart_adapter  ◄──────────────────────────────────────────►  tiny_gea3_interface
+esphome_uart_adapter  ◄──────────────────────────────────────────►  tiny_gea3_interface (or gea2)
         │                                                                    │
-        │                                                           tiny_gea3_erd_client
+        │                                                    tiny_gea3_erd_client (or gea2 adapter)
         │                                                                    │
-        │  raw packet subscription                     ERD client activity subscription
-        ▼                                                                    ▼
-handle_gea3_raw_packet_()                              handle_erd_client_activity_()
+        │                                              ERD client activity subscription
+        │                                                                    ▼
+        │                                               handle_erd_client_activity_()
         │                                                                    │
-        │  (Phase 1: collect board addresses)           (Phase 2: confirm appliances)
-        │                                               (Device ID: read ERDs per board)
-        ▼                                                                    ▼
-gea3_board_response_list_[]                            gea3_discovered_addresses_[]
-                                                       board_device_ids_[]
-                                                                            │
-                                                                            ▼
-                                                               initialize_mqtt_bridge_()
-                                                                            │
-                                               ┌────────────────────────────┴──────────────────────────────┐
-                                               │  Board 0                                    Board N        │
-                                               │  mqtt_client_adapters_[0]   …   mqtt_client_adapters_[N]  │
-                                               │  mqtt_bridges_[0] or              mqtt_bridges_[N] or     │
-                                               │  mqtt_bridge_pollings_[0]         mqtt_bridge_pollings_[N] │
-                                               └───────────────────────────────────────────────────────────┘
-                                                                            │
-                                                                            ▼
-                                                                     MQTT Broker
-                                                                  (Home Assistant, etc.)
+        │                        ┌──────────────────────────────────────────┤
+        │                        │                                          │
+        │              Phase 2: Autodiscovery                    Phase 3–5: Device ID +
+        │              host_address_ discovered                  feature bits read
+        │                        │                                          │
+        │                        └──────────────────┬───────────────────────┘
+        │                                           │
+        │                                           ▼
+        │                                 Phase 6: initialize_mqtt_bridge_()
+        │                                           │
+        │                              ┌────────────┴────────────┐
+        │                              │                         │
+        │                    mqtt_bridge_ (subscribe)  mqtt_bridge_polling_ (poll)
+        │                    or both if custom ERDs    custom_erd_bridge_ (custom ERDs)
+        │                              │                         │
+        │                              └────────────┬────────────┘
+        │                                           │
+        │                              esphome_mqtt_client_adapter_
+        │                              (device ID = MQTT topic root)
+        │                                           │
+        ▼                                           ▼
+                                            MQTT Broker
+                                        (Home Assistant, etc.)
 ```
 
 ---
@@ -401,19 +418,18 @@ gea3_board_response_list_[]                            gea3_discovered_addresses
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `MAX_BOARDS` | `8` | Maximum boards tracked per discovery cycle |
 | `STARTUP_DELAY_MS` | `5,000 ms` | Delay after MQTT connect before discovery starts |
-| `AUTODISCOVERY_BROADCAST_WINDOW_MS` | `5,000 ms` | Duration of Phase 1 ping window |
-| `AUTODISCOVERY_POLL_COUNT` | `5` | Number of pings sent during Phase 1 |
-| `AUTODISCOVERY_REPEAT_INTERVAL_MS` | `2,000 ms` | Interval between pings |
-| `ERD_CHECK_TIMEOUT_MS` | `3,000 ms` | Per-board Phase 2 safety timeout |
+| `AUTODISCOVERY_BROADCAST_WINDOW_MS` | `5,000 ms` | Duration of each broadcast listen window |
 | `SUBSCRIPTION_TIMEOUT_MS` | `30,000 ms` | Auto-mode: time before falling back to polling |
-| `MAX_READ_RETRIES` | `1,000` | ERD read retries before giving up |
+| `MAX_READ_RETRIES` | `1,000` | ERD queue-full retries before giving up |
+| `MAX_DEVICE_ID_RESPONSE_RETRIES` | `3` | Consecutive read failures before substituting fallback for a device-ID ERD |
 | `LOG_EVERY_N_RETRIES` | `50` | Log retry warnings every N attempts |
+| `HA_DISCOVERY_QUIET_MS` | `10,000 ms` | Subscription-mode: quiet window after last new ERD seen before publishing HA discovery |
+| `HA_ENTITY_PUBLISH_INTERVAL_MS` | `50 ms` | Minimum interval between successive HA entity publishes |
 | GEA3 ERD client request timeout | `250 ms` | Per-request timeout |
 | GEA3 ERD client retries | `10` | Retries per request |
 | GEA2 ERD client request timeout | `250 ms` | Per-request timeout |
-| GEA2 ERD client retries | `3` | Retries per request |
+| GEA2 ERD client retries | `0` | No automatic retries at the ERD client layer — bridge-level retries space requests ~500 ms apart, preventing half-duplex collision with queued retry copies |
 
 ---
 
@@ -428,9 +444,9 @@ gea3_board_response_list_[]                            gea3_discovered_addresses
 | `0xBE` | Known non-appliance device (e.g., gateway/controller) |
 | `0xBF` | Known non-appliance device |
 
-### GEA3-only multi-board MQTT bridging
+### Single-board bridging
 
-The per-board `mqtt_bridge_t` and `mqtt_bridge_polling_t` are driven by the **GEA3** ERD client only. GEA2 can discover boards and generate device IDs, but the resulting MQTT bridges still use the GEA3 ERD client for polling/subscription requests in the initialized bridges. Full GEA2 multi-board bridging is not yet implemented.
+The current implementation bridges one appliance at a time — the first board that responds during autodiscovery. Internal data structures (`mqtt_bridge_t`, `mqtt_bridge_polling_t`, `mqtt_client_adapter_`) are single instances, not arrays. Multi-appliance support is listed as a future goal in GOALS.md.
 
 ### No unsubscribe mechanism
 

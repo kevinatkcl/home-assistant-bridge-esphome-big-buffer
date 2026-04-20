@@ -132,10 +132,31 @@ The bridge follows a unified startup sequence regardless of configuration. All c
         └──────────────────────┬──────────────────────┘
                                ↓
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Phase 5: Bridge Initialization                                      │
+│ Phase 5: MQTT Client Initialization                                 │
+│                                                                      │
+│ initialize_mqtt_client_() called (one-shot):                        │
+│ • Binds MQTT adapter to final_device_id_                            │
+│ • Sets up ha_registered_erds_ tracking callback                     │
+│ • Configures string-ERD filter                                      │
+└─────────────────────────────────────────────────────────────────────┘
+                               ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Phase 6: Appliance API Feature Bit Reading                          │
+│                                                                      │
+│ run_feature_bit_reading_() reads ERDs from appliance:               │
+│ • ERD 0x0092 — common API feature bits                              │
+│ • ERDs 0x0093–0x0097 — appliance API groups 0–4                     │
+│ • ERDs 0x0109–0x010D — appliance API groups 5–9                     │
+│ Each value is published to MQTT immediately as it is read.          │
+│ When complete: builds filtered ERD list for polling mode            │
+│   → bridge_init_state = WAITING_FOR_MQTT                            │
+└─────────────────────────────────────────────────────────────────────┘
+                               ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Phase 7: Bridge Initialization                                      │
 │                                                                      │
 │ Conditions checked in loop():                                       │
-│ • device_id_state == COMPLETE                                       │
+│ • bridge_init_state == WAITING_FOR_MQTT                             │
 │ • autodiscovery_state == COMPLETE                                   │
 │ • MQTT is connected                                                 │
 └─────────────────────────────────────────────────────────────────────┘
@@ -177,7 +198,7 @@ The bridge follows a unified startup sequence regardless of configuration. All c
                 └──────────────────────────────┘
                                ↓
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Phase 6: Normal Operation                                           │
+│ Phase 8: Normal Operation                                           │
 │                                                                      │
 │ loop() continuously runs:                                           │
 │ • tiny_timer_group_run()                                            │
@@ -213,22 +234,23 @@ The bridge behavior adapts based on YAML configuration:
 
 ## Timing Estimates
 
-| Configuration | Protocol Detection | Device ID | Total Time |
-|---------------|-------------------|-----------|------------|
-| GEA3 + Auto ID | ~5s (GEA3 found) | ~5-15s (3 ERD reads) | ~15-25s |
-| GEA2 + Auto ID | ~5s (GEA2 found) | ~5-15s (3 ERD reads) | ~15-25s |
-| GEA3 + Fixed ID | ~5s (GEA3 found) | 0s (configured) | ~10s |
-| GEA2 + Fixed ID | ~5s (GEA2 found) | 0s (configured) | ~10s |
-| Both + Auto ID (GEA3) | ~5s (GEA3 found) | ~5-15s | ~15-25s |
-| Both + Auto ID (GEA2) | ~10s (GEA3 fails, GEA2 found) | ~5-15s | ~20-30s |
-| Both + Fixed ID (GEA3) | ~5s (GEA3 found) | 0s | ~10s |
-| Both + Fixed ID (GEA2) | ~10s (GEA3 fails, GEA2 found) | 0s | ~15s |
+| Configuration | Protocol Detection | Device ID | Feature Bits | Total Time |
+|---------------|-------------------|-----------|--------------|------------|
+| GEA3 + Auto ID | ~5s (GEA3 found) | ~5-15s (3 ERD reads) | ~5-15s (11 ERD reads) | ~20-40s |
+| GEA2 + Auto ID | ~5s (GEA2 found) | ~5-15s (3 ERD reads) | ~5-15s (11 ERD reads) | ~20-40s |
+| GEA3 + Fixed ID | ~5s (GEA3 found) | 0s (configured) | ~5-15s (11 ERD reads) | ~15-25s |
+| GEA2 + Fixed ID | ~5s (GEA2 found) | 0s (configured) | ~5-15s (11 ERD reads) | ~15-25s |
+| Both + Auto ID (GEA3) | ~5s (GEA3 found) | ~5-15s | ~5-15s | ~20-40s |
+| Both + Auto ID (GEA2) | ~10s (GEA3 fails, GEA2 found) | ~5-15s | ~5-15s | ~25-45s |
+| Both + Fixed ID (GEA3) | ~5s (GEA3 found) | 0s | ~5-15s | ~15-25s |
+| Both + Fixed ID (GEA2) | ~10s (GEA3 fails, GEA2 found) | 0s | ~5-15s | ~20-30s |
 
 **Breakdown:**
 - MQTT connection: Variable (depends on network)
 - Initial delay: 5 seconds (STARTUP_DELAY_MS)
 - Protocol broadcast: 5 seconds per protocol (AUTODISCOVERY_BROADCAST_WINDOW_MS)
 - Device ID generation: 5-15 seconds for 3 ERD reads (if needed)
+- Feature bit reading: 5-15 seconds for up to 11 ERD reads (ERDs not supported by the appliance fail quickly)
 - Bridge initialization: <1 second
 
 ---

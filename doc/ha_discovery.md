@@ -26,7 +26,7 @@
 
 When the GE Appliances Bridge connects to an appliance and fully enumerates its supported ERDs (Entity Reference Designators), it automatically publishes [Home Assistant MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) payloads so that entities (sensors, switches, selects, numbers, binary sensors, buttons) appear in HA without any manual YAML configuration.
 
-The feature is controlled by the YAML option `generate_device_config` (default: `true`). It is only compiled for ESP-IDF targets because it requires `esp_http_client`, `cJSON`, and FreeRTOS.
+The feature is controlled by the YAML option `generate_device_config` (default: `false`). It is only compiled for ESP-IDF targets because it requires `esp_http_client`, `cJSON`, and FreeRTOS.
 
 ---
 
@@ -276,12 +276,12 @@ Reserved/padding fields are skipped. Each sub-field entity gets a `field_id` (`f
 
 | YAML key | Default | Description |
 |----------|---------|-------------|
-| `generate_device_config` | `true` | Enable HA discovery. When `false`, no JSONL fetch occurs and no discovery payloads are published. |
-| `ha_discovery_base_url` | `https://raw.githubusercontent.com/joshualongenecker/home-assistant-bridge-esphome/<branch>/ha_discovery` | Base URL for JSONL category files. The default points to the current development branch while this feature is in development; it will be updated to `main` once the PR is merged. Override to point at a local server or a different branch/tag. |
+| `generate_device_config` | `false` | Enable HA discovery. When `true`, JSONL files are fetched at runtime and discovery payloads are published after ERD enumeration settles. |
+| `ha_discovery_base_url` | `https://raw.githubusercontent.com/joshualongenecker/home-assistant-bridge-esphome/main/ha_discovery` | Base URL for JSONL category files. Override to point at a local server or a specific branch/tag for testing. |
 
-> **Note**: Until this PR is merged into `main`, the default `ha_discovery_base_url` points to the `copilot/implement-goal-2-autodiscovery` branch. After merge, update the default in `__init__.py` and `geappliances_bridge.h` to point to `main`.
+> **Note**: The default `ha_discovery_base_url` in `__init__.py` currently points to the `copilot/implement-goal-2-autodiscovery` branch. Update it to `main` once that branch is merged.
 
-Example override (use after merge to main):
+Example override:
 
 ```yaml
 geappliances_bridge:
@@ -328,6 +328,6 @@ The original implementation built a single JSON string containing all entity con
 ## 13. Known Limitations
 
 - **ESP-IDF only**: The entire HA discovery feature is wrapped in `#ifdef USE_ESP_IDF`. On Arduino targets, `generate_device_config` has no effect.
-- **Branch-specific URL**: The default `ha_discovery_base_url` points to the development branch, not `main`. Update before merging to production.
+- **Pending branch merge**: The default `ha_discovery_base_url` in `__init__.py` still points to the development branch. Update to `main` before production use, or override `ha_discovery_base_url` in YAML.
 - **One-shot**: Discovery is published once when `publish_ha_discovery_()` fires. If the appliance reconnects and registers different ERDs, discovery is not re-published (the `ha_discovery_published_` guard prevents re-entry). This is intentional to avoid spamming HA on reconnects but may miss dynamic ERD changes.
 - **No entity removal**: Retained MQTT discovery messages persist in HA until explicitly deleted. If the set of registered ERDs shrinks (e.g., after a firmware update on the appliance), stale entities remain in HA.
