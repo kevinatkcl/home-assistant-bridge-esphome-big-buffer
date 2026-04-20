@@ -61,12 +61,21 @@ class GeappliancesBridge : public Component {
   void on_mqtt_connected_();
   void notify_mqtt_disconnected_();
   void handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args);
+  void initialize_mqtt_client_();
   void initialize_mqtt_bridge_();
+  void start_custom_erd_polling_();
   void publish_ha_discovery_();
   void publish_next_ha_discovery_entity_();
   void configure_polling_optional_lists_();
   void check_subscription_activity_();
-  void run_autodiscovery_();
+  // ── Per-phase run_*() methods called from loop() ─────────────────────────
+  void run_protocol_stack_();       // Phase 0: drive GEA2/GEA3 hardware
+  void run_autodiscovery_();        // Phase 1: find appliance on bus
+  void run_feature_bit_reading_();  // Phase 2: read appliance API feature bits
+  void run_device_id_generation_(); // Phase 3: assemble device ID from ERDs
+  void run_ha_discovery_();         // Phase 6: publish HA entity configs
+  void log_poll_state_transitions_(); // Debug: log polling HSM state changes
+
   void start_feature_bit_reading_();
   void start_device_id_generation_();
   void process_device_id_erd_response_(tiny_erd_t erd, const uint8_t* data, uint8_t size);
@@ -77,6 +86,7 @@ class GeappliancesBridge : public Component {
   void parse_and_log_feature_bits_();
   std::string bytes_to_string_(const uint8_t* data, size_t size);
   std::string sanitize_for_mqtt_topic_(const std::string& input);
+  void on_ha_discovery_erd_seen_(tiny_erd_t erd);
   bool try_read_erd_with_retry_(tiny_erd_t erd, const char* erd_name);
 
   enum DeviceIdState {
@@ -100,6 +110,12 @@ class GeappliancesBridge : public Component {
   //               the next READING state or to COMPLETE/FAILED.
   enum FeatureBitState {
     FEATURE_BIT_STATE_IDLE,          // Not started yet
+    // Re-read device-info ERDs for MQTT publish (values were already parsed
+    // during Phase 2; re-reading avoids storing raw bytes a second time).
+    FEATURE_BIT_STATE_READING_0008,  // Need to queue read for ERD 0x0008 (appliance type)
+    FEATURE_BIT_STATE_READING_0001,  // Need to queue read for ERD 0x0001 (model number)
+    FEATURE_BIT_STATE_READING_0002,  // Need to queue read for ERD 0x0002 (serial number)
+    // Appliance API feature bit ERDs
     FEATURE_BIT_STATE_READING_0092,  // Need to queue read for ERD 0x0092
     FEATURE_BIT_STATE_READING_0093,  // Need to queue read for ERD 0x0093
     FEATURE_BIT_STATE_READING_0094,  // Need to queue read for ERD 0x0094
@@ -140,6 +156,7 @@ class GeappliancesBridge : public Component {
   uint8_t client_address_{0xE4};
   uint8_t host_address_{0xC0};       // Host address for ERD reads (0xC0 fallback; updated during autodiscovery)
   bool mqtt_was_connected_{false};
+  bool mqtt_client_adapter_initialized_{false};
   bool mqtt_bridge_initialized_{false};
   BridgeMode mode_{BRIDGE_MODE_AUTO};
   uint32_t polling_interval_ms_{10000};
