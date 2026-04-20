@@ -236,6 +236,11 @@ class GeappliancesBridge : public Component {
   // adapter's register_erd callback). Used to filter HA discovery entities so
   // only ERDs actually supported by the connected device are published.
   std::set<tiny_erd_t> ha_registered_erds_;
+  // Immutable snapshot of ha_registered_erds_ taken just before the HA
+  // discovery FreeRTOS task is spawned.  The background task reads ONLY this
+  // copy so it never races with concurrent insert() calls on ha_registered_erds_
+  // from the main loop (e.g. new subscription ERDs arriving during the fetch).
+  std::set<tiny_erd_t> ha_registered_erds_snapshot_;
   // Set of string-type ERD IDs built from ha_discovery_config.h at bridge init.
   // Passed to the MQTT adapter so it can publish ASCII text instead of hex.
   std::set<tiny_erd_t> ha_string_erds_set_;
