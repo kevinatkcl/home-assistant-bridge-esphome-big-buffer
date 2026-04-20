@@ -1,13 +1,13 @@
 {"i":"4008","n":"Mixing valve home state request","d":"binary_sensor","ds":1}
 {"i":"4009","n":"Mixing valve home state","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Mixing valve normal operation', '01': 'Mixing valve full cold', '02': 'Mixing valve cycling to cold', '03': 'Mixing valve cycling to normal position'}.get(value[:2], 'Unknown') }}"}
-{"i":"400a","n":"Mixing valve step offset","d":"sensor","ds":2,"vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
-{"i":"400b","n":"Mixing valve absolute position","d":"sensor","ds":2,"vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
-{"i":"400c","n":"Mixing valve park position","d":"sensor","ds":2,"vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
+{"i":"400a","n":"Mixing valve step offset","d":"sensor","ds":2,"vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
+{"i":"400b","n":"Mixing valve absolute position","d":"sensor","ds":2,"vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
+{"i":"400c","n":"Mixing valve park position","d":"sensor","ds":2,"vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
 {"i":"4020","n":"Water Heater User Mode","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"4023","n":"Vacation Fallback Mode","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
-{"i":"4024","n":"User Setpoint Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"4025","n":"Vacation Setpoint Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"4026","n":"Actual Setpoint Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
+{"i":"4024","n":"User Setpoint Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"4025","n":"Vacation Setpoint Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"4026","n":"Actual Setpoint Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
 {"i":"4028","n":"Timed Mode Hours Remaining","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
 {"i":"402a","n":"Water Heater Mixing Valve Tank Capacity","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"402b","n":"Water Heater Mixing Valve Available Tank Capacities - Normal","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"normal"}
@@ -111,12 +111,12 @@
 {"i":"4058","n":"Heating Issues - Fault_EevPositionError","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 23) & 1 else '00' }}","fi":"fault_eevpositionerror"}
 {"i":"4058","n":"Heating Issues - Failure_SealedSystemLeak","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 8) & 1 else '00' }}","fi":"failure_sealedsystemleak"}
 {"i":"4058","n":"Heating Issues - Fault_SealedSystemLeak","d":"binary_sensor","ds":8,"vt":"{{ '01' if ((value[0:16] | int(base=16)) >> 9) & 1 else '00' }}","fi":"fault_sealedsystemleak"}
-{"i":"405f","n":"T1 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"4060","n":"T2 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"4061","n":"T3a Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"4062","n":"T3b Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"4063","n":"T4 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"4064","n":"T5 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
+{"i":"405f","n":"T1 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"4060","n":"T2 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"4061","n":"T3a Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"4062","n":"T3b Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"4063","n":"T4 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"4064","n":"T5 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
 {"i":"4065","n":"Measured current","d":"sensor","ds":2,"u":"A","dc":"current","sf":10,"vt":"{{ (value | int(base=16)) / 10 | round(1) }}"}
 {"i":"4066","n":"Measured voltage","d":"sensor","ds":2,"u":"V","dc":"voltage","vt":"{{ value | int(base=16) }}"}
 {"i":"4068","n":"Relay status - DLB","d":"binary_sensor","ds":2,"vt":"{{ '01' if ((value[0:4] | int(base=16)) >> 0) & 1 else '00' }}","fi":"dlb"}
@@ -129,11 +129,11 @@
 {"i":"4081","n":"Anode alarm active","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Alarm not active', '01': 'Alarm active'}.get(value[:2], 'Unknown') }}"}
 {"i":"4082","n":"Accessory low battery alarm active","d":"sensor","ds":1,"dc":"battery","vt":"{{ value | int(base=16) }}"}
 {"i":"4083","n":"Accessory leak detected alarm active","d":"binary_sensor","ds":1,"dc":"moisture"}
-{"i":"40b8","n":"Groundwater Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"40b9","n":"T7 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"40ba","n":"MC CPU Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"40bb","n":"MC Circuit Board Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
-{"i":"40bc","n":"MC Power Connector Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ ((value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16))) / 10 | round(1) }}"}
+{"i":"40b8","n":"Groundwater Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"40b9","n":"T7 Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"40ba","n":"MC CPU Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"40bb","n":"MC Circuit Board Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
+{"i":"40bc","n":"MC Power Connector Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","sf":10,"vt":"{{ (((value | int(base=16)) + 32768) % 65536 - 32768) / 10 | round(1) }}"}
 {"i":"40c0","n":"Number of resets","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
 {"i":"40c2","n":"Percentage of anode remaining","d":"sensor","ds":1,"vt":"{{ value | int(base=16) }}"}
 {"i":"40c3","n":"Missed flow off state","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Missed flow off not active', '01': 'Missed flow off active'}.get(value[:2], 'Unknown') }}"}

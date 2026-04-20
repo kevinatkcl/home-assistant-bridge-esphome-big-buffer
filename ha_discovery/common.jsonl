@@ -251,5 +251,5 @@
 {"i":"0910","n":"Battery Level","d":"sensor","ds":1,"u":"%","dc":"battery","vt":"{{ value | int(base=16) }}"}
 {"i":"0911","n":"Battery Is Charging","d":"binary_sensor","ds":1,"dc":"battery_charging"}
 {"i":"0912","n":"Appliance Is Plugged Into Wall","d":"binary_sensor","ds":1,"dc":"plug"}
-{"i":"0913","n":"Battery Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
+{"i":"0913","n":"Battery Temperature","d":"sensor","ds":2,"u":"°F","dc":"temperature","vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
 {"i":"0914","n":"Battery Health","d":"sensor","ds":1,"u":"%","dc":"battery","vt":"{{ value | int(base=16) }}"}

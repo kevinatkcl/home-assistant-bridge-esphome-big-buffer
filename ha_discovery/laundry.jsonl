@@ -42,7 +42,7 @@
 {"i":"2023","n":"Dryer Sheets Remaining","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
 {"i":"2025","n":"Warm Rinse Option","d":"binary_sensor","ds":1}
 {"i":"2026","n":"Drain Pump Actual State","d":"binary_sensor","ds":1}
-{"i":"202b","n":"Drive Motor Target Basket Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
+{"i":"202b","n":"Drive Motor Target Basket Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
 {"i":"202c","n":"Actual Basket Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ value | int(base=16) }}"}
 {"i":"202d","n":"Water Valves Actual State - Primary Hot Valve State","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"primary_hot_valve_state"}
 {"i":"202d","n":"Water Valves Actual State - Primary Cold Valve State","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}","fi":"primary_cold_valve_state"}
@@ -59,7 +59,7 @@
 {"i":"2036","n":"Smart Dispense Usage Profile Record Auto","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
 {"i":"2038","n":"Remote Set Delay Start Minutes","d":"sensor","ds":2,"u":"min","dc":"duration","vt":"{{ value | int(base=16) }}"}
 {"i":"2039","n":"Remote Status","d":"binary_sensor","ds":1}
-{"i":"203a","n":"Smart Dispense Usage Profile Record Less","d":"sensor","ds":2,"vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
+{"i":"203a","n":"Smart Dispense Usage Profile Record Less","d":"sensor","ds":2,"vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
 {"i":"203b","n":"Smart Dispense Usage Profile Record More","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
 {"i":"203c","n":"Bulk Detergent Tank Level","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'Unknown', '01': 'Low', '02': 'Filled', '03': 'Sensor Not Connected', '04': 'Sensor Error'}.get(value[:2], 'Unknown') }}"}
 {"i":"203d","n":"Smart Dispense Estimated Loads Remaining","d":"sensor","ds":2,"vt":"{{ value[0:2] | int(base=16) }}"}

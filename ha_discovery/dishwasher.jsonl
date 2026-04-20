@@ -179,7 +179,7 @@
 {"i":"3074","n":"Dry Heater Fan Speed Feedback","d":"sensor","ds":2,"u":"rpm","vt":"{{ value | int(base=16) }}"}
 {"i":"3075","n":"Dry Heater Relay State","d":"binary_sensor","ds":1}
 {"i":"3083","n":"Hue Score","d":"sensor","ds":2,"vt":"{{ value | int(base=16) }}"}
-{"i":"3084","n":"Tub Water Level","d":"sensor","ds":2,"vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
+{"i":"3084","n":"Tub Water Level","d":"sensor","ds":2,"vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
 {"i":"3085","n":"Flood Detected","d":"sensor","ds":1,"dc":"enum","vt":"{{ {'00': 'No Flood Detected', '01': 'Flood Detected'}.get(value[:2], 'Unknown') }}"}
 {"i":"3086","n":"Enable Features - Heated Dry","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 0) & 1 else '00' }}","fi":"heated_dry"}
 {"i":"3086","n":"Enable Features - Boost","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 1) & 1 else '00' }}","fi":"boost"}
@@ -453,10 +453,10 @@
 {"i":"3222","n":"Enable Features Tub 1 - Bottle Blast","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 5) & 1 else '00' }}","fi":"bottle_blast"}
 {"i":"3222","n":"Enable Features Tub 1 - Extra Dry","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 6) & 1 else '00' }}","fi":"extra_dry"}
 {"i":"3222","n":"Enable Features Tub 1 - Quiet","d":"binary_sensor","ds":1,"vt":"{{ '01' if ((value[0:2] | int(base=16)) >> 7) & 1 else '00' }}","fi":"quiet"}
-{"i":"3223","n":"Target Circulation Pump Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
-{"i":"3224","n":"Target Drain Pump Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
-{"i":"3225","n":"Actual Circulation Pump Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
-{"i":"3226","n":"Actual Drain Pump Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ (value | int(base=16)) - 65536 if (value | int(base=16)) >= 32768 else (value | int(base=16)) }}"}
+{"i":"3223","n":"Target Circulation Pump Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
+{"i":"3224","n":"Target Drain Pump Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
+{"i":"3225","n":"Actual Circulation Pump Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
+{"i":"3226","n":"Actual Drain Pump Speed","d":"sensor","ds":2,"u":"rpm","vt":"{{ ((value | int(base=16)) + 32768) % 65536 - 32768 }}"}
 {"i":"3227","n":"Total AC Current Report","d":"sensor","ds":6,"vt":"{{ value[0:4] | int(base=16) }}"}
 {"i":"3227","n":"Total AC Current Report - WaterValve","d":"binary_sensor","ds":6,"vt":"{{ '01' if ((value[4:8] | int(base=16)) >> 8) & 1 else '00' }}","fi":"watervalve"}
 {"i":"3227","n":"Total AC Current Report - dispenseCup","d":"binary_sensor","ds":6,"vt":"{{ '01' if ((value[4:8] | int(base=16)) >> 9) & 1 else '00' }}","fi":"dispensecup"}

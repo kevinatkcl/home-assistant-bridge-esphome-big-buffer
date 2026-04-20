@@ -586,18 +586,19 @@ def _byte_subfield_value_template(field: Dict, erd_scaling: int) -> str:
     else:
         # Numeric types: u8, u16, u32, i8, i16, i32, etc.
         if _is_signed_type(field_type):
+            # Two's-complement sign extension using the formula:
+            #   ((raw + half) % max) - half
+            # This evaluates the hex conversion only once, keeping the template short.
             max_val = 2 ** (size * 8)
             half_val = max_val // 2
             if erd_scaling and erd_scaling > 1:
                 dp = {10: 1, 100: 2}.get(erd_scaling, 3)
-                return (f"{{{{ ((value[{hex_start}:{hex_end}] | int(base=16)) - {max_val}"
-                        f" if (value[{hex_start}:{hex_end}] | int(base=16)) >= {half_val}"
-                        f" else (value[{hex_start}:{hex_end}] | int(base=16)))"
+                return (f"{{{{ (((value[{hex_start}:{hex_end}] | int(base=16)) + {half_val})"
+                        f" % {max_val} - {half_val})"
                         f" / {erd_scaling} | round({dp}) }}}}")
             else:
-                return (f"{{{{ (value[{hex_start}:{hex_end}] | int(base=16)) - {max_val}"
-                        f" if (value[{hex_start}:{hex_end}] | int(base=16)) >= {half_val}"
-                        f" else (value[{hex_start}:{hex_end}] | int(base=16)) }}}}")
+                return (f"{{{{ ((value[{hex_start}:{hex_end}] | int(base=16)) + {half_val})"
+                        f" % {max_val} - {half_val} }}}}")
         elif erd_scaling and erd_scaling > 1:
             dp = {10: 1, 100: 2}.get(erd_scaling, 3)
             return (f"{{{{ (value[{hex_start}:{hex_end}] | int(base=16))"
@@ -648,18 +649,21 @@ def _compute_sensor_value_template(scaling_factor: int, data_size: int, signed: 
     When ``signed`` is True the template applies two's-complement sign extension
     so that negative values (e.g. an int16 encoded as 0xFFFF) are reported as
     negative numbers rather than large positive values.
+
+    The sign-extension formula used is:
+        ((raw + half) % max) - half
+    where max = 2^(bits) and half = max // 2.  This evaluates the hex conversion
+    only once (unlike the if-else form) and produces a shorter Jinja2 string.
     """
     if signed:
         max_val = 2 ** (data_size * 8)
         half_val = max_val // 2
         if scaling_factor > 1:
             dp = {10: 1, 100: 2}.get(scaling_factor, 3)
-            return (f'{{{{ ((value | int(base=16)) - {max_val}'
-                    f' if (value | int(base=16)) >= {half_val}'
-                    f' else (value | int(base=16))) / {scaling_factor} | round({dp}) }}}}')
-        return (f'{{{{ (value | int(base=16)) - {max_val}'
-                f' if (value | int(base=16)) >= {half_val}'
-                f' else (value | int(base=16)) }}}}')
+            return (f'{{{{ (((value | int(base=16)) + {half_val}) % {max_val}'
+                    f' - {half_val}) / {scaling_factor} | round({dp}) }}}}')
+        return (f'{{{{ ((value | int(base=16)) + {half_val}) % {max_val}'
+                f' - {half_val} }}}}')
     if scaling_factor > 1:
         if scaling_factor == 10:
             dp = 1
@@ -896,9 +900,11 @@ def _infer_dtype_from_jsonl_entry(obj: dict) -> str:
     value_template string encodes the information originally derived from the
     ERD data type:
 
-    * *Signedness* is detected by looking for the sign-extension pattern
-      ``int(base=16)) - <N> if`` that _compute_sensor_value_template emits for
-      signed integer types (i8, i16, i32 …).
+    * *Signedness* is detected by looking for either of the two sign-extension
+      patterns that the template generators can emit for signed integer types
+      (i8, i16, i32 …):
+        - Old if-else form:  ``int(base=16)) - <N> if``
+        - New modulo form:   ``int(base=16)) + <N>) % <N>``
     * *Effective byte count* is derived from the ``value[0:N]`` leading-slice
       notation that paired-ERD templates use; otherwise the full ``ds`` field
       is used.
@@ -909,9 +915,13 @@ def _infer_dtype_from_jsonl_entry(obj: dict) -> str:
 
     vt = obj.get('vt', '')
 
-    # Detect signedness: _compute_sensor_value_template inserts a subtraction
-    # of the max value followed by ' if ' for signed types.
-    signed = bool(re.search(r'int\(base=16\)\)\s*-\s*\d+\s+if', vt))
+    # Detect signedness from either template form:
+    #   Old if-else: "int(base=16)) - <N> if"
+    #   New modulo:  "int(base=16)) + <N>) % <N>"
+    signed = bool(
+        re.search(r'int\(base=16\)\)\s*-\s*\d+\s+if', vt) or
+        re.search(r'int\(base=16\)\)\s*\+\s*\d+\)\s*%\s*\d+', vt)
+    )
 
     # Detect effective byte count from leading-slice notation.
     effective_bytes = data_size
