@@ -64,6 +64,7 @@ class GeappliancesBridge : public Component {
   void initialize_mqtt_client_();
   void initialize_mqtt_bridge_();
   void start_custom_erd_polling_();
+  void maybe_start_custom_erd_polling_();
   void publish_ha_discovery_();
   void publish_next_ha_discovery_entity_();
   void configure_polling_optional_lists_();
@@ -171,6 +172,8 @@ class GeappliancesBridge : public Component {
   bool subscription_mode_active_{false};
   bool subscription_activity_detected_{false};
   uint32_t subscription_start_time_{0};
+  uint32_t custom_erd_subscription_last_activity_{0};
+  std::set<tiny_erd_t> custom_erd_subscription_seen_erds_;
   static constexpr uint32_t SUBSCRIPTION_TIMEOUT_MS = 30000; // 30 seconds
 
   // GEA2 tight-loop duration: covers the full TX→RX cycle at 19200 baud
