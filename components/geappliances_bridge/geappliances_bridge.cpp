@@ -196,6 +196,7 @@ void GeappliancesBridge::loop() {
     this->check_subscription_activity_();
   }
 
+  this->maybe_start_custom_erd_polling_();
   log_poll_state_transitions_();  // Debug: log polling HSM state changes
   run_ha_discovery_();            // Phase 8: deferred HA entity publish
 }
@@ -276,6 +277,9 @@ void GeappliancesBridge::handle_erd_client_activity_(const tiny_gea3_erd_client_
         !this->subscription_activity_detected_) {
       ESP_LOGI(TAG, "Subscription activity detected - subscription mode is working");
       this->subscription_activity_detected_ = true;
+    }
+    if (this->custom_erd_subscription_seen_erds_.insert(args->subscription_publication_received.erd).second) {
+      this->custom_erd_subscription_last_activity_ = millis();
     }
     // Reset the HA discovery quiet window only for new ERD IDs. Repeated value
     // updates for already-seen ERDs do not extend the wait.

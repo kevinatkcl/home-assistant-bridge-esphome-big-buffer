@@ -136,10 +136,9 @@ void GeappliancesBridge::initialize_mqtt_bridge_()
       &this->mqtt_client_adapter_.interface,
       this->host_address_);
 
-    // Custom ERDs are started after the subscription quiet window settles
-    // (in run_ha_discovery_()) so their values are polled in sequence, not
-    // simultaneously with the initial subscription burst.
     if (!this->custom_erds_vec_.empty()) {
+      this->custom_erd_subscription_seen_erds_.clear();
+      this->custom_erd_subscription_last_activity_ = millis();
       ESP_LOGI(TAG, "Custom ERD polling (%zu ERD(s)) will start after subscription settles",
                this->custom_erds_vec_.size());
     }
@@ -200,12 +199,40 @@ void GeappliancesBridge::start_custom_erd_polling_()
     &this->mqtt_client_adapter_.interface,
     this->polling_interval_ms_,
     this->polling_only_publish_on_change_);
-  this->custom_erd_bridge_.custom_erd_list       = this->custom_erds_vec_.data();
-  this->custom_erd_bridge_.custom_erd_list_count =
+  // Reuse the api_parsed_list path so the secondary polling bridge skips the
+  // full discovery ERD list and polls only the configured custom ERDs.
+  this->custom_erd_bridge_.api_parsed_list       = this->custom_erds_vec_.data();
+  this->custom_erd_bridge_.api_parsed_list_count =
     static_cast<uint16_t>(this->custom_erds_vec_.size());
   this->custom_erd_polling_active_ = true;
-  ESP_LOGI(TAG, "Started custom ERD polling (%zu ERD(s)) after subscription settled",
+  ESP_LOGI(TAG, "Started custom-only ERD polling (%zu ERD(s)) after subscription settled",
            this->custom_erds_vec_.size());
+}
+
+void GeappliancesBridge::maybe_start_custom_erd_polling_()
+{
+  if (this->custom_erd_polling_active_ || this->custom_erds_vec_.empty() ||
+      !this->mqtt_bridge_initialized_) {
+    return;
+  }
+
+  bool in_subscription_mode = (this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                              (this->mode_ == BRIDGE_MODE_AUTO && this->subscription_mode_active_);
+  if (!in_subscription_mode) {
+    return;
+  }
+
+  bool subscription_confirmed = (this->mode_ == BRIDGE_MODE_SUBSCRIBE) ||
+                                this->subscription_activity_detected_;
+  if (!subscription_confirmed) {
+    return;
+  }
+
+  if (millis() - this->custom_erd_subscription_last_activity_ < HA_DISCOVERY_QUIET_MS) {
+    return;
+  }
+
+  this->start_custom_erd_polling_();
 }
 
 // ---------------------------------------------------------------------------
