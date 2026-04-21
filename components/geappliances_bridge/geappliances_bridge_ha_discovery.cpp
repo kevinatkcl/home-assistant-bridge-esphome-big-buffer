@@ -152,14 +152,16 @@ void GeappliancesBridge::publish_ha_discovery_()
   ESP_LOGI(TAG, "HA discovery: starting — %zu ERDs registered, launching fetch task",
            this->ha_registered_erds_snapshot_.size());
 
-  // Stack size 24 KB – HTTPS (mbedTLS handshake alone needs ~10 KB) + cJSON
-  // parsing + std::string operations push the peak stack usage well above
-  // 12 KB.  A stack overflow corrupts heap metadata and causes the FreeRTOS
-  // idle task to fault in prvCheckTasksWaitingTermination when it tries to
-  // free the terminated task's TCB/stack (observed crash on ESP32-C6).
+  // Stack size 32 KB – HTTPS (mbedTLS handshake alone needs ~10 KB, and with
+  // esp_crt_bundle_attach certificate-chain verification the combined TLS
+  // stack can exceed 16 KB on ESP32-C6) + cJSON parsing + std::string
+  // operations push peak usage above both 12 KB and 24 KB.  A stack overflow
+  // corrupts heap metadata and causes the FreeRTOS idle task to fault in
+  // prvCheckTasksWaitingTermination when it tries to free the terminated
+  // task's TCB/stack (observed crash on ESP32-C6 at both 12 KB and 24 KB).
   // Priority 1: below IDF MQTT task (5) so MQTT events are not starved while
   // the fetch task is parsing JSONL lines and filling the queue.
-  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 24576, this, 1,
+  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 32768, this, 1,
                               &this->ha_fetch_task_handle_);
   if (rc != pdPASS) {
     ESP_LOGE(TAG, "HA discovery: failed to create fetch task (rc=%d)", static_cast<int>(rc));
@@ -220,6 +222,12 @@ void GeappliancesBridge::publish_next_ha_discovery_entity_()
 {
   auto* self = static_cast<GeappliancesBridge*>(param);
   self->fetch_ha_definitions_();
+
+  // Log the minimum free stack seen during this run.  If the value is small
+  // (< ~2 KB) the task came close to overflowing and the stack should be
+  // increased further.  The value is in bytes on ESP-IDF.
+  UBaseType_t hwm = uxTaskGetStackHighWaterMark(nullptr);
+  ESP_LOGI(TAG, "ha_fetch: done — stack high-water mark %u B free", static_cast<unsigned>(hwm));
 
   // Send a nullptr sentinel so the main loop knows the fetch is done.
   HaDiscoveryItem* sentinel = nullptr;
