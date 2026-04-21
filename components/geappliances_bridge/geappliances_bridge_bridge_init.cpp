@@ -199,6 +199,8 @@ void GeappliancesBridge::start_custom_erd_polling_()
     &this->mqtt_client_adapter_.interface,
     this->polling_interval_ms_,
     this->polling_only_publish_on_change_);
+  // Reuse the api_parsed_list path so the secondary polling bridge skips the
+  // full discovery ERD list and polls only the configured custom ERDs.
   this->custom_erd_bridge_.api_parsed_list       = this->custom_erds_vec_.data();
   this->custom_erd_bridge_.api_parsed_list_count =
     static_cast<uint16_t>(this->custom_erds_vec_.size());
