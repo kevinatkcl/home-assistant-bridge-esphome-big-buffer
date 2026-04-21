@@ -152,10 +152,14 @@ void GeappliancesBridge::publish_ha_discovery_()
   ESP_LOGI(TAG, "HA discovery: starting — %zu ERDs registered, launching fetch task",
            this->ha_registered_erds_snapshot_.size());
 
-  // Stack size 12 KB – enough for HTTPS + cJSON on ESP32.
+  // Stack size 24 KB – HTTPS (mbedTLS handshake alone needs ~10 KB) + cJSON
+  // parsing + std::string operations push the peak stack usage well above
+  // 12 KB.  A stack overflow corrupts heap metadata and causes the FreeRTOS
+  // idle task to fault in prvCheckTasksWaitingTermination when it tries to
+  // free the terminated task's TCB/stack (observed crash on ESP32-C6).
   // Priority 1: below IDF MQTT task (5) so MQTT events are not starved while
   // the fetch task is parsing JSONL lines and filling the queue.
-  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 12288, this, 1,
+  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 24576, this, 1,
                               &this->ha_fetch_task_handle_);
   if (rc != pdPASS) {
     ESP_LOGE(TAG, "HA discovery: failed to create fetch task (rc=%d)", static_cast<int>(rc));
