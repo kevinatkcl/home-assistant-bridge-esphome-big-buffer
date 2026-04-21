@@ -80,12 +80,6 @@ void GeappliancesBridge::run_ha_discovery_()
         bool subscription_quiet =
           (millis() - this->ha_discovery_last_activity_ >= HA_DISCOVERY_QUIET_MS);
         if (subscription_quiet) {
-          // Subscription has settled. Start the custom ERD polling bridge now
-          // if it hasn't been started yet — it was intentionally deferred so it
-          // runs after the initial subscription burst, not alongside it.
-          if (!this->custom_erds_vec_.empty() && !this->custom_erd_polling_active_) {
-            this->start_custom_erd_polling_();
-          }
           // Wait for the custom ERD bridge's first poll cycle to complete
           // before generating HA discovery payloads.
           bool custom_erds_ready = this->custom_erds_vec_.empty() ||

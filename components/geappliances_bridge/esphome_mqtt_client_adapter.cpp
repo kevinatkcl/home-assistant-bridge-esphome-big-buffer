@@ -34,15 +34,39 @@ static void register_erd(i_mqtt_client_t* _self, tiny_erd_t erd)
     self->registered_erds_out->insert(erd);
   }
 
-  char topic_suffix[32];
-  snprintf(topic_suffix, sizeof(topic_suffix), "/erd/0x%04x", erd);
-  
-  std::string value_topic = build_topic(self, (std::string(topic_suffix) + "/value").c_str());
-  std::string write_topic = build_topic(self, (std::string(topic_suffix) + "/write").c_str());
-  
   ESP_LOGD(TAG, "Registered ERD 0x%04X", erd);
-  
-  // Subscribe to write topic for this ERD
+
+  // Only subscribe once per ERD lifetime. The polling bridge clears its own
+  // erd_set on every MQTT disconnect so that it can rebuild the polling list,
+  // which causes register_erd() to be called again for every ERD on each
+  // reconnect. ESPHome's MQTT client re-establishes all previous subscriptions
+  // automatically on reconnect, so calling subscribe() again would leak a new
+  // closure and register a duplicate write-command handler per reconnect cycle.
+  //
+  // IMPORTANT: this guard must come before any heap allocation so that the
+  // fast path (already subscribed) avoids all dynamic memory operations. On
+  // reconnect, register_erd() is called for every ERD; allocating strings and
+  // then immediately freeing them on 100+ ERDs causes severe heap fragmentation
+  // that can exhaust memory over multiple reconnect cycles.
+  if (self->subscribed_write_erds != nullptr &&
+      self->subscribed_write_erds->count(erd)) {
+    return;
+  }
+  if (self->subscribed_write_erds != nullptr) {
+    self->subscribed_write_erds->insert(erd);
+  }
+
+  // Build the write-topic string only for ERDs that actually need a new
+  // subscription (i.e. first time seen). Combine the suffix and "/write"
+  // in a single snprintf to avoid an intermediate std::string allocation.
+  char topic_suffix[40];
+  snprintf(topic_suffix, sizeof(topic_suffix), "/erd/0x%04x/write", erd);
+  std::string write_topic = build_topic(self, topic_suffix);
+
+  // Subscribe to write topic for this ERD. QoS 0 is sufficient: write
+  // commands are user-initiated one-shots, and the broker does not retain
+  // them, so the broker's at-most-once guarantee matches the use-case while
+  // avoiding the per-message in-flight state that QoS 1/2 require.
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client != nullptr) {
     mqtt_client->subscribe(
@@ -85,7 +109,7 @@ static void register_erd(i_mqtt_client_t* _self, tiny_erd_t erd)
         };
         tiny_event_publish(&self->on_write_request_event, &args);
       },
-      2  // QoS 2
+      0  // QoS 0: write commands are one-shot; no retained messages on this topic
     );
   }
 }
@@ -145,7 +169,7 @@ static void update_erd(i_mqtt_client_t* _self, tiny_erd_t erd, const void* value
   // Publish to MQTT or queue if not connected
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client != nullptr && mqtt_client->is_connected()) {
-    mqtt_client->publish(topic, payload, 2, true);  // QoS 2, retain
+    mqtt_client->publish(topic, payload, 0, true);  // QoS 0, retain
   } else {
     // Queue the update for later when MQTT connects. The map key is the ERD so
     // a repeated update overwrites the previous pending value instead of
@@ -184,7 +208,7 @@ static void update_erd_write_result(
   
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client != nullptr && mqtt_client->is_connected()) {
-    mqtt_client->publish(topic, payload, 2, false);  // QoS 2, no retain
+    mqtt_client->publish(topic, payload, 0, false);  // QoS 0, no retain
   } else {
     ESP_LOGD(TAG, "MQTT not connected, skipping write result for 0x%04X", erd);
   }
@@ -222,6 +246,7 @@ extern "C" void esphome_mqtt_client_adapter_init(
   self->valid_erds_filter = nullptr;
   self->string_erds_filter = nullptr;
   self->registered_erds_out = nullptr;
+  self->subscribed_write_erds = new std::set<tiny_erd_t>();
 
   tiny_event_init(&self->on_write_request_event);
   tiny_event_init(&self->on_mqtt_disconnect_event);
@@ -287,5 +312,9 @@ extern "C" void esphome_mqtt_client_adapter_destroy(
   if (self->pending_updates != nullptr) {
     delete self->pending_updates;
     self->pending_updates = nullptr;
+  }
+  if (self->subscribed_write_erds != nullptr) {
+    delete self->subscribed_write_erds;
+    self->subscribed_write_erds = nullptr;
   }
 }

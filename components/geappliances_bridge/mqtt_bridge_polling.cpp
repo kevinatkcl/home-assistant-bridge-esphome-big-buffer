@@ -218,6 +218,13 @@ static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_
     self->appliance_erd_list       = commonErds;
     self->appliance_erd_list_count = commonErdCount;
     self->erd_index                = 0;
+    // Reset the polling list and the erd_set that deduplicates it. This is
+    // the correct place to clear erd_set: it only runs in the full-discovery
+    // path (appliance first seen, or appliance_lost re-discovery), NOT on every
+    // transient MQTT reconnect. Clearing in the disconnect handler caused the
+    // set's tree nodes to be freed and reallocated on each reconnect, fragmenting
+    // the heap over time.
+    erd_set(self).clear();
     self->polling_list_count       = 0;
     tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
     arm_timer(self, retry_delay);
