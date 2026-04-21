@@ -104,7 +104,15 @@ static void setup_disconnect_subscription(T* self, i_mqtt_client_t* mqtt_client)
   tiny_event_subscription_init(
     &self->mqtt_disconnect_subscription, self, +[](void* context, const void*) {
       auto self = reinterpret_cast<T*>(context);
-      erd_set(self).clear();
+      // Do NOT clear erd_set here. Clearing it on every transient MQTT
+      // reconnect causes two problems:
+      //   1. Heap fragmentation: N std::set tree nodes freed and reallocated
+      //      per reconnect cycle.
+      //   2. Growing polling list (api_parsed mode): state_polling re-adds
+      //      all N api_parsed ERDs on each reconnect (since erd_set is empty),
+      //      growing polling_list_count by N every time.
+      // erd_set is cleared in state_add_common_erds (full-discovery path only),
+      // which is the correct time to reset the polling list.
       tiny_hsm_send_signal(&self->hsm, signal_mqtt_disconnected, nullptr);
     });
   tiny_event_subscribe(mqtt_client_on_mqtt_disconnect(mqtt_client), &self->mqtt_disconnect_subscription);
