@@ -63,6 +63,14 @@ static tiny_hsm_result_t state_subscribing(tiny_hsm_t* hsm, tiny_hsm_signal_t si
 
   switch(signal) {
     case tiny_hsm_signal_entry:
+      // Clear the ERD set on every entry so that ERDs are re-registered with
+      // the MQTT client when publications arrive after a reconnect or after the
+      // appliance host came back online. This matters because the MQTT adapter
+      // calls register_erd() only for ERDs that are not already in erd_set,
+      // and after a disconnect the MQTT broker may have dropped or re-allocated
+      // subscriptions that the adapter needs to know about.
+      erd_set(self).clear();
+      __attribute__((fallthrough));
     case signal_subscription_failed:
     case signal_timer_expired:
       if(!tiny_gea3_erd_client_subscribe(self->erd_client, self->erd_host_address)) {
