@@ -137,10 +137,14 @@ void GeappliancesBridge::publish_ha_discovery_()
 
 #ifdef USE_ESP_IDF
   // Guard against low-memory situations before allocating the large task
-  // stack.  On ESP32-C3/C6 devices, the task stack + mbedTLS session buffers
-  // can consume 80–100 KB of heap.  If free heap is below the threshold, skip
-  // the fetch rather than risk heap corruption that could crash unrelated
-  // subsystems (WiFi PHY timers, MQTT client, etc.).
+  // stack.  Peak heap consumption during the fetch is approximately:
+  //   48 KB task stack + ~30 KB mbedTLS session buffers + ~5 KB HTTP client
+  //   internals + 8 KB line buffer + up to 20 queued HaDiscoveryItem payloads
+  //   (~10 KB typical) ≈ 100 KB.  Requiring 110 KB free gives a safety margin
+  //   for fragmentation and leaves room for WiFi PHY timers and the MQTT client.
+  //   Without this guard, stack + TLS allocation on a memory-constrained
+  //   ESP32-C3 can exhaust heap and crash unrelated subsystems (e.g.
+  //   heap_caps_calloc failure inside esp_phy_enable_wrapper → WiFi crash).
   static constexpr size_t HA_FETCH_MIN_FREE_HEAP = 110 * 1024;  // 110 KB
   size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
   ESP_LOGI(TAG, "HA discovery: free heap before fetch task = %zu bytes", free_heap);
@@ -354,8 +358,9 @@ bool GeappliancesBridge::fetch_category_(const std::string& url,
   char* line_buf = static_cast<char*>(malloc(LINE_BUF));
   if (!read_buf || !line_buf) {
     ESP_LOGE(TAG, "HA fetch: OOM allocating read/line buffers");
-    free(read_buf);
-    free(line_buf);
+    // free(nullptr) is a no-op per the C standard, but check explicitly for clarity.
+    if (read_buf) free(read_buf);
+    if (line_buf) free(line_buf);
     esp_http_client_cleanup(client);
     return false;
   }
