@@ -460,6 +460,31 @@ void mqtt_bridge_polling_init(
 
 void mqtt_bridge_polling_destroy(mqtt_bridge_polling_t* self)
 {
+  // Stop all active timers so they cannot fire after the bridge is torn down.
+  tiny_timer_stop(self->timer_group, &self->timer);
+  tiny_timer_stop(self->timer_group, &self->appliance_lost_timer);
+  tiny_timer_stop(self->timer_group, &self->polling_timer);
+
+  // Remove all event subscriptions before freeing heap state.
+  //
+  // mqtt_bridge_polling_init() subscribes three event callbacks that reference
+  // this struct: erd_client_activity_subscription,
+  // mqtt_write_request_subscription, and mqtt_disconnect_subscription.  If
+  // these remain registered after destroy(), any subsequent event fires the
+  // HSM which dereferences self->erd_set / self->erd_cache (freed below) — a
+  // use-after-free that corrupts the heap.
+  tiny_event_unsubscribe(
+    tiny_gea3_erd_client_on_activity(self->erd_client),
+    &self->erd_client_activity_subscription);
+  tiny_event_unsubscribe(
+    mqtt_client_on_write_request(self->mqtt_client),
+    &self->mqtt_write_request_subscription);
+  tiny_event_unsubscribe(
+    mqtt_client_on_mqtt_disconnect(self->mqtt_client),
+    &self->mqtt_disconnect_subscription);
+
   delete reinterpret_cast<set<tiny_erd_t>*>(self->erd_set);
   delete reinterpret_cast<map<tiny_erd_t, vector<uint8_t>>*>(self->erd_cache);
+  self->erd_set = nullptr;
+  self->erd_cache = nullptr;
 }
