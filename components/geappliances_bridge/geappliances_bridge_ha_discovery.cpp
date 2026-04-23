@@ -22,6 +22,7 @@
 #  include "freertos/FreeRTOS.h"
 #  include "freertos/task.h"
 #  include "freertos/queue.h"
+#  include "esp_heap_caps.h"
 #endif  // USE_ESP_IDF
 
 namespace esphome {
@@ -135,6 +136,23 @@ void GeappliancesBridge::publish_ha_discovery_()
   }
 
 #ifdef USE_ESP_IDF
+  // Guard against low-memory situations before allocating the large task
+  // stack.  On ESP32-C3/C6 devices, the task stack + mbedTLS session buffers
+  // can consume 80–100 KB of heap.  If free heap is below the threshold, skip
+  // the fetch rather than risk heap corruption that could crash unrelated
+  // subsystems (WiFi PHY timers, MQTT client, etc.).
+  static constexpr size_t HA_FETCH_MIN_FREE_HEAP = 110 * 1024;  // 110 KB
+  size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+  ESP_LOGI(TAG, "HA discovery: free heap before fetch task = %zu bytes", free_heap);
+  if (free_heap < HA_FETCH_MIN_FREE_HEAP) {
+    ESP_LOGW(TAG, "HA discovery: insufficient free heap (%zu < %zu bytes), skipping",
+             free_heap, HA_FETCH_MIN_FREE_HEAP);
+    this->ha_discovery_pending_             = false;
+    this->ha_discovery_publish_in_progress_ = false;
+    this->ha_discovery_published_           = true;
+    return;
+  }
+
   this->ha_discovery_queue_ = xQueueCreate(20, sizeof(HaDiscoveryItem*));
   if (!this->ha_discovery_queue_) {
     ESP_LOGE(TAG, "HA discovery: failed to create queue (OOM)");
@@ -152,16 +170,17 @@ void GeappliancesBridge::publish_ha_discovery_()
   ESP_LOGI(TAG, "HA discovery: starting — %zu ERDs registered, launching fetch task",
            this->ha_registered_erds_snapshot_.size());
 
-  // Stack size 32 KB – HTTPS (mbedTLS handshake alone needs ~10 KB, and with
-  // esp_crt_bundle_attach certificate-chain verification the combined TLS
-  // stack can exceed 16 KB on ESP32-C6) + cJSON parsing + std::string
-  // operations push peak usage above both 12 KB and 24 KB.  A stack overflow
-  // corrupts heap metadata and causes the FreeRTOS idle task to fault in
-  // prvCheckTasksWaitingTermination when it tries to free the terminated
-  // task's TCB/stack (observed crash on ESP32-C6 at both 12 KB and 24 KB).
+  // Stack size 48 KB – mbedTLS certificate-chain verification during the TLS
+  // handshake requires deep call stacks; esp_crt_bundle_attach pushes peak
+  // usage above 32 KB on ESP32-C3 and ESP32-C6 (single-core devices that were
+  // observed crashing in prvCheckTasksWaitingTermination at 12 KB, 24 KB, and
+  // 32 KB).  Stack overflow corrupts heap metadata, causing the FreeRTOS idle
+  // task to fault when it tries to free the terminated task's stack.  48 KB
+  // gives ~16 KB headroom above the observed 32 KB peak.
   // Priority 1: below IDF MQTT task (5) so MQTT events are not starved while
   // the fetch task is parsing JSONL lines and filling the queue.
-  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", 32768, this, 1,
+  static constexpr uint32_t HA_FETCH_STACK_SIZE = 49152;  // 48 KB
+  BaseType_t rc = xTaskCreate(ha_fetch_task_fn_, "ha_fetch", HA_FETCH_STACK_SIZE, this, 1,
                               &this->ha_fetch_task_handle_);
   if (rc != pdPASS) {
     ESP_LOGE(TAG, "HA discovery: failed to create fetch task (rc=%d)", static_cast<int>(rc));
@@ -275,7 +294,13 @@ void GeappliancesBridge::fetch_ha_definitions_()
   for (int i = 0; i < 10; ++i) {
     if (!need[i]) continue;
     std::string url = this->ha_discovery_base_url_ + "/" + CATS[i].name + ".jsonl";
-    ESP_LOGI(TAG, "HA fetch: downloading %s", url.c_str());
+    // Log the stack high-water mark before each category fetch.  The TLS
+    // handshake in fetch_category_() consumes the most stack, so checking
+    // here (just before the call) captures any progressive leak across
+    // sequential fetches and shows remaining headroom before the next spike.
+    UBaseType_t hwm_before = uxTaskGetStackHighWaterMark(nullptr);
+    ESP_LOGI(TAG, "HA fetch: downloading %s (stack HWM %u B free)", url.c_str(),
+             static_cast<unsigned>(hwm_before));
     fetch_category_(url, device_id, device_json);
     vTaskDelay(pdMS_TO_TICKS(50));  // brief yield between requests
   }
@@ -320,12 +345,17 @@ bool GeappliancesBridge::fetch_category_(const std::string& url,
   // Read response body line by line. Each JSONL line is one entity.
   // LINE_BUF must accommodate the largest lines (select entities with many
   // enum values can reach ~7200 bytes).
+  // Both read_buf and line_buf are heap-allocated to keep stack usage low
+  // during the TLS/HTTPS session (mbedTLS certificate verification already
+  // consumes a large portion of the task stack).
   static constexpr int READ_BUF = 512;
   static constexpr int LINE_BUF = 8192;
-  char  read_buf[READ_BUF];
+  char* read_buf = static_cast<char*>(malloc(READ_BUF));
   char* line_buf = static_cast<char*>(malloc(LINE_BUF));
-  if (!line_buf) {
-    ESP_LOGE(TAG, "HA fetch: OOM allocating line buffer");
+  if (!read_buf || !line_buf) {
+    ESP_LOGE(TAG, "HA fetch: OOM allocating read/line buffers");
+    free(read_buf);
+    free(line_buf);
     esp_http_client_cleanup(client);
     return false;
   }
@@ -353,6 +383,7 @@ bool GeappliancesBridge::fetch_category_(const std::string& url,
     if (process_jsonl_line_(line_buf, device_id, device_json)) ++entities;
   }
 
+  free(read_buf);
   free(line_buf);
   esp_http_client_cleanup(client);
   ESP_LOGI(TAG, "HA fetch: %s → %d entities queued", url.c_str(), entities);
