@@ -461,6 +461,7 @@ void mqtt_bridge_polling_init(
 void mqtt_bridge_polling_destroy(mqtt_bridge_polling_t* self)
 {
   // Stop all active timers so they cannot fire after the bridge is torn down.
+  // tiny_timer_stop() is idempotent: safe to call even if a timer is not active.
   tiny_timer_stop(self->timer_group, &self->timer);
   tiny_timer_stop(self->timer_group, &self->appliance_lost_timer);
   tiny_timer_stop(self->timer_group, &self->polling_timer);

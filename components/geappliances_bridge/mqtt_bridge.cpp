@@ -198,6 +198,7 @@ void mqtt_bridge_init(
 void mqtt_bridge_destroy(mqtt_bridge_t* self)
 {
   // Stop the resubscribe timer so it cannot fire after the bridge is torn down.
+  // tiny_timer_stop() is idempotent: safe to call even if the timer is not active.
   tiny_timer_stop(self->timer_group, &self->timer);
 
   // Remove all event subscriptions before freeing heap state.
@@ -207,8 +208,6 @@ void mqtt_bridge_destroy(mqtt_bridge_t* self)
   // and mqtt_disconnect_subscription.  If these remain registered after
   // destroy(), any subsequent event fires the HSM which dereferences
   // self->erd_set (freed below) — a use-after-free that corrupts the heap.
-  // The FreeRTOS idle task then crashes in prvCheckTasksWaitingTermination
-  // when it attempts to free any task's TCB/stack through corrupted metadata.
   tiny_event_unsubscribe(
     tiny_gea3_erd_client_on_activity(self->erd_client),
     &self->erd_client_activity_subscription);
