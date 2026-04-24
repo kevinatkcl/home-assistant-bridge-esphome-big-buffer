@@ -264,6 +264,9 @@ extern "C" void esphome_mqtt_client_adapter_notify_connected(
     return;
   }
   size_t flushed = 0;
+  // Publish-then-erase is intentional: we must publish before erasing so that
+  // the iterator (and the topic/payload strings it references) remains valid
+  // during the publish() call.  A range-erase would invalidate iterators.
   while (!self->pending_updates->empty() && flushed < MAX_FLUSH_PER_CALL) {
     auto it = self->pending_updates->begin();
     mqtt_client->publish(it->second.topic, it->second.payload, 0, true);  // QoS 0, retain
@@ -282,9 +285,11 @@ extern "C" bool esphome_mqtt_client_adapter_drain_subscribe(
     return false;
   }
 
-  // Pop the front entry (oldest pending subscription).
-  tiny_erd_t   erd        = self->pending_subscriptions->front().first;
-  std::string  write_topic = std::move(self->pending_subscriptions->front().second);
+  // Extract the front entry (oldest pending subscription) before erasing,
+  // to avoid calling front() twice.
+  auto& front_entry = self->pending_subscriptions->front();
+  tiny_erd_t  erd        = front_entry.first;
+  std::string write_topic = std::move(front_entry.second);
   self->pending_subscriptions->erase(self->pending_subscriptions->begin());
 
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
