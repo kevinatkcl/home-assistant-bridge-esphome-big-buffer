@@ -303,6 +303,11 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
   switch (signal) {
     case tiny_hsm_signal_entry:
       erd_cache(self).clear();
+      // Reset the polling-list cursor. Previous HSM states (state_add_*) leave
+      // erd_index pointing past the end of the discovery list they iterated;
+      // without this reset the first N ERDs in the polling list are skipped on
+      // the very first polling pass.
+      self->erd_index = 0;
       // When using an API-parsed list, register all ERDs upfront since
       // the discovery states are skipped.
       if (self->api_parsed_list != nullptr) {
@@ -328,13 +333,28 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
       break;
 
     case signal_polling_timer_expired:
-      if ((self->erd_index >= self->polling_list_count) || (self->polling_retries >= max_polling_retries)) {
-        self->erd_index       = 0;
-        self->polling_retries = 0;
+      // Only start a new cycle when the current one is fully complete.
+      //
+      // Previously a polling_retries counter force-reset the cycle after
+      // (max_polling_retries + 1) × polling_interval_ms, starting a new
+      // cycle while the previous one's GEA3 reads were still in-flight.
+      // Overlapping reads grow the GEA3 ERD client's fixed-size request queue
+      // faster than it drains; when the queue (backed by client_queue_buffer_)
+      // overflows its ring-buffer, adjacent heap metadata is corrupted — which
+      // manifests as the FreeRTOS prvCheckTasksWaitingTermination crash at
+      // PC 0x4080430C seen in the field.
+      //
+      // Correct behaviour: let the current cycle run to completion.  The
+      // 60-second appliance_lost_timer is the safety net: if the appliance
+      // stops responding, no read_completed ever fires, the 100 ms retry timer
+      // never re-arms, and after 60 s the HSM transitions back to
+      // state_identify_appliance to rediscover the appliance.
+      if (self->erd_index >= self->polling_list_count) {
+        self->erd_index = 0;
         send_next_poll_read_request(self);
-      } else {
-        self->polling_retries++;
       }
+      // Always re-arm the polling timer so the next cycle boundary is tracked
+      // even when the current cycle is still in progress.
       arm_polling_timer(self, self->polling_interval_ms);
       break;
 

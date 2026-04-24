@@ -50,6 +50,22 @@ typedef struct {
   // the subscribe() calls across multiple loop cycles and keep each loop well
   // under the ESPHome 30 ms loop-time warning threshold.
   std::vector<std::pair<tiny_erd_t, std::string>>* pending_subscriptions;
+  // millis() timestamp of the most recent MQTT connection (set on the first
+  // notify_connected() call after each disconnect; reset to 0 by
+  // notify_disconnected()).  drain_subscribe() uses this to enforce a settle
+  // delay after each (re)connect: when an MQTT client uses persistent sessions
+  // (clean_session=false), the broker may have hundreds of queued QoS 1/2
+  // messages to deliver — exhausting its receive-maximum quota immediately on
+  // connect.  Processing this backlog keeps the IDF MQTT task's API mutex
+  // locked for seconds, making every subscribe() call block for 800+ ms and
+  // triggering ESPHome's "took a long time" warning.  Waiting
+  // MQTT_SETTLE_DELAY_MS gives the IDF MQTT task time to drain the broker's
+  // backlog before we add new subscriptions.
+  uint32_t mqtt_connected_at_ms;
+  // millis() timestamp of the last successful subscribe() drain call.
+  // Used to enforce SUBSCRIBE_MIN_INTERVAL_MS between successive subscribe()
+  // calls so that even after the settle period each call has breathing room.
+  uint32_t last_subscribe_ms;
 } esphome_mqtt_client_adapter_t;
 
 #ifdef __cplusplus

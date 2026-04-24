@@ -35,7 +35,6 @@ typedef struct {
   const tiny_erd_t* appliance_erd_list;
   uint16_t appliance_erd_list_count;
   uint16_t erd_index;
-  uint16_t polling_retries;
   bool only_publish_on_change;
   // Set to true once the HSM transitions into state_polling (all ERD
   // discovery phases have completed). Reset to false on appliance loss/

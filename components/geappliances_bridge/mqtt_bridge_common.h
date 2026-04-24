@@ -27,8 +27,7 @@ enum {
   resubscribe_delay = 1000,
   subscription_retention_period = 30 * 1000,
   retry_delay = 100,
-  appliance_lost_timeout = 60000,
-  max_polling_retries = 3
+  appliance_lost_timeout = 60000
 };
 
 // ============================================================================

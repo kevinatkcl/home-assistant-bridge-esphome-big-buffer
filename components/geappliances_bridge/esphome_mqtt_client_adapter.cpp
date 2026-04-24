@@ -26,6 +26,30 @@ static constexpr size_t MAX_PENDING_UPDATES = 200;
 // a typical loop rate of ~200 Hz, 200 pending updates drain in ≤200 ms.
 static constexpr size_t MAX_FLUSH_PER_CALL = 5;
 
+// How long to wait after an MQTT (re)connect before starting to drain the
+// pending write-topic subscribe() queue.  When the MQTT client uses persistent
+// sessions (clean_session=false) and the device has been through a crash loop,
+// the broker accumulates many queued QoS 1/2 messages and delivers them all at
+// once on the next connect — exhausting the client's receive-maximum quota
+// instantly (logged by Mosquitto as "has exceeded its receive-maximum quota").
+// Processing this backlog keeps the IDF MQTT task holding its API mutex for
+// several seconds, making every subscribe() call block for 800+ ms.  Delaying
+// subscribe() draining by MQTT_SETTLE_DELAY_MS gives the IDF MQTT task time to
+// clear the broker's backlog before we add new subscriptions.
+//
+// Note: the correct long-term fix is to configure the MQTT client with
+// clean_session: true in the ESPHome YAML so no messages accumulate between
+// sessions.  This delay is an in-firmware defence-in-depth measure.
+static constexpr uint32_t MQTT_SETTLE_DELAY_MS = 2000;
+
+// Minimum interval between successive subscribe() calls (after the settle
+// period).  Even when the IDF MQTT stack is healthy, each subscribe() call
+// acquires the IDF MQTT API mutex; keeping at least SUBSCRIBE_MIN_INTERVAL_MS
+// between calls ensures the MQTT task has time to send the SUBSCRIBE packet
+// and process the SUBACK before the next call arrives, preventing the outbox
+// from filling and subsequent calls from blocking.
+static constexpr uint32_t SUBSCRIBE_MIN_INTERVAL_MS = 100;
+
 static std::string build_topic(esphome_mqtt_client_adapter_t* self, const char* suffix)
 {
   return std::string("geappliances/") + *self->device_id + suffix;
@@ -216,6 +240,8 @@ extern "C" void esphome_mqtt_client_adapter_init(
   self->registered_erds_out = nullptr;
   self->subscribed_write_erds = new std::set<tiny_erd_t>();
   self->pending_subscriptions = new std::vector<std::pair<tiny_erd_t, std::string>>();
+  self->mqtt_connected_at_ms  = 0;
+  self->last_subscribe_ms     = 0;
 
   tiny_event_init(&self->on_write_request_event);
   tiny_event_init(&self->on_mqtt_disconnect_event);
@@ -245,6 +271,10 @@ extern "C" void esphome_mqtt_client_adapter_set_registered_erds_out(
 extern "C" void esphome_mqtt_client_adapter_notify_disconnected(
   esphome_mqtt_client_adapter_t* self)
 {
+  // Reset the connect timestamp so drain_subscribe() restarts the settle
+  // delay on the next reconnect, and the broker's re-delivered message
+  // backlog has time to drain before subscribe() is called again.
+  self->mqtt_connected_at_ms = 0;
   // Publish the disconnect event to notify the bridge
   // This will clear the ERD registry and trigger resubscription
   tiny_event_publish(&self->on_mqtt_disconnect_event, nullptr);
@@ -253,6 +283,19 @@ extern "C" void esphome_mqtt_client_adapter_notify_disconnected(
 extern "C" void esphome_mqtt_client_adapter_notify_connected(
   esphome_mqtt_client_adapter_t* self)
 {
+  // Record the time of first connection after each disconnect (or initial
+  // boot).  drain_subscribe() uses this as the start of the settle window.
+  //
+  // Thread-safety: notify_connected() is only ever called from loop() on the
+  // main ESPHome task (see geappliances_bridge.cpp).  notify_disconnected()
+  // is similarly dispatched through the main loop.  No concurrent access to
+  // mqtt_connected_at_ms is possible, so no mutex is needed.
+  if (self->mqtt_connected_at_ms == 0) {
+    self->mqtt_connected_at_ms = millis();
+    ESP_LOGI(TAG, "MQTT connected; subscribe drain will begin after %u ms settle delay",
+             MQTT_SETTLE_DELAY_MS);
+  }
+
   // Flush up to MAX_FLUSH_PER_CALL pending ERD updates per call.
   // loop() calls this every iteration while MQTT is connected so the full
   // backlog drains across multiple loop cycles without stalling the loop.
@@ -285,6 +328,38 @@ extern "C" bool esphome_mqtt_client_adapter_drain_subscribe(
     return false;
   }
 
+  // Enforce the post-connect settle delay.  When MQTT reconnects with a
+  // persistent session (clean_session=false) the broker may queue hundreds of
+  // unacknowledged QoS 1/2 messages and deliver them all at once, immediately
+  // saturating the client's receive-maximum quota (visible in the Mosquitto
+  // log as "has exceeded its receive-maximum quota").  The IDF MQTT task is
+  // then busy for several seconds processing PUBACKs, holding its API mutex.
+  // Any subscribe() call during that window blocks for 800+ ms, starving
+  // run_protocol_stack_() and causing the "took a long time" warnings seen
+  // in the field.  Waiting MQTT_SETTLE_DELAY_MS lets the IDF MQTT task drain
+  // the broker's backlog before we begin adding new subscriptions.
+  if (self->mqtt_connected_at_ms == 0) {
+    // Not yet connected; nothing to subscribe to yet.
+    return !self->pending_subscriptions->empty();
+  }
+  uint32_t now = millis();
+  // Unsigned subtraction wraps correctly at the ~49-day millis() rollover
+  // (standard Arduino/ESP32 pattern): e.g. if now=500 and mqtt_connected_at_ms
+  // was set 1000 ms before rollover, (uint32_t)(500 - (UINT32_MAX-999)) = 1500.
+  if (now - self->mqtt_connected_at_ms < MQTT_SETTLE_DELAY_MS) {
+    return !self->pending_subscriptions->empty();
+  }
+
+  // Rate-limit: allow at most one subscribe() call per SUBSCRIBE_MIN_INTERVAL_MS.
+  // Even after the settle period, each subscribe() call acquires the IDF MQTT
+  // API mutex; spacing the calls out ensures the MQTT task can send the
+  // SUBSCRIBE packet and receive the SUBACK before the next call arrives.
+  // Unsigned subtraction wraps correctly at rollover (same as above).
+  if (self->last_subscribe_ms != 0 &&
+      now - self->last_subscribe_ms < SUBSCRIBE_MIN_INTERVAL_MS) {
+    return !self->pending_subscriptions->empty();
+  }
+
   // Extract the front entry (oldest pending subscription) before erasing,
   // to avoid calling front() twice.
   auto& front_entry = self->pending_subscriptions->front();
@@ -296,6 +371,8 @@ extern "C" bool esphome_mqtt_client_adapter_drain_subscribe(
   if (mqtt_client == nullptr) {
     return !self->pending_subscriptions->empty();
   }
+
+  self->last_subscribe_ms = now;
 
   // Subscribe to the write topic.  QoS 0 is sufficient: write commands are
   // user-initiated one-shots and the broker does not retain them.
