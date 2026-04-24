@@ -291,7 +291,7 @@ extern "C" void esphome_mqtt_client_adapter_notify_connected(
   // is similarly dispatched through the main loop.  No concurrent access to
   // mqtt_connected_at_ms is possible, so no mutex is needed.
   if (self->mqtt_connected_at_ms == 0) {
-    self->mqtt_connected_at_ms = millis();
+    self->mqtt_connected_at_ms = esphome::millis();
     ESP_LOGI(TAG, "MQTT connected; subscribe drain will begin after %u ms settle delay",
              MQTT_SETTLE_DELAY_MS);
   }
@@ -342,7 +342,7 @@ extern "C" bool esphome_mqtt_client_adapter_drain_subscribe(
     // Not yet connected; nothing to subscribe to yet.
     return !self->pending_subscriptions->empty();
   }
-  uint32_t now = millis();
+  uint32_t now = esphome::millis();
   // Unsigned subtraction wraps correctly at the ~49-day millis() rollover
   // (standard Arduino/ESP32 pattern): e.g. if now=500 and mqtt_connected_at_ms
   // was set 1000 ms before rollover, (uint32_t)(500 - (UINT32_MAX-999)) = 1500.
