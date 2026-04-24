@@ -303,11 +303,6 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
   switch (signal) {
     case tiny_hsm_signal_entry:
       erd_cache(self).clear();
-      // Reset the polling-list cursor. Previous HSM states (state_add_*) leave
-      // erd_index pointing past the end of the discovery list they iterated;
-      // without this reset the first N ERDs in the polling list are skipped on
-      // the very first polling pass.
-      self->erd_index = 0;
       // When using an API-parsed list, register all ERDs upfront since
       // the discovery states are skipped.
       if (self->api_parsed_list != nullptr) {
@@ -323,6 +318,17 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
           add_erd_to_polling_list(self, self->custom_erd_list[i]);
         }
       }
+      // Pin erd_index to polling_list_count so that the fallthrough into
+      // signal_timer_expired (below) is a no-op and the first actual read
+      // happens on the first signal_polling_timer_expired.
+      //
+      // This also corrects the "first N ERDs skipped" bug from the full-discovery
+      // path: previous HSM states (state_add_*) leave erd_index pointing at the
+      // end of the *last* discovery list, which can be less than polling_list_count
+      // (the sum of all discovered ERDs across all states).  Forcing erd_index to
+      // polling_list_count ensures signal_polling_timer_expired always resets to 0
+      // and starts from ERD[0] on the very first polling pass.
+      self->erd_index = self->polling_list_count;
       arm_polling_timer(self, self->polling_interval_ms);
       self->polling_list_complete = true;
       self->current_state_name    = "polling";
