@@ -197,6 +197,12 @@ void mqtt_bridge_init(
 
 void mqtt_bridge_destroy(mqtt_bridge_t* self)
 {
+  // Guard against destroy() being called on a never-initialized struct (e.g.
+  // in test teardowns that always call both bridge and polling destroy).
+  if (!self->timer_group) {
+    return;
+  }
+
   // Stop the resubscribe timer so it cannot fire after the bridge is torn down.
   // tiny_timer_stop() is idempotent: safe to call even if the timer is not active.
   tiny_timer_stop(self->timer_group, &self->timer);

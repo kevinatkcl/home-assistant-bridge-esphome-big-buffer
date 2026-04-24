@@ -480,6 +480,12 @@ void mqtt_bridge_polling_init(
 
 void mqtt_bridge_polling_destroy(mqtt_bridge_polling_t* self)
 {
+  // Guard against destroy() being called on a never-initialized struct (e.g.
+  // in test teardowns that always call both bridge and polling destroy).
+  if (!self->timer_group) {
+    return;
+  }
+
   // Stop all active timers so they cannot fire after the bridge is torn down.
   // tiny_timer_stop() is idempotent: safe to call even if a timer is not active.
   tiny_timer_stop(self->timer_group, &self->timer);
