@@ -3,6 +3,8 @@
 #include <string>
 #include <map>
 #include <set>
+#include <vector>
+#include <utility>
 
 extern "C" {
 #include "i_mqtt_client.h"
@@ -39,6 +41,15 @@ typedef struct {
   // subscribe() again on reconnect would leak callback closures and duplicate
   // write handlers — one extra set per reconnect cycle.
   std::set<tiny_erd_t>* subscribed_write_erds;
+  // Deferred MQTT write-topic subscriptions. register_erd() pushes (erd, topic)
+  // pairs here instead of calling mqtt_client->subscribe() directly, so that
+  // bursts of register_erd() calls (e.g. 31 custom ERDs or 100+ discovery ERDs
+  // all registered in a single HSM state-entry callback) do not cause a
+  // sustained hold on the IDF MQTT client's API mutex.  loop() calls
+  // esphome_mqtt_client_adapter_drain_subscribe() once per iteration to spread
+  // the subscribe() calls across multiple loop cycles and keep each loop well
+  // under the ESPHome 30 ms loop-time warning threshold.
+  std::vector<std::pair<tiny_erd_t, std::string>>* pending_subscriptions;
 } esphome_mqtt_client_adapter_t;
 
 #ifdef __cplusplus
@@ -65,6 +76,14 @@ void esphome_mqtt_client_adapter_notify_disconnected(
   esphome_mqtt_client_adapter_t* self);
 
 void esphome_mqtt_client_adapter_notify_connected(
+  esphome_mqtt_client_adapter_t* self);
+
+// Drain one pending write-topic MQTT subscription per call.  Call this once
+// per loop() iteration so that subscribe() calls are spread across multiple
+// loop cycles instead of happening all at once inside a timer callback.
+// Returns true if a subscription was processed (more may remain); false if
+// the pending queue is empty.
+bool esphome_mqtt_client_adapter_drain_subscribe(
   esphome_mqtt_client_adapter_t* self);
 
 void esphome_mqtt_client_adapter_destroy(
