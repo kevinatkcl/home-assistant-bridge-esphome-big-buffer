@@ -251,7 +251,7 @@ extern "C" void esphome_mqtt_client_adapter_notify_connected(
           // Parse the ERD number from the topic.
           // Topic format: geappliances/{device_id}/erd/0xXXXX/write
           size_t write_pos = topic.rfind("/write");
-          if (write_pos == std::string::npos || write_pos == 0) {
+          if (write_pos == std::string::npos || write_pos < 2) {
             ESP_LOGW(TAG, "Ignoring write message with unexpected topic: %s", topic.c_str());
             return;
           }
