@@ -3,8 +3,6 @@
 #include <string>
 #include <map>
 #include <set>
-#include <vector>
-#include <utility>
 
 extern "C" {
 #include "i_mqtt_client.h"
@@ -34,38 +32,16 @@ typedef struct {
   // Optional output set: when non-null, every ERD passed to register_erd() is
   // added here so the bridge can track which ERDs the device has registered.
   std::set<tiny_erd_t>* registered_erds_out;
-  // Tracks ERDs for which write-topic MQTT subscriptions have already been
-  // established. Unlike the polling bridge's erd_set (which is cleared on every
-  // MQTT disconnect to rebuild the polling list), this set is never cleared.
-  // ESPHome's MQTT client automatically re-subscribes on reconnect, so calling
-  // subscribe() again on reconnect would leak callback closures and duplicate
-  // write handlers — one extra set per reconnect cycle.
-  std::set<tiny_erd_t>* subscribed_write_erds;
-  // Deferred MQTT write-topic subscriptions. register_erd() pushes (erd, topic)
-  // pairs here instead of calling mqtt_client->subscribe() directly, so that
-  // bursts of register_erd() calls (e.g. 31 custom ERDs or 100+ discovery ERDs
-  // all registered in a single HSM state-entry callback) do not cause a
-  // sustained hold on the IDF MQTT client's API mutex.  loop() calls
-  // esphome_mqtt_client_adapter_drain_subscribe() once per iteration to spread
-  // the subscribe() calls across multiple loop cycles and keep each loop well
-  // under the ESPHome 30 ms loop-time warning threshold.
-  std::vector<std::pair<tiny_erd_t, std::string>>* pending_subscriptions;
+  // True once the single wildcard MQTT subscription for write commands has been
+  // established.  Set on the first MQTT connect after adapter init; never
+  // cleared, because ESPHome's MQTT client automatically re-subscribes all
+  // registered topics on reconnect, so we only need to call subscribe() once.
+  bool wildcard_subscribed;
   // millis() timestamp of the most recent MQTT connection (set on the first
   // notify_connected() call after each disconnect; reset to 0 by
-  // notify_disconnected()).  drain_subscribe() uses this to enforce a settle
-  // delay after each (re)connect: when an MQTT client uses persistent sessions
-  // (clean_session=false), the broker may have hundreds of queued QoS 1/2
-  // messages to deliver — exhausting its receive-maximum quota immediately on
-  // connect.  Processing this backlog keeps the IDF MQTT task's API mutex
-  // locked for seconds, making every subscribe() call block for 800+ ms and
-  // triggering ESPHome's "took a long time" warning.  Waiting
-  // MQTT_SETTLE_DELAY_MS gives the IDF MQTT task time to drain the broker's
-  // backlog before we add new subscriptions.
+  // notify_disconnected()).  Used to gate the pending-update flush so the IDF
+  // MQTT task has time to process the broker's reconnect backlog.
   uint32_t mqtt_connected_at_ms;
-  // millis() timestamp of the last successful subscribe() drain call.
-  // Used to enforce SUBSCRIBE_MIN_INTERVAL_MS between successive subscribe()
-  // calls so that even after the settle period each call has breathing room.
-  uint32_t last_subscribe_ms;
 } esphome_mqtt_client_adapter_t;
 
 #ifdef __cplusplus
@@ -92,14 +68,6 @@ void esphome_mqtt_client_adapter_notify_disconnected(
   esphome_mqtt_client_adapter_t* self);
 
 void esphome_mqtt_client_adapter_notify_connected(
-  esphome_mqtt_client_adapter_t* self);
-
-// Drain one pending write-topic MQTT subscription per call.  Call this once
-// per loop() iteration so that subscribe() calls are spread across multiple
-// loop cycles instead of happening all at once inside a timer callback.
-// Returns true if a subscription was processed (more may remain); false if
-// the pending queue is empty.
-bool esphome_mqtt_client_adapter_drain_subscribe(
   esphome_mqtt_client_adapter_t* self);
 
 void esphome_mqtt_client_adapter_destroy(

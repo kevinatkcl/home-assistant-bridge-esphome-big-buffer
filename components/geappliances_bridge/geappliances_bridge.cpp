@@ -162,24 +162,24 @@ void GeappliancesBridge::loop() {
     bool is_connected = mqtt_client->is_connected();
     if (is_connected && !this->mqtt_was_connected_) {
       this->on_mqtt_connected_();
+    } else if (!is_connected && this->mqtt_was_connected_) {
+      // Notify the adapter that MQTT has disconnected so it resets the
+      // connect timestamp and publishes the disconnect event to the bridge
+      // HSMs.  Without this, the adapter would not re-apply the settle delay
+      // or re-subscribe the wildcard write topic after reconnect.
+      if (this->mqtt_client_adapter_initialized_) {
+        esphome_mqtt_client_adapter_notify_disconnected(&this->mqtt_client_adapter_);
+      }
     }
     // Drain pending ERD updates a few at a time each loop() call so that the
     // burst of up to MAX_PENDING_UPDATES publishes after an MQTT reconnect is
     // spread across multiple loop iterations (avoids a 1+ s stall from
     // acquiring the IDF MQTT API mutex for each publish in succession).
+    // Also subscribes the wildcard write topic on first connect.
     if (is_connected && this->mqtt_client_adapter_initialized_) {
       esphome_mqtt_client_adapter_notify_connected(&this->mqtt_client_adapter_);
     }
     this->mqtt_was_connected_ = is_connected;
-  }
-
-  // Drain one deferred write-topic MQTT subscription per loop() iteration.
-  // register_erd() pushes subscriptions here instead of calling subscribe()
-  // directly to avoid holding the IDF MQTT API mutex for 31–100+ sequential
-  // subscribe() calls inside a single timer callback, which caused "took a
-  // long time for an operation" warnings of 1400–2900 ms.
-  if (this->mqtt_client_adapter_initialized_) {
-    esphome_mqtt_client_adapter_drain_subscribe(&this->mqtt_client_adapter_);
   }
 
   run_protocol_stack_();          // Phase 1: drive GEA2/GEA3 hardware
