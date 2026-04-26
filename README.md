@@ -36,6 +36,7 @@ mqtt:
   port: 1883
   discovery: true
   discovery_prefix: homeassistant
+  clean_session: true
 
 # UART configuration
 uart:
@@ -55,13 +56,13 @@ uart:
 # GE Appliances Bridge component
 geappliances_bridge:
   gea3_uart_id: gea3_uart
-  # gea2_uart_id: gea2_uart
-  # device_id: "YourDeviceId"     # Optional: Uncomment to use a custom device ID
-  # mode: auto                    # Default: auto   Options: auto, subscribe, poll
-  # polling_interval: 10000       # Default: 10000 ms (10 seconds), used when in polling mode
-  # polling_onlypublish_onchange: false  # Default: false, only publish if value changed
-  # appliance_api_parsing: true   # Default: true, restricts polling to appliance-supported ERDs
-  # generate_device_config: false # Default: false, set to true to enable automatic HA MQTT discovery
+  gea2_uart_id: gea2_uart
+  # device_id: "YourDeviceId"             # Optional: Uncomment to use a custom device ID
+  # mode: auto                            # Default: auto   Options: auto, subscribe, poll
+  # polling_interval: 10000               # Default: 10000 ms (10 seconds), used when in polling mode
+  # polling_onlypublish_onchange: true    # Default: true, only publish if value changed
+  # appliance_api_parsing: true           # Default: true, restricts polling to appliance-supported ERDs
+  # generate_device_config: false         # Default: false, set to true to enable automatic HA MQTT discovery
 ```
 
 ## Configurable Parameters
@@ -104,7 +105,7 @@ See [doc/example.yaml](doc/example.yaml) for the complete configuration example.
 
 The `appliance_api_parsing` parameter is **optional** (default: `true`). When enabled, the component reads appliance API feature bit ERDs (0x0092–0x010D) after discovery to determine which ERDs are actually supported by the connected appliance. In polling mode this restricts polling to only those ERDs, resulting in faster poll cycles and a cleaner MQTT topic namespace. Set to `false` to poll all known ERDs regardless of appliance support.
 
-### Home Assistant Auto-Discovery
+### Home Assistant Auto-Discovery (In Development)
 
 The `generate_device_config` parameter is **optional** (default: `false`). When set to `true`, the component automatically publishes [Home Assistant MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) payloads after the appliance's ERD list is fully enumerated. This causes sensors, switches, selects, and other entities to appear in Home Assistant automatically — no manual YAML configuration required.
 

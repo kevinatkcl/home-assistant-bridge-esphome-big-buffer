@@ -43,6 +43,7 @@ mqtt:
   port: 1883
   discovery: true
   discovery_prefix: homeassistant
+  clean_session: true
 
 # UART configuration for GEA3 communication
 uart:
@@ -62,9 +63,9 @@ uart:
 # GE Appliances Bridge component
 geappliances_bridge:
   gea3_uart_id: gea3_uart
-  # gea2_uart_id: gea2_uart
+  gea2_uart_id: gea2_uart
   # device_id: "YourDeviceId"   # Optional: Uncomment to use a custom device ID
   # mode: auto                  # Default: auto   Options: auto, subscribe, poll
   # polling_interval: 10000     # Default: 10000 ms (10 seconds), used when in polling mode
-  # polling_onlypublish_onchange: false  # Default: false, only publish if value changed
+  # polling_only_publish_on_change: true  # Default: true, only publish if value changed
   # generate_device_config: false  # Default: true. Set to false to disable automatic HA MQTT discovery
