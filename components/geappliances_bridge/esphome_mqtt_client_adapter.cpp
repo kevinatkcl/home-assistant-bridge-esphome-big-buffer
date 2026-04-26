@@ -19,6 +19,13 @@ static const char *const TAG = "geappliances_bridge.mqtt";
 // practice bounded by the number of ERDs the appliance registers, typically <100).
 static constexpr size_t MAX_PENDING_UPDATES = 200;
 
+// Maximum number of pending ERD updates flushed to MQTT in a single
+// notify_connected() / loop() drain call.  Keeping this small (≤5) ensures
+// the main loop() does not stall while the IDF MQTT client's API mutex is
+// held by the MQTT task sending previous PUBLISH packets.  At 5 per call and
+// a typical loop rate of ~200 Hz, 200 pending updates drain in ≤200 ms.
+static constexpr size_t MAX_FLUSH_PER_CALL = 5;
+
 static std::string build_topic(esphome_mqtt_client_adapter_t* self, const char* suffix)
 {
   return std::string("geappliances/") + *self->device_id + suffix;
@@ -36,82 +43,13 @@ static void register_erd(i_mqtt_client_t* _self, tiny_erd_t erd)
 
   ESP_LOGD(TAG, "Registered ERD 0x%04X", erd);
 
-  // Only subscribe once per ERD lifetime. The polling bridge clears its own
-  // erd_set on every MQTT disconnect so that it can rebuild the polling list,
-  // which causes register_erd() to be called again for every ERD on each
-  // reconnect. ESPHome's MQTT client re-establishes all previous subscriptions
-  // automatically on reconnect, so calling subscribe() again would leak a new
-  // closure and register a duplicate write-command handler per reconnect cycle.
-  //
-  // IMPORTANT: this guard must come before any heap allocation so that the
-  // fast path (already subscribed) avoids all dynamic memory operations. On
-  // reconnect, register_erd() is called for every ERD; allocating strings and
-  // then immediately freeing them on 100+ ERDs causes severe heap fragmentation
-  // that can exhaust memory over multiple reconnect cycles.
-  if (self->subscribed_write_erds != nullptr &&
-      self->subscribed_write_erds->count(erd)) {
-    return;
-  }
-  if (self->subscribed_write_erds != nullptr) {
-    self->subscribed_write_erds->insert(erd);
-  }
-
-  // Build the write-topic string only for ERDs that actually need a new
-  // subscription (i.e. first time seen). Combine the suffix and "/write"
-  // in a single snprintf to avoid an intermediate std::string allocation.
-  char topic_suffix[40];
-  snprintf(topic_suffix, sizeof(topic_suffix), "/erd/0x%04x/write", erd);
-  std::string write_topic = build_topic(self, topic_suffix);
-
-  // Subscribe to write topic for this ERD. QoS 0 is sufficient: write
-  // commands are user-initiated one-shots, and the broker does not retain
-  // them, so the broker's at-most-once guarantee matches the use-case while
-  // avoiding the per-message in-flight state that QoS 1/2 require.
-  auto mqtt_client = esphome::mqtt::global_mqtt_client;
-  if (mqtt_client != nullptr) {
-    mqtt_client->subscribe(
-      write_topic,
-      [self, erd](const std::string &topic, const std::string &payload) {
-        // Parse hex string payload and trigger write request
-        ESP_LOGD(TAG, "Write request for ERD 0x%04X: %s", erd, payload.c_str());
-        
-        // Validate hex string format
-        if (payload.length() % 2 != 0) {
-          ESP_LOGW(TAG, "Invalid hex payload for ERD 0x%04X: odd length (%zu)", erd, payload.length());
-          return;
-        }
-        
-        // Convert hex string to bytes
-        std::vector<uint8_t> data;
-        data.reserve(payload.length() / 2);
-        for (size_t i = 0; i < payload.length(); i += 2) {
-          char byte_str[3] = {payload[i], payload[i+1], '\0'};
-          // Validate hex characters
-          if (!std::isxdigit(static_cast<unsigned char>(payload[i])) || 
-              !std::isxdigit(static_cast<unsigned char>(payload[i+1]))) {
-            ESP_LOGW(TAG, "Invalid hex characters in payload for ERD 0x%04X at position %zu", erd, i);
-            return;
-          }
-          data.push_back(static_cast<uint8_t>(strtol(byte_str, nullptr, 16)));
-        }
-        
-        // Validate data size
-        if (data.size() == 0 || data.size() > 255) {
-          ESP_LOGW(TAG, "Invalid data size for ERD 0x%04X: %zu bytes", erd, data.size());
-          return;
-        }
-        
-        // Publish write request event
-        mqtt_client_on_write_request_args_t args = {
-          .erd = erd,
-          .size = static_cast<uint8_t>(data.size()),
-          .value = data.data()
-        };
-        tiny_event_publish(&self->on_write_request_event, &args);
-      },
-      0  // QoS 0: write commands are one-shot; no retained messages on this topic
-    );
-  }
+  // Write-command delivery is handled by a single wildcard MQTT subscription
+  // (geappliances/{device_id}/erd/+/write) established in notify_connected().
+  // No per-ERD subscribe() call is needed here, which avoids:
+  //   - 108 heap-allocated lambda closures (one per ERD)
+  //   - 108 IDF MQTT outbox entries (one SUBSCRIBE packet per ERD)
+  //   - A 3-second stall on MQTT reconnect when ESPHome re-subscribes all
+  //     108 topics synchronously, blocking loop() and triggering the TWDT
 }
 
 static void update_erd(i_mqtt_client_t* _self, tiny_erd_t erd, const void* value, uint8_t size)
@@ -246,7 +184,8 @@ extern "C" void esphome_mqtt_client_adapter_init(
   self->valid_erds_filter = nullptr;
   self->string_erds_filter = nullptr;
   self->registered_erds_out = nullptr;
-  self->subscribed_write_erds = new std::set<tiny_erd_t>();
+  self->wildcard_subscribed   = false;
+  self->mqtt_connected_at_ms  = 0;
 
   tiny_event_init(&self->on_write_request_event);
   tiny_event_init(&self->on_mqtt_disconnect_event);
@@ -276,28 +215,116 @@ extern "C" void esphome_mqtt_client_adapter_set_registered_erds_out(
 extern "C" void esphome_mqtt_client_adapter_notify_disconnected(
   esphome_mqtt_client_adapter_t* self)
 {
-  // Publish the disconnect event to notify the bridge
-  // This will clear the ERD registry and trigger resubscription
+  // Reset the connect timestamp so that notify_connected() re-records the
+  // connect time on the next reconnect.
+  self->mqtt_connected_at_ms = 0;
+  // Publish the disconnect event to notify the bridge HSMs (subscription
+  // bridge transitions back to state_subscribing; polling bridge restarts
+  // its identify/polling cycle).
   tiny_event_publish(&self->on_mqtt_disconnect_event, nullptr);
 }
 
 extern "C" void esphome_mqtt_client_adapter_notify_connected(
   esphome_mqtt_client_adapter_t* self)
 {
-  // Flush pending updates when MQTT connects.
-  // Use QoS-0 (fire-and-forget) so publishing the full map in one go does not
-  // generate PUBREC/PUBREL/PUBCOMP handshake events for every message; the
-  // retained flag still ensures the broker persists the latest value.
-  auto mqtt_client = esphome::mqtt::global_mqtt_client;
-  if (mqtt_client != nullptr && mqtt_client->is_connected() && 
-      self->pending_updates != nullptr && !self->pending_updates->empty()) {
-    ESP_LOGI(TAG, "MQTT connected, flushing %zu pending ERD updates", self->pending_updates->size());
-    
-    for (const auto& kv : *self->pending_updates) {
-      mqtt_client->publish(kv.second.topic, kv.second.payload, 0, true);  // QoS 0, retain
+  if (self->mqtt_connected_at_ms == 0) {
+    self->mqtt_connected_at_ms = esphome::millis();
+  }
+
+  // Subscribe once to a single wildcard topic that covers write commands for
+  // ALL ERDs.  This replaces 100+ individual per-ERD subscribe() calls with
+  // one call.  Benefits:
+  //   - On MQTT reconnect, ESPHome's MQTT client only re-subscribes 1 topic
+  //     instead of 108, eliminating the 3-second block caused by 108
+  //     synchronous subscribe() calls each acquiring the IDF MQTT API mutex.
+  //   - Only 1 lambda closure on the heap instead of 108.
+  //   - Only 1 SUBSCRIBE packet in the IDF MQTT outbox instead of 108.
+  if (!self->wildcard_subscribed) {
+    auto mqtt_client = esphome::mqtt::global_mqtt_client;
+    if (mqtt_client != nullptr && mqtt_client->is_connected()) {
+      std::string wildcard_topic = build_topic(self, "/erd/+/write");
+      ESP_LOGI(TAG, "Subscribing to wildcard write topic: %s", wildcard_topic.c_str());
+
+      mqtt_client->subscribe(
+        wildcard_topic,
+        [self](const std::string& topic, const std::string& payload) {
+          // Parse the ERD number from the topic.
+          // Topic format: geappliances/{device_id}/erd/0xXXXX/write
+          size_t write_pos = topic.rfind("/write");
+          if (write_pos == std::string::npos || write_pos < 2) {
+            ESP_LOGW(TAG, "Ignoring write message with unexpected topic: %s", topic.c_str());
+            return;
+          }
+          size_t erd_start = topic.rfind('/', write_pos - 1);
+          if (erd_start == std::string::npos) {
+            ESP_LOGW(TAG, "Could not parse ERD from topic: %s", topic.c_str());
+            return;
+          }
+          erd_start++;  // skip the '/'
+          std::string erd_str = topic.substr(erd_start, write_pos - erd_start);
+          char* end;
+          unsigned long val = strtoul(erd_str.c_str(), &end, 16);
+          if (*end != '\0' || val > 0xFFFF) {
+            ESP_LOGW(TAG, "Invalid ERD value in topic: %s", topic.c_str());
+            return;
+          }
+          tiny_erd_t erd = static_cast<tiny_erd_t>(val);
+
+          ESP_LOGD(TAG, "Write request for ERD 0x%04X: %s", erd, payload.c_str());
+
+          if (payload.length() % 2 != 0) {
+            ESP_LOGW(TAG, "Invalid hex payload for ERD 0x%04X: odd length (%zu)", erd, payload.length());
+            return;
+          }
+
+          std::vector<uint8_t> data;
+          data.reserve(payload.length() / 2);
+          for (size_t i = 0; i < payload.length(); i += 2) {
+            char byte_str[3] = {payload[i], payload[i + 1], '\0'};
+            if (!std::isxdigit(static_cast<unsigned char>(payload[i])) ||
+                !std::isxdigit(static_cast<unsigned char>(payload[i + 1]))) {
+              ESP_LOGW(TAG, "Invalid hex characters in payload for ERD 0x%04X at position %zu", erd, i);
+              return;
+            }
+            data.push_back(static_cast<uint8_t>(strtol(byte_str, nullptr, 16)));
+          }
+
+          if (data.empty() || data.size() > 255) {
+            ESP_LOGW(TAG, "Invalid data size for ERD 0x%04X: %zu bytes", erd, data.size());
+            return;
+          }
+
+          mqtt_client_on_write_request_args_t args = {
+            .erd  = erd,
+            .size = static_cast<uint8_t>(data.size()),
+            .value = data.data()
+          };
+          tiny_event_publish(&self->on_write_request_event, &args);
+        },
+        0  // QoS 0
+      );
+      self->wildcard_subscribed = true;
     }
-    
-    self->pending_updates->clear();
+  }
+
+  // Flush up to MAX_FLUSH_PER_CALL pending ERD updates per call.
+  // loop() calls this every iteration while MQTT is connected so the full
+  // backlog drains across multiple loop cycles without stalling the loop.
+  if (self->pending_updates == nullptr || self->pending_updates->empty()) {
+    return;
+  }
+  auto mqtt_client = esphome::mqtt::global_mqtt_client;
+  if (mqtt_client == nullptr || !mqtt_client->is_connected()) {
+    return;
+  }
+  size_t flushed = 0;
+  while (!self->pending_updates->empty() && flushed < MAX_FLUSH_PER_CALL) {
+    auto it = self->pending_updates->begin();
+    mqtt_client->publish(it->second.topic, it->second.payload, 0, true);  // QoS 0, retain
+    self->pending_updates->erase(it);
+    flushed++;
+  }
+  if (flushed > 0 && self->pending_updates->empty()) {
     ESP_LOGI(TAG, "Flushed all pending ERD updates");
   }
 }
@@ -312,9 +339,5 @@ extern "C" void esphome_mqtt_client_adapter_destroy(
   if (self->pending_updates != nullptr) {
     delete self->pending_updates;
     self->pending_updates = nullptr;
-  }
-  if (self->subscribed_write_erds != nullptr) {
-    delete self->subscribed_write_erds;
-    self->subscribed_write_erds = nullptr;
   }
 }

@@ -318,6 +318,17 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
           add_erd_to_polling_list(self, self->custom_erd_list[i]);
         }
       }
+      // Pin erd_index to polling_list_count so that the fallthrough into
+      // signal_timer_expired (below) is a no-op and the first actual read
+      // happens on the first signal_polling_timer_expired.
+      //
+      // This also corrects the "first N ERDs skipped" bug from the full-discovery
+      // path: previous HSM states (state_add_*) leave erd_index pointing at the
+      // end of the *last* discovery list, which can be less than polling_list_count
+      // (the sum of all discovered ERDs across all states).  Forcing erd_index to
+      // polling_list_count ensures signal_polling_timer_expired always resets to 0
+      // and starts from ERD[0] on the very first polling pass.
+      self->erd_index = self->polling_list_count;
       arm_polling_timer(self, self->polling_interval_ms);
       self->polling_list_complete = true;
       self->current_state_name    = "polling";
@@ -328,13 +339,28 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
       break;
 
     case signal_polling_timer_expired:
-      if ((self->erd_index >= self->polling_list_count) || (self->polling_retries >= max_polling_retries)) {
-        self->erd_index       = 0;
-        self->polling_retries = 0;
+      // Only start a new cycle when the current one is fully complete.
+      //
+      // Previously a polling_retries counter force-reset the cycle after
+      // (max_polling_retries + 1) × polling_interval_ms, starting a new
+      // cycle while the previous one's GEA3 reads were still in-flight.
+      // Overlapping reads grow the GEA3 ERD client's fixed-size request queue
+      // faster than it drains; when the queue (backed by client_queue_buffer_)
+      // overflows its ring-buffer, adjacent heap metadata is corrupted — which
+      // manifests as the FreeRTOS prvCheckTasksWaitingTermination crash at
+      // PC 0x4080430C seen in the field.
+      //
+      // Correct behaviour: let the current cycle run to completion.  The
+      // 60-second appliance_lost_timer is the safety net: if the appliance
+      // stops responding, no read_completed ever fires, the 100 ms retry timer
+      // never re-arms, and after 60 s the HSM transitions back to
+      // state_identify_appliance to rediscover the appliance.
+      if (self->erd_index >= self->polling_list_count) {
+        self->erd_index = 0;
         send_next_poll_read_request(self);
-      } else {
-        self->polling_retries++;
       }
+      // Always re-arm the polling timer so the next cycle boundary is tracked
+      // even when the current cycle is still in progress.
       arm_polling_timer(self, self->polling_interval_ms);
       break;
 
@@ -460,6 +486,38 @@ void mqtt_bridge_polling_init(
 
 void mqtt_bridge_polling_destroy(mqtt_bridge_polling_t* self)
 {
+  // Guard against destroy() being called on a never-initialized struct (e.g.
+  // in test teardowns that always call both bridge and polling destroy).
+  if (!self->timer_group) {
+    return;
+  }
+
+  // Stop all active timers so they cannot fire after the bridge is torn down.
+  // tiny_timer_stop() is idempotent: safe to call even if a timer is not active.
+  tiny_timer_stop(self->timer_group, &self->timer);
+  tiny_timer_stop(self->timer_group, &self->appliance_lost_timer);
+  tiny_timer_stop(self->timer_group, &self->polling_timer);
+
+  // Remove all event subscriptions before freeing heap state.
+  //
+  // mqtt_bridge_polling_init() subscribes three event callbacks that reference
+  // this struct: erd_client_activity_subscription,
+  // mqtt_write_request_subscription, and mqtt_disconnect_subscription.  If
+  // these remain registered after destroy(), any subsequent event fires the
+  // HSM which dereferences self->erd_set / self->erd_cache (freed below) — a
+  // use-after-free that corrupts the heap.
+  tiny_event_unsubscribe(
+    tiny_gea3_erd_client_on_activity(self->erd_client),
+    &self->erd_client_activity_subscription);
+  tiny_event_unsubscribe(
+    mqtt_client_on_write_request(self->mqtt_client),
+    &self->mqtt_write_request_subscription);
+  tiny_event_unsubscribe(
+    mqtt_client_on_mqtt_disconnect(self->mqtt_client),
+    &self->mqtt_disconnect_subscription);
+
   delete reinterpret_cast<set<tiny_erd_t>*>(self->erd_set);
   delete reinterpret_cast<map<tiny_erd_t, vector<uint8_t>>*>(self->erd_cache);
+  self->erd_set = nullptr;
+  self->erd_cache = nullptr;
 }

@@ -197,6 +197,34 @@ void mqtt_bridge_init(
 
 void mqtt_bridge_destroy(mqtt_bridge_t* self)
 {
+  // Guard against destroy() being called on a never-initialized struct (e.g.
+  // in test teardowns that always call both bridge and polling destroy).
+  if (!self->timer_group) {
+    return;
+  }
+
+  // Stop the resubscribe timer so it cannot fire after the bridge is torn down.
+  // tiny_timer_stop() is idempotent: safe to call even if the timer is not active.
+  tiny_timer_stop(self->timer_group, &self->timer);
+
+  // Remove all event subscriptions before freeing heap state.
+  //
+  // mqtt_bridge_init() subscribes three event callbacks that reference this
+  // struct: erd_client_activity_subscription, mqtt_write_request_subscription,
+  // and mqtt_disconnect_subscription.  If these remain registered after
+  // destroy(), any subsequent event fires the HSM which dereferences
+  // self->erd_set (freed below) — a use-after-free that corrupts the heap.
+  tiny_event_unsubscribe(
+    tiny_gea3_erd_client_on_activity(self->erd_client),
+    &self->erd_client_activity_subscription);
+  tiny_event_unsubscribe(
+    mqtt_client_on_write_request(self->mqtt_client),
+    &self->mqtt_write_request_subscription);
+  tiny_event_unsubscribe(
+    mqtt_client_on_mqtt_disconnect(self->mqtt_client),
+    &self->mqtt_disconnect_subscription);
+
   delete reinterpret_cast<set<tiny_erd_t>*>(self->erd_set);
+  self->erd_set = nullptr;
 }
 

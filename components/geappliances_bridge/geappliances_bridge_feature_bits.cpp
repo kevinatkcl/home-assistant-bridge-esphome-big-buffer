@@ -96,12 +96,12 @@ void GeappliancesBridge::run_feature_bit_reading_()
   } else {
     this->read_retry_count_++;
     if (this->read_retry_count_ >= MAX_READ_RETRIES) {
-      ESP_LOGW(TAG, "Could not queue read for %s after %u attempts, skipping ERD",
+      ESP_LOGI(TAG, "Could not queue read for %s after %u attempts, skipping ERD",
                feature_name, MAX_READ_RETRIES);
       this->read_retry_count_ = 0;
       this->skip_to_next_feature_erd_(feature_erd);
     } else if (this->read_retry_count_ % LOG_EVERY_N_RETRIES == 0) {
-      ESP_LOGW(TAG, "Failed to queue %s read, retrying... (attempt %u)",
+      ESP_LOGI(TAG, "Failed to queue %s read, retrying... (attempt %u)",
                feature_name, this->read_retry_count_);
     }
   }
@@ -270,7 +270,7 @@ void GeappliancesBridge::parse_and_log_feature_bits_()
       }
     }
     if (!found_descriptor) {
-      ESP_LOGW(TAG, "  No known API definition for type 0x%04X version %u",
+      ESP_LOGI(TAG, "  No known API definition for type 0x%04X version %u",
                appliance_type, version);
     }
   }
