@@ -21,6 +21,38 @@
 //   - Deciding which ERDs are valid (filtered upstream by i_mqtt_client)
 //   - Bridge initialization or startup phase management
 //
+// ---- 3-Phase Polling Lifecycle ----
+//
+// Phase 1 — Build Verification List (no reads)
+//   Determines which ERDs to probe in Phase 2. Contents depend on config:
+//   - POLL or AUTO→poll, appliance_api_parsing=false:
+//       commonErds + energyErds + applianceApiFeatureErds +
+//       appliance-specific (erd_lists.h) + custom_erds
+//   - POLL or AUTO→poll, appliance_api_parsing=true:
+//       feature_bit_manager valid ERD list + custom_erds
+//   - SUBSCRIBE or AUTO→subscribing:
+//       custom_erds only (empty if none configured)
+//
+// Phase 2 — Verification (sequential reads; HSM states before state_polling)
+//   Each ERD in the verification list is read once:
+//   - read_completed             → register ERD + publish value → next ERD
+//   - read_failed(not_supported) → permanently exclude          → next ERD
+//   - read_failed(retries_exhausted) → skip, not added to polling list → next ERD
+//   Result: erd_polling_list contains only ERDs that responded successfully.
+//
+// Phase 3 — Steady-State Polling (state_polling)
+//   All registered ERDs are read sequentially each cycle. Timer semantics:
+//   - Timer fires mid-cycle (cycle not yet complete):
+//       set restart_pending=true; let the cycle finish naturally.
+//   - Timer fires after cycle already complete:
+//       start next cycle immediately; re-arm timer.
+//   - Cycle completes with restart_pending=true:
+//       start next cycle immediately; re-arm timer; clear restart_pending.
+//   - Cycle completes, timer still armed:
+//       wait for timer to fire.
+//   - Cycle completes, timer not armed, no restart_pending:
+//       start next cycle immediately; re-arm timer.
+//
 // Dependencies:
 //   - i_mqtt_client.h, i_tiny_gea3_erd_client.h, tiny_hsm.h, tiny_timer.h
 //   - erd_lists.h (appliance ERD list arrays)
@@ -104,6 +136,11 @@ typedef struct {
   // polling immediately when a cycle finishes: if the timer is armed, wait for
   // it to fire; if not, start the next cycle right away.
   bool polling_timer_armed;
+  // Set to true when the polling_interval timer fires while a cycle is still
+  // in progress (cycle_completed_count < polling_list_count).  The in-progress
+  // cycle is allowed to finish, then the cycle-completion handler restarts
+  // immediately instead of waiting for another timer interval.
+  bool restart_pending;
 } mqtt_bridge_polling_t;
 
 /*!

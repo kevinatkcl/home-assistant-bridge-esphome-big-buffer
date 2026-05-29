@@ -281,17 +281,25 @@ static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_sign
       // supplies an api_parsed_list (the custom ERDs), so full discovery and
       // feature-bit reads are unnecessary.
       if (self->erd_host_address != tiny_gea_broadcast_address) {
-        // If we already have a polling list (re-entry after appliance lost),
-        // clear everything so ERDs are re-added via _no_register and will
-        // be re-registered on first read.
-        if (self->polling_list_count > 0 && self->api_parsed_list != nullptr) {
+        // Re-entry after appliance lost: polling list is non-empty — clear
+        // everything so ERDs are re-added via _no_register and lazily
+        // re-registered on first read (appliance-lost behavior is deferred).
+        // First entry: polling list is empty — skip broadcast and go straight
+        // to Phase 2 probe (when api_parsed_list is set) or discovery.
+        bool is_reentry = (self->polling_list_count > 0 && self->api_parsed_list != nullptr);
+        if (is_reentry) {
           erd_set(self).clear();
           pending_registration_set(self).clear();
           self->polling_list_count = 0;
         }
-        tiny_hsm_state_t next = (self->api_parsed_list != nullptr)
-          ? state_polling
-          : state_add_common_erds;
+        tiny_hsm_state_t next;
+        if (self->api_parsed_list != nullptr) {
+          // First entry: verify ERDs via Phase 2 before polling.
+          // Re-entry (appliance lost): skip re-probe; go directly to polling.
+          next = is_reentry ? state_polling : state_probe_api_parsed_erds;
+        } else {
+          next = state_add_common_erds;
+        }
         tiny_hsm_transition(hsm, next);
         break;
       }
@@ -443,6 +451,19 @@ static tiny_hsm_result_t state_probe_api_parsed_erds(tiny_hsm_t* hsm, tiny_hsm_s
     return tiny_hsm_result_signal_consumed;
   }
 
+  // Phase 2 verification: any failure — whether explicitly rejected
+  // (not_supported) or timed out after all retries (retries_exhausted) —
+  // permanently excludes the ERD from the Phase 3 polling list.
+  if (signal == signal_read_failed) {
+    auto args = reinterpret_cast<const tiny_gea3_erd_client_on_activity_args_t*>(data);
+    disarm_timer(self);
+    erd_set(self).insert(args->read_failed.erd);
+    if (!send_next_read_request(self)) {
+      tiny_hsm_transition(hsm, self->next_discovery_state);
+    }
+    return tiny_hsm_result_signal_consumed;
+  }
+
   return handle_discovery_list_signals(hsm, signal, data);
 }
 
@@ -498,6 +519,7 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
       }
       self->erd_index = 0;
       self->cycle_completed_count = 0;
+      self->restart_pending = false;
       arm_polling_timer(self, self->polling_interval_ms);
       self->polling_list_complete = true;
       self->current_state_name    = "polling";
@@ -515,10 +537,17 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
     case signal_polling_timer_expired: {
       // Timer fired: mark as no longer armed.
       self->polling_timer_armed = false;
-      // Always restart the cycle when the polling timer fires.  The timer IS the
-      // polling interval gate — even if a prior cycle never completed (because
-      // some ERDs never respond, cycle_completed_count never reaches
-      // polling_list_count), we must still re-poll on every interval.
+      if (self->erd_index >= self->polling_list_count && self->cycle_completed_count < self->polling_list_count) {
+        // Reads are in flight (erd_index reached the end of the list) but
+        // not all responses have arrived yet.  Per Phase 3 spec, let the
+        // current cycle finish naturally before restarting.  If erd_index
+        // is 0 the cycle has not started; the timer correctly starts it below.
+        // Mark restart as pending so the cycle-completion handler kicks off
+        // the next cycle as soon as the last ERD responds.
+        self->restart_pending = true;
+        break;
+      }
+      // Cycle was already complete when the timer fired — start next cycle now.
       self->erd_index = 0;
       self->cycle_completed_count = 0;
       self->cycle_start_ms = esphome::millis();
@@ -574,10 +603,18 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
       if (self->cycle_completed_count >= self->polling_list_count) {
         self->last_cycle_time_ms = (uint32_t)(esphome::millis() - self->cycle_start_ms);
         self->cycle_count++;
-        /* Cycle finished.  If the polling timer is NOT armed, start the next
-         * cycle immediately.  If it IS armed, do nothing — it will fire and
-         * restart polling. */
-        if (!self->polling_timer_armed) {
+        if (self->restart_pending) {
+          // Timer fired while this cycle was in progress; start next cycle now.
+          self->restart_pending = false;
+          self->erd_index = 0;
+          self->cycle_completed_count = 0;
+          self->cycle_start_ms = esphome::millis();
+          arm_polling_timer(self, self->polling_interval_ms);
+          while (self->erd_index < self->polling_list_count) {
+            send_next_poll_read_request(self);
+          }
+        } else if (!self->polling_timer_armed) {
+          /* Cycle finished and no timer pending — start next cycle immediately. */
           self->erd_index = 0;
           self->cycle_completed_count = 0;
           self->cycle_start_ms = esphome::millis();
@@ -585,6 +622,7 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
             send_next_poll_read_request(self);
           }
         }
+        // else: timer still armed — wait for it to fire and restart.
       }
       break;
     }
@@ -596,7 +634,16 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
       if (self->cycle_completed_count >= self->polling_list_count) {
         self->last_cycle_time_ms = (uint32_t)(esphome::millis() - self->cycle_start_ms);
         self->cycle_count++;
-        if (!self->polling_timer_armed) {
+        if (self->restart_pending) {
+          self->restart_pending = false;
+          self->erd_index = 0;
+          self->cycle_completed_count = 0;
+          self->cycle_start_ms = esphome::millis();
+          arm_polling_timer(self, self->polling_interval_ms);
+          while (self->erd_index < self->polling_list_count) {
+            send_next_poll_read_request(self);
+          }
+        } else if (!self->polling_timer_armed) {
           self->erd_index = 0;
           self->cycle_completed_count = 0;
           self->cycle_start_ms = esphome::millis();
@@ -604,6 +651,7 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
             send_next_poll_read_request(self);
           }
         }
+        // else: timer still armed — wait for it to fire and restart.
       }
       break;
 
@@ -684,6 +732,7 @@ static void mqtt_bridge_polling_init_impl(
   self->erd_polling_list       = nullptr;
   self->polling_list_count     = 0;
   self->polling_list_capacity  = 0;
+  self->restart_pending        = false;
   self->erd_set   = reinterpret_cast<void*>(new set<tiny_erd_t>());
   self->erd_cache = reinterpret_cast<void*>(new map<tiny_erd_t, vector<uint8_t>>());
   self->pending_registration_set = reinterpret_cast<void*>(new set<tiny_erd_t>());

@@ -824,11 +824,14 @@ TEST(mqtt_bridge_polling_custom_erds, should_ignore_spurious_read_completed_duri
 // When the polling bridge is used only for custom ERDs alongside a subscription bridge
 // (subscribe/auto mode), it is initialized with a pre-known host address and
 // api_parsed_list = custom ERDs.  The bridge must NOT broadcast to 0xFF; it
-// goes directly to state_polling and begins polling the custom ERDs immediately.
+// On first init, state_identify_appliance transitions to state_probe_api_parsed_erds
+// (Phase 2 verification) instead of going directly to state_polling.  After ERDs
+// are verified they are registered during probe and polled without deferred
+// registration thereafter.
 TEST(mqtt_bridge_polling_custom_erds, should_poll_only_custom_erds_when_used_alongside_subscribe_bridge)
 {
-  // During init, state_polling entry fires immediately (no 0xFF broadcast).
-  // Custom ERDs are added via _no_register — no registration during init.
+  // Phase 2: state_probe_api_parsed_erds entry sends read for custom_erd_1 immediately.
+  should_request_read(0xC0, custom_erd_1);
   mqtt_bridge_polling_init_at_address(
     &self,
     &timer_group.timer_group,
@@ -839,23 +842,32 @@ TEST(mqtt_bridge_polling_custom_erds, should_poll_only_custom_erds_when_used_alo
     0xC0,     // pre-known host address — no 0xFF broadcast
     custom_list, 2);
 
-  // Polling timer fires: both custom ERDs read simultaneously
-  should_request_read(0xC0, custom_erd_1);
-  should_request_read(0xC0, custom_erd_2);
-  after(polling_interval);
-
-  // custom_erd_1 read completes: registers (deferred), publishes
+  // Phase 2: custom_erd_1 responds — registered and published immediately.
+  // Bridge sends read for custom_erd_2.
   should_register_erd(custom_erd_1);
   should_update_erd(custom_erd_1, uint8_t(0xAA));
+  should_request_read(0xC0, custom_erd_2);
   when_a_poll_read_completes(0xC0, custom_erd_1, uint8_t(0xAA));
 
-  // custom_erd_2 read completes: registers, publishes
+  // Phase 2: custom_erd_2 responds — registered and published immediately.
+  // No more ERDs — transition to state_polling.
   should_register_erd(custom_erd_2);
   should_update_erd(custom_erd_2, uint8_t(0xBB));
   when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xBB));
 
-  // Polling timer fires: restart cycle from custom_erd_1 (already registered)
-  // Both custom ERDs read simultaneously
+  // Phase 3: polling timer fires — both custom ERDs read simultaneously.
+  // Already registered during probe — no register_erd expected.
+  should_request_read(0xC0, custom_erd_1);
+  should_request_read(0xC0, custom_erd_2);
+  after(polling_interval);
+
+  should_update_erd(custom_erd_1, uint8_t(0xAA));
+  when_a_poll_read_completes(0xC0, custom_erd_1, uint8_t(0xAA));
+
+  should_update_erd(custom_erd_2, uint8_t(0xBB));
+  when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xBB));
+
+  // Polling timer fires: restart cycle — both ERDs already registered.
   should_request_read(0xC0, custom_erd_1);
   should_request_read(0xC0, custom_erd_2);
   after(polling_interval);
@@ -863,13 +875,13 @@ TEST(mqtt_bridge_polling_custom_erds, should_poll_only_custom_erds_when_used_alo
 
 // When the custom ERD bridge (init_at_address) loses contact with the appliance
 // (appliance_lost_timer fires after 60 s of no read completions), it must resume
-// polling at the pre-known address WITHOUT broadcasting to 0xFF.  This regression
-// was triggered by transient GEA3 read failures (e.g. a WiFi/MQTT blip lasting
-// ~1 minute) causing the appliance_lost_timer to expire.
+// polling at the pre-known address WITHOUT broadcasting to 0xFF.  On re-entry
+// after appliance_lost the probe phase is skipped (deferred for future spec)
+// and ERDs are lazily re-registered on first read.
 TEST(mqtt_bridge_polling_custom_erds, should_resume_polling_at_known_address_after_appliance_lost)
 {
-  // Init: go directly to state_polling (no 0xFF broadcast).
-  // ERDs are added via _no_register — no registration during init.
+  // Phase 2: state_probe_api_parsed_erds entry sends read for custom_erd_1.
+  should_request_read(0xC0, custom_erd_1);
   mqtt_bridge_polling_init_at_address(
     &self,
     &timer_group.timer_group,
@@ -880,18 +892,24 @@ TEST(mqtt_bridge_polling_custom_erds, should_resume_polling_at_known_address_aft
     0xC0,
     custom_list, 2);
 
-  // Normal polling cycle so the appliance_lost_timer is running.
-  // ERDs are added via _no_register, so first read triggers deferred registration.
-  // Both custom ERDs read simultaneously.
+  // Phase 2 probe: both custom ERDs respond and are registered immediately.
+  should_register_erd(custom_erd_1);
+  should_update_erd(custom_erd_1, uint8_t(0xAA));
+  should_request_read(0xC0, custom_erd_2);
+  when_a_poll_read_completes(0xC0, custom_erd_1, uint8_t(0xAA));
+
+  should_register_erd(custom_erd_2);
+  should_update_erd(custom_erd_2, uint8_t(0xBB));
+  when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xBB));
+
+  // First polling cycle: both ERDs already registered during probe.
   should_request_read(0xC0, custom_erd_1);
   should_request_read(0xC0, custom_erd_2);
   after(polling_interval);
 
-  should_register_erd(custom_erd_1);
   should_update_erd(custom_erd_1, uint8_t(0xAA));
   when_a_poll_read_completes(0xC0, custom_erd_1, uint8_t(0xAA));
 
-  should_register_erd(custom_erd_2);
   should_update_erd(custom_erd_2, uint8_t(0xBB));
   when_a_poll_read_completes(0xC0, custom_erd_2, uint8_t(0xBB));
 
