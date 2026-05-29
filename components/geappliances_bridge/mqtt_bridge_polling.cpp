@@ -13,7 +13,8 @@
  *         → state_add_appliance_api_feature_erds
  *           → state_add_appliance_erds → state_polling
  *     → state_add_appliance_api_feature_erds  (when api_parsed_list is set)
- *       → state_polling
+ *       → state_probe_api_parsed_erds  (reads each api_parsed_list ERD; only successful reads added)
+ *         → state_polling
  */
 
 #include "mqtt_bridge_common.h"
@@ -38,6 +39,7 @@ static tiny_hsm_result_t state_identify_appliance(tiny_hsm_t* hsm, tiny_hsm_sign
 static tiny_hsm_result_t state_add_common_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_energy_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_appliance_api_feature_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
+static tiny_hsm_result_t state_probe_api_parsed_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_add_appliance_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data);
 
@@ -204,6 +206,20 @@ static tiny_hsm_result_t handle_discovery_list_signals(tiny_hsm_t* hsm, tiny_hsm
         args->read_completed.erd,
         args->read_completed.data,
         args->read_completed.data_size);
+      if (!send_next_read_request(self)) {
+        tiny_hsm_transition(hsm, self->next_discovery_state);
+      }
+      break;
+
+    case signal_read_failed:
+      disarm_timer(self);
+      // If the appliance explicitly rejects the ERD (not_supported), mark it
+      // in erd_set so the state_polling entry dedup loop does not add it.
+      // retries_exhausted means the GEA3 client timed out — the ERD may still
+      // be in the queue and could respond later; do NOT exclude it here.
+      if (args->read_failed.reason == tiny_gea3_erd_client_read_failure_reason_not_supported) {
+        erd_set(self).insert(args->read_failed.erd);
+      }
       if (!send_next_read_request(self)) {
         tiny_hsm_transition(hsm, self->next_discovery_state);
       }
@@ -382,12 +398,42 @@ static tiny_hsm_result_t state_add_appliance_api_feature_erds(tiny_hsm_t* hsm, t
   if (signal == tiny_hsm_signal_entry) {
     self->current_state_name = "add_appliance_api_feature_erds";
     // When reached via the api_parsed_list path (from state_identify_appliance),
-    // go directly to polling after the mandatory feature-bit ERDs.
+    // probe each ERD in api_parsed_list before polling to filter out ERDs the
+    // appliance does not actually support.  Clear the polling list and erd_set
+    // here so that re-entry after appliance_lost starts fresh.
     // When reached via the full discovery chain (from state_add_energy_erds),
-    // continue to appliance-specific ERDs.
-    self->next_discovery_state    = (self->api_parsed_list != nullptr) ? state_polling : state_add_appliance_erds;
+    // continue to appliance-specific ERDs as before.
+    if (self->api_parsed_list != nullptr) {
+      erd_set(self).clear();
+      pending_registration_set(self).clear();
+      self->polling_list_count = 0;
+      self->next_discovery_state = state_probe_api_parsed_erds;
+    } else {
+      self->next_discovery_state = state_add_appliance_erds;
+    }
     self->appliance_erd_list       = applianceApiFeatureErds;
     self->appliance_erd_list_count = applianceApiFeatureErdCount;
+    self->erd_index                = 0;
+    self->request_id++;
+    bool queued = tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
+    if (queued) {
+      arm_timer(self, retry_delay);
+    }
+    return tiny_hsm_result_signal_consumed;
+  }
+
+  return handle_discovery_list_signals(hsm, signal, data);
+}
+
+static tiny_hsm_result_t state_probe_api_parsed_erds(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
+{
+  mqtt_bridge_polling_t* self = container_of(mqtt_bridge_polling_t, hsm, hsm);
+
+  if (signal == tiny_hsm_signal_entry) {
+    self->current_state_name      = "probe_api_parsed_erds";
+    self->next_discovery_state    = state_polling;
+    self->appliance_erd_list       = self->api_parsed_list;
+    self->appliance_erd_list_count = self->api_parsed_list_count;
     self->erd_index                = 0;
     self->request_id++;
     bool queued = tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
@@ -432,9 +478,12 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
   switch (signal) {
     case tiny_hsm_signal_entry:
       erd_cache(self).clear();
-      // When using an API-parsed list, add all ERDs to the polling list
-      // without registering them yet — they'll be registered on first
-      // successful read, just like the discovery path.
+      // api_parsed_list ERDs that were successfully probed in state_probe_api_parsed_erds
+      // are already in erd_set and erd_polling_list — the dedup check below silently
+      // skips them.  ERDs that did not respond during probe (or that arrived via the
+      // init_at_address shortcut that bypasses probe entirely) are not yet in erd_set
+      // and are added here with deferred MQTT registration.  They will be lazily
+      // registered the first time they respond to a poll read.
       if (self->api_parsed_list != nullptr) {
         for (uint16_t i = 0; i < self->api_parsed_list_count; i++) {
           add_erd_to_polling_list_no_register(self, self->api_parsed_list[i]);
