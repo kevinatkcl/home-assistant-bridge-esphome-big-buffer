@@ -515,21 +515,20 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
     case signal_polling_timer_expired: {
       // Timer fired: mark as no longer armed.
       self->polling_timer_armed = false;
-      bool all_completed = (self->cycle_completed_count >= self->polling_list_count);
-      bool no_cycle_in_progress = (self->cycle_completed_count == 0) &&
-                                  (self->erd_index == 0);
-      if (all_completed || no_cycle_in_progress) {
-        self->erd_index = 0;
-        self->cycle_completed_count = 0;
-        self->cycle_start_ms = esphome::millis();
-        uint32_t cycle_start = esphome::millis();
-        while (self->erd_index < self->polling_list_count) {
-          send_next_poll_read_request(self);
-        }
-        uint32_t elapsed = esphome::millis() - cycle_start;
-        if (elapsed >= 1000) {
-          ESP_LOGW(TAG, "Long cycle start: %ums for %u ERDs", elapsed, self->polling_list_count);
-        }
+      // Always restart the cycle when the polling timer fires.  The timer IS the
+      // polling interval gate — even if a prior cycle never completed (because
+      // some ERDs never respond, cycle_completed_count never reaches
+      // polling_list_count), we must still re-poll on every interval.
+      self->erd_index = 0;
+      self->cycle_completed_count = 0;
+      self->cycle_start_ms = esphome::millis();
+      uint32_t cycle_start = esphome::millis();
+      while (self->erd_index < self->polling_list_count) {
+        send_next_poll_read_request(self);
+      }
+      uint32_t elapsed = esphome::millis() - cycle_start;
+      if (elapsed >= 1000) {
+        ESP_LOGW(TAG, "Long cycle start: %ums for %u ERDs", elapsed, self->polling_list_count);
       }
       arm_polling_timer(self, self->polling_interval_ms);
       break;
