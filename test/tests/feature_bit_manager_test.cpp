@@ -617,16 +617,17 @@ TEST(feature_bit_manager, incremental_parsing_processes_one_erd_per_run)
   CHECK_TRUE(manager.is_parse_pending());
 
   // Continue parsing until done.
-  // There are 10 appliance ERDs to parse (one per run call) + 1 for common.
-  // So at most 11 total run() calls.
+  // Common features: ceil(17 / COMMON_PARSE_PER_CALL) = ceil(17/4) = 5 calls
+  // Appliance ERDs: 10 calls (one per ERD)
+  // Total: 15 calls
   int parse_calls = 1;  // already did one above
   while (manager.is_parse_pending()) {
     manager.run();
     parse_calls++;
   }
 
-  // Should have processed: 1 (common + first appliance) + 9 (remaining appliance ERDs) = 10 calls total.
-  CHECK_EQUAL(10, parse_calls);
+  // 5 (common features, 4 per call) + 10 (appliance ERDs, 1 per call) = 15 calls total.
+  CHECK_EQUAL(15, parse_calls);
   CHECK_TRUE(manager.is_complete());
   CHECK_TRUE(manager.is_valid_list_ready());
 }
@@ -698,35 +699,15 @@ TEST(feature_bit_manager, run_gives_up_after_max_queue_retries_for_each_erd)
 /* MQTT integration                                                     */
 /* ------------------------------------------------------------------ */
 
-TEST(feature_bit_manager, on_erd_read_completed_publishes_to_mqtt_when_initialized)
+TEST(feature_bit_manager, on_erd_read_completed_does_not_publish_to_mqtt)
 {
   init_manager_with_mqtt();
 
   uint8_t data[1] = {0x06};
-  // When MQTT is initialized, on_erd_read_completed calls mqtt_client->api->update_erd.
-  mock()
-    .expectOneCall("update_erd")
-    .onObject(&mqtt_client.interface)
-    .withParameter("erd", ERD_APPLIANCE_TYPE)
-    .ignoreOtherParameters();
-  mock()
-    .expectOneCall("read")
-    .onObject(&erd_client.interface)
-    .withParameter("address", 0xC0)
-    .withParameter("erd", ERD_MODEL_NUMBER)
-    .ignoreOtherParameters()
-    .andReturnValue(true);
-  manager.on_erd_read_completed(ERD_APPLIANCE_TYPE, data, 1);
-
-  CHECK_EQUAL(FEATURE_BIT_STATE_IN_FLIGHT, manager.get_state());
-}
-
-TEST(feature_bit_manager, on_erd_read_completed_does_not_publish_to_mqtt_when_not_initialized)
-{
-  init_manager();  // mqtt_initialized = false
-
-  uint8_t data[1] = {0x06};
-  // No update_erd call expected when mqtt_initialized is false.
+  // Feature bit ERDs are NOT published to MQTT during the reading phase.
+  // This avoids heap pressure (std::string + std::map allocations) that
+  // can trigger the Task Watchdog Timer on ESP32-C3.
+  // No update_erd call expected - only the queue_next read.
   mock()
     .expectOneCall("read")
     .onObject(&erd_client.interface)

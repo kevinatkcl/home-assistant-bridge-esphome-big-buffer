@@ -8,8 +8,8 @@ Hierarchical state machine that drives the linear startup sequence of the GE App
 
 | Function | Description |
 |----------|-------------|
-| `set_bridge_instance(bridge)` | Set the back-pointer to the bridge instance for HSM state functions |
-| `bridge_from_hsm(hsm)` | Get the bridge instance from an HSM pointer |
+| `set_bridge_services(services)` | Set the `IBridgeServices` back-pointer used by all HSM state functions |
+| `services_from_hsm(hsm)` | Retrieve the `IBridgeServices` pointer from an HSM pointer |
 
 ## Signals
 
@@ -35,8 +35,8 @@ startup_state_top (root — handles entry/exit, defers all other signals)
   │    └─ entry → immediately transition to autodiscovery
   │
   ├─ startup_state_autodiscovery
-  │    ├─ run_loop: run AutodiscoveryManager
-  │    └─ complete/failed/signal → device_id
+  │    ├─ run_loop: run AutodiscoveryManager (retries indefinitely)
+  │    └─ complete/signal → device_id
   │
   ├─ startup_state_device_id
   │    ├─ entry: init DeviceIdentityManager, start timeout timer
@@ -65,15 +65,17 @@ startup_state_top (root — handles entry/exit, defers all other signals)
   │    └─ transition to running (HA discovery runs in background)
   │
   └─ startup_state_running (steady state)
-       └─ run_loop: log poll state transitions, check subscription activity
+       └─ run_loop: run all managers (autodiscovery, device identity,
+           feature bits, ha discovery), check subscription activity
+           (AUTO mode), maybe start custom ERD polling, log poll state
+           transitions
 ```
 
 ## Dependencies
 
 - `tiny_hsm` — hierarchical state machine framework
-- `GeappliancesBridge` — the bridge class (accessed via `bridge_from_hsm()`)
-- All sub-managers: `AutodiscoveryManager`, `DeviceIdentityManager`, `FeatureBitManager`, `HaDiscoveryManager`
-- ESPHome `mqtt::global_mqtt_client` — MQTT connection state
+- `IBridgeServices` — abstract contract implemented by `GeappliancesBridge`; the HSM is isolated from the concrete class (accessed via `services_from_hsm()`)
+- ESPHome `mqtt::global_mqtt_client` — MQTT connection state check in feature_bits / bridge_init states
 
 ## Key Design Decisions
 

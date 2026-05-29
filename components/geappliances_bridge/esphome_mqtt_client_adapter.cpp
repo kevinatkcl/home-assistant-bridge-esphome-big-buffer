@@ -13,6 +13,10 @@ extern "C" {
 #include <cctype>
 #include <map>
 
+#ifdef USE_ESP_IDF
+#include "esp_heap_caps.h"
+#endif
+
 static const char *const TAG __attribute__((unused)) = "geappliances_bridge.mqtt";
 
 // Maximum number of distinct ERDs that can be pending (safety bound — in
@@ -20,11 +24,27 @@ static const char *const TAG __attribute__((unused)) = "geappliances_bridge.mqtt
 static constexpr size_t MAX_PENDING_UPDATES = 200;
 
 // Maximum number of pending ERD updates flushed to MQTT in a single
-// notify_connected() / loop() drain call.  Keeping this small (≤5) ensures
-// the main loop() does not stall while the IDF MQTT client's API mutex is
-// held by the MQTT task sending previous PUBLISH packets.  At 5 per call and
-// a typical loop rate of ~200 Hz, 200 pending updates drain in ≤200 ms.
+// loop() drain call.  Keeping this small (≤5) ensures the main loop() does
+// not stall waiting for the IDF MQTT outbox to drain.  At 5 per call and a
+// typical loop rate of ~200 Hz, 200 pending updates drain in ≤200 ms.
 static constexpr size_t MAX_FLUSH_PER_CALL = 5;
+
+
+// ---------------------------------------------------------------------------
+// publish_now: synchronous publish from the main ESPHome loop task.
+// Must only be called from the main task — ESPHome's MQTT client is not
+// designed for concurrent calls from other FreeRTOS tasks.
+// ---------------------------------------------------------------------------
+
+static void publish_now(const std::string& topic,
+                        const std::string& payload,
+                        bool retain)
+{
+  auto mqtt_client = esphome::mqtt::global_mqtt_client;
+  if (mqtt_client != nullptr && mqtt_client->is_connected()) {
+    mqtt_client->publish(topic, payload, 0, retain);
+  }
+}
 
 static std::string build_topic(esphome_mqtt_client_adapter_t* self, const char* suffix)
 {
@@ -37,8 +57,8 @@ static void register_erd(i_mqtt_client_t* _self, tiny_erd_t erd)
 
   // Track which ERDs the device registers so the bridge can filter
   // HA discovery entities to only those actually supported by the device.
-  if (self->registered_erds_out != nullptr) {
-    self->registered_erds_out->insert(erd);
+  if (self->erd_registry != nullptr) {
+    self->erd_registry->register_erd(erd);
   }
 
   ESP_LOGD(TAG, "Registered ERD 0x%04X", erd);
@@ -58,8 +78,7 @@ static void update_erd(i_mqtt_client_t* _self, tiny_erd_t erd, const void* value
 
   // If a valid ERD filter is set (appliance_api_parsing mode), skip ERDs not
   // in the validated list. This applies to both subscription and polling modes.
-  if(self->valid_erds_filter != nullptr &&
-     self->valid_erds_filter->find(erd) == self->valid_erds_filter->end()) {
+  if (self->erd_registry != nullptr && !self->erd_registry->is_valid(erd)) {
     return;
   }
 
@@ -77,8 +96,7 @@ static void update_erd(i_mqtt_client_t* _self, tiny_erd_t erd, const void* value
 
   // String-type ERDs: publish the raw bytes as a null-terminated ASCII string
   // instead of a hex string so Home Assistant displays human-readable text.
-  bool is_string = (self->string_erds_filter != nullptr &&
-                    self->string_erds_filter->find(erd) != self->string_erds_filter->end());
+  bool is_string = (self->erd_registry != nullptr && self->erd_registry->is_string_type(erd));
 
   std::string payload;
   if (is_string) {
@@ -143,7 +161,7 @@ static void update_erd_write_result(
   
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client != nullptr && mqtt_client->is_connected()) {
-    mqtt_client->publish(topic, payload, 0, false);  // QoS 0, no retain
+    publish_now(topic, payload, false);  // QoS 0, no retain
   } else {
     ESP_LOGD(TAG, "MQTT not connected, skipping write result for 0x%04X", erd);
   }
@@ -178,9 +196,7 @@ extern "C" void esphome_mqtt_client_adapter_init(
   self->interface.api = &api;
   self->device_id = new std::string(device_id);
   self->pending_updates = new std::map<tiny_erd_t, PendingErdUpdate>();
-  self->valid_erds_filter = nullptr;
-  self->string_erds_filter = nullptr;
-  self->registered_erds_out = nullptr;
+  self->erd_registry = nullptr;
   self->wildcard_subscribed   = false;
   self->mqtt_connected_at_ms  = 0;
 
@@ -188,25 +204,11 @@ extern "C" void esphome_mqtt_client_adapter_init(
   tiny_event_init(&self->on_mqtt_disconnect_event);
 }
 
-extern "C" void esphome_mqtt_client_adapter_set_valid_erds_filter(
+extern "C" void esphome_mqtt_client_adapter_set_erd_registry(
   esphome_mqtt_client_adapter_t* self,
-  const std::set<tiny_erd_t>* valid_erds_filter)
+  esphome::geappliances_bridge::ErdRegistry* erd_registry)
 {
-  self->valid_erds_filter = valid_erds_filter;
-}
-
-extern "C" void esphome_mqtt_client_adapter_set_string_erds_filter(
-  esphome_mqtt_client_adapter_t* self,
-  const std::set<tiny_erd_t>* string_erds_filter)
-{
-  self->string_erds_filter = string_erds_filter;
-}
-
-extern "C" void esphome_mqtt_client_adapter_set_registered_erds_out(
-  esphome_mqtt_client_adapter_t* self,
-  std::set<tiny_erd_t>* registered_erds_out)
-{
-  self->registered_erds_out = registered_erds_out;
+  self->erd_registry = erd_registry;
 }
 
 extern "C" void esphome_mqtt_client_adapter_notify_disconnected(
@@ -221,9 +223,10 @@ extern "C" void esphome_mqtt_client_adapter_notify_disconnected(
   tiny_event_publish(&self->on_mqtt_disconnect_event, nullptr);
 }
 
-extern "C" void esphome_mqtt_client_adapter_notify_connected(
+extern "C" void esphome_mqtt_client_adapter_subscribe_write_topic(
   esphome_mqtt_client_adapter_t* self)
 {
+  // Record the connect timestamp on first call after each reconnect.
   if (self->mqtt_connected_at_ms == 0) {
     self->mqtt_connected_at_ms = esphome::millis();
   }
@@ -303,27 +306,39 @@ extern "C" void esphome_mqtt_client_adapter_notify_connected(
       self->wildcard_subscribed = true;
     }
   }
+}
 
+extern "C" size_t esphome_mqtt_client_adapter_drain_pending_updates(
+  esphome_mqtt_client_adapter_t* self)
+{
   // Flush up to MAX_FLUSH_PER_CALL pending ERD updates per call.
-  // loop() calls this every iteration while MQTT is connected so the full
-  // backlog drains across multiple loop cycles without stalling the loop.
+  // Returns the number of updates still pending after this call so callers
+  // can detect when the queue is empty (return value == 0).
   if (self->pending_updates == nullptr || self->pending_updates->empty()) {
-    return;
+    return 0;
   }
   auto mqtt_client = esphome::mqtt::global_mqtt_client;
   if (mqtt_client == nullptr || !mqtt_client->is_connected()) {
-    return;
+    return self->pending_updates->size();
   }
   size_t flushed = 0;
   while (!self->pending_updates->empty() && flushed < MAX_FLUSH_PER_CALL) {
     auto it = self->pending_updates->begin();
-    mqtt_client->publish(it->second.topic, it->second.payload, 0, true);  // QoS 0, retain
+    publish_now(it->second.topic, it->second.payload, true);  // retain
     self->pending_updates->erase(it);
     flushed++;
   }
   if (flushed > 0 && self->pending_updates->empty()) {
     ESP_LOGV(TAG, "Flushed all pending ERD updates");
   }
+  return self->pending_updates->size();
+}
+
+extern "C" void esphome_mqtt_client_adapter_notify_connected(
+  esphome_mqtt_client_adapter_t* self)
+{
+  esphome_mqtt_client_adapter_subscribe_write_topic(self);
+  esphome_mqtt_client_adapter_drain_pending_updates(self);
 }
 
 extern "C" void esphome_mqtt_client_adapter_destroy(
@@ -346,4 +361,13 @@ extern "C" size_t esphome_mqtt_client_adapter_get_pending_update_count(
     return 0;
   }
   return self->pending_updates->size();
+}
+
+extern "C" void esphome_mqtt_client_adapter_publish(
+  esphome_mqtt_client_adapter_t* self,
+  const std::string& topic,
+  const std::string& payload,
+  bool retain)
+{
+  publish_now(topic, payload, retain);
 }

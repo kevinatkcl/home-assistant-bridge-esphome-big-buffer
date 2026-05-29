@@ -136,16 +136,12 @@ static bool send_next_read_request(mqtt_bridge_polling_t* self)
   bool more_erds_to_try = (self->erd_index < self->appliance_erd_list_count);
   if (more_erds_to_try) {
     self->request_id++;
-    bool queued = tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
-    /* If the ERD client queue is full (e.g., because a subscription bridge
-     * is sharing the same client and flooding it with acknowledgments),
-     * don't arm the retry timer — that would compound the queue pressure
-     * and risk ring-buffer overflow corrupting adjacent heap metadata.
-     * The retry timer will be armed by the next signal_read_completed or
-     * signal_timer_expired that arrives once the queue drains. */
-    if (queued) {
-      arm_timer(self, retry_delay);
-    }
+    tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->appliance_erd_list[self->erd_index]);
+    // Always arm the retry timer so signal_timer_expired can advance erd_index
+    // even if the read was not queued (GEA2 queue momentarily full).  Without
+    // this, the discovery state machine stalls permanently after the failed
+    // read and only recovers after the 60 s appliance_lost timeout.
+    arm_timer(self, retry_delay);
   }
   return more_erds_to_try;
 }
@@ -154,7 +150,9 @@ static void send_next_poll_read_request(mqtt_bridge_polling_t* self)
 {
   if (self->erd_index < self->polling_list_count) {
     self->request_id++;
+    uint32_t t0 = esphome::millis();
     bool queued = tiny_gea3_erd_client_read(self->erd_client, &self->request_id, self->erd_host_address, self->erd_polling_list[self->erd_index]);
+    uint32_t elapsed = esphome::millis() - t0;
     self->erd_index++;
     if (queued) {
       arm_timer(self, retry_delay);
@@ -166,17 +164,21 @@ static void send_next_poll_read_request(mqtt_bridge_polling_t* self)
       if (self->cycle_completed_count >= self->polling_list_count) {
         self->last_cycle_time_ms = (uint32_t)(esphome::millis() - self->cycle_start_ms);
         self->cycle_count++;
-        /* Cycle finished.  If the polling timer is NOT armed, start the next
-         * cycle immediately.  If it IS armed, wait for it to fire. */
+        /* Cycle finished and polling timer is not armed — schedule the next
+         * cycle via the polling timer instead of recursing into
+         * send_next_poll_read_request().  Recursion here caused a stack
+         * overflow when the entire GEA2 queue was full: every ERD in the
+         * polling list triggered another recursive call, exhausting the stack.
+         * signal_polling_timer_expired resets erd_index / cycle_completed_count
+         * and starts the next cycle safely from the main-loop context. */
         if (!self->polling_timer_armed) {
-          self->erd_index = 0;
-          self->cycle_completed_count = 0;
-          self->cycle_start_ms = esphome::millis();
-          while (self->erd_index < self->polling_list_count) {
-            send_next_poll_read_request(self);
-          }
+          arm_polling_timer(self, self->polling_interval_ms);
         }
       }
+    }
+    if (elapsed >= 500) {
+      ESP_LOGW(TAG, "Slow read request: %ums for ERD 0x%04x (queued=%s)",
+               elapsed, self->erd_polling_list[self->erd_index - 1], queued ? "yes" : "no");
     }
   }
 }
@@ -471,8 +473,13 @@ static tiny_hsm_result_t state_polling(tiny_hsm_t* hsm, tiny_hsm_signal_t signal
         self->erd_index = 0;
         self->cycle_completed_count = 0;
         self->cycle_start_ms = esphome::millis();
+        uint32_t cycle_start = esphome::millis();
         while (self->erd_index < self->polling_list_count) {
           send_next_poll_read_request(self);
+        }
+        uint32_t elapsed = esphome::millis() - cycle_start;
+        if (elapsed >= 1000) {
+          ESP_LOGW(TAG, "Long cycle start: %ums for %u ERDs", elapsed, self->polling_list_count);
         }
       }
       arm_polling_timer(self, self->polling_interval_ms);

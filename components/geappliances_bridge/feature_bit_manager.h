@@ -7,6 +7,28 @@
  * for polling mode and gating HA discovery.
  */
 
+// =============================================================================
+// MODULE GOAL
+// =============================================================================
+// Goal: Read appliance API feature bit ERDs and produce the set of ERDs that
+//       are available on this appliance.
+//
+// Responsibilities:
+//   - Read the 11 feature bit ERDs (0x0092-0x0097, 0x0109-0x010D) in sequence
+//   - Incrementally parse bitmasks into ERD sets across multiple loop() calls
+//     to avoid triggering the ESP32 Task Watchdog Timer
+//   - Expose the resulting valid ERD set and string ERD set via getters
+//
+// NOT responsible for:
+//   - Using the ERD set (callers decide how to apply it)
+//   - Managing polling or subscription bridges
+//   - Filtering ERDs during MQTT publishing (ErdRegistry / MqttClientAdapter)
+//
+// Dependencies:
+//   - i_tiny_gea3_erd_client
+//   - appliance_api_feature_lists.h (compile-time bitmask descriptors)
+// =============================================================================
+
 #ifndef FEATURE_BIT_MANAGER_H
 #define FEATURE_BIT_MANAGER_H
 
@@ -52,6 +74,11 @@ class FeatureBitManager {
  public:
   static constexpr uint32_t MAX_QUEUE_RETRIES = 1000;
   static constexpr uint32_t LOG_EVERY_N_RETRIES = 50;
+  // How many common feature descriptors to process per parse_and_log_feature_bits_() call.
+  // 17 total descriptors; processing 4 per call spreads the heap allocations across
+  // ~5 loop() iterations instead of doing all 30+ std::set::insert() calls at once,
+  // which avoids triggering the Task Watchdog Timer on ESP32-C3.
+  static constexpr uint16_t COMMON_PARSE_PER_CALL = 4;
 
   void init(i_tiny_gea3_erd_client_t* erd_client,
             uint8_t host_address,
@@ -114,6 +141,7 @@ class FeatureBitManager {
   uint32_t queue_retry_count_{0};
   bool parse_pending_{false};
   uint8_t parse_erd_idx_{0};  // which appliance ERD we're parsing next (0-9)
+  uint16_t common_parse_idx_{0};  // which common feature descriptor we're parsing next (0-17)
   bool parse_common_done_{false};  // whether ERD 0x0092 common features are parsed
 
   FeatureBitErdData erd_data_;

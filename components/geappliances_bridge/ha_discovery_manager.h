@@ -12,11 +12,37 @@
  * On non-ESP-IDF builds the fetch is a no-op and a warning is logged.
  */
 
+// =============================================================================
+// MODULE GOAL
+// =============================================================================
+// Goal: Publish Home Assistant MQTT discovery payloads for the ERDs that the
+//       bridge has registered at runtime.
+//
+// Responsibilities:
+//   - Wait for a "ready" signal (quiet window or polling cycle complete)
+//   - Spawn a FreeRTOS background task to fetch per-category JSONL definitions
+//   - Parse JSONL lines, match against registered ERDs, build payloads
+//   - Rate-limited publishing of discovery messages to Home Assistant
+//
+// NOT responsible for:
+//   - Determining which ERDs are valid (receives registered ERD set externally)
+//   - Managing bridge lifecycle or MQTT connection state
+//   - Any post-discovery entity updates
+//
+// Dependencies:
+//   - EsphomeMqttClientAdapter (async publish)
+//   - esphome::mqtt::MQTTClientComponent
+//   - FreeRTOS task + queue on ESP-IDF builds
+// =============================================================================
+
 #pragma once
 
 #include <cstdint>
 #include <set>
 #include <string>
+
+// Include the adapter header for the typed pointer (lightweight — no heavy deps)
+#include "esphome_mqtt_client_adapter.h"
 
 extern "C" {
 #include "tiny_gea3_erd_client.h"
@@ -32,7 +58,6 @@ namespace esphome {
 namespace mqtt {
 class MQTTClientComponent;
 }
-
 namespace geappliances_bridge {
 
 static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;
@@ -42,7 +67,6 @@ static constexpr uint32_t HA_ENTITY_PUBLISH_INTERVAL_MS = 50;
 enum HaDiscoveryState {
   HA_DISCOVERY_IDLE,
   HA_DISCOVERY_WAITING_FOR_READY,
-  HA_DISCOVERY_DOWNLOADING,
   HA_DISCOVERY_PUBLISHING,
   HA_DISCOVERY_COMPLETE,
   HA_DISCOVERY_FAILED
@@ -73,6 +97,9 @@ class HaDiscoveryManager {
            bool polling_list_complete,
            bool subscription_activity_detected,
            mqtt::MQTTClientComponent* mqtt_client);
+
+  /// Set the MQTT adapter for async publishing (typed pointer, nullptr = sync fallback)
+  void set_mqtt_adapter(esphome_mqtt_client_adapter_t* mqtt_adapter);
 
   bool is_complete() const { return state_ == HA_DISCOVERY_COMPLETE; }
   bool is_failed()   const { return state_ == HA_DISCOVERY_FAILED; }
@@ -114,6 +141,9 @@ class HaDiscoveryManager {
   uint32_t last_activity_{0};
   uint32_t last_publish_ms_{0};
   uint32_t start_time_{0};  // millis() when WAITING_FOR_READY state entered
+
+  // Pointer to the MQTT adapter for async publishing (typed, set via set_mqtt_adapter)
+  esphome_mqtt_client_adapter_t* mqtt_adapter_{nullptr};
 
 #ifdef USE_ESP_IDF
   QueueHandle_t queue_{nullptr};
