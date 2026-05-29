@@ -6,7 +6,7 @@ external_components:
     components: [ geappliances_bridge ]
 
 # external_components:
-#   - source: github://eddietheengineer/home-assistant-bridge-esphome@urlreference
+#   - source: github://eddietheengineer/home-assistant-bridge-esphome@develop
 #     components: [ geappliances_bridge ]
 #     refresh: 1min
 
@@ -27,27 +27,27 @@ logger:
 ota:
   - platform: esphome
 
-#debug:
-#  update_interval: 1min
+debug:
+  update_interval: 1min
 
 sensor:
   - platform: uptime
     type: seconds
     name: Uptime Sensor
 
-#  - platform: debug
-#    free:
-#      name: "Heap Free"
-#    block:
-#      name: "Heap Max Block"
-#    min_free:
-#      name: "Heap Min Free"
-#    fragmentation:
-#      name: "Heap Fragmentation"
-#    loop_time:
-#      name: "Loop Time"
-#    cpu_frequency:
-#      name: "CPU Frequency"
+  - platform: debug
+    free:
+      name: "Heap Free"
+    block:
+      name: "Heap Max Block"
+    min_free:
+      name: "Heap Min Free"
+    fragmentation:
+      name: "Heap Fragmentation"
+    loop_time:
+      name: "Loop Time"
+    cpu_frequency:
+      name: "CPU Frequency"
 
 # MQTT configuration for Home Assistant
 mqtt:
