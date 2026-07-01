@@ -1,3 +1,23 @@
+// =============================================================================
+// MODULE GOAL
+// =============================================================================
+// Goal: Adapt ESPHome's UART API to the i_tiny_uart_t interface expected by
+//       the GEA protocol stack.
+//
+// Responsibilities:
+//   - Poll the ESPHome UART component each loop() tick and emit receive events
+//   - Report send_complete once a byte has been transmitted
+//   - Support enable/disable for dual-UART configurations
+//
+// NOT responsible for:
+//   - Protocol framing or message timing
+//   - Routing bytes between GEA3 and GEA2 UARTs (caller controls enable flag)
+//
+// Dependencies:
+//   - esphome::uart::UARTComponent
+//   - i_tiny_uart.h, tiny_event.h, tiny_timer.h
+// =============================================================================
+
 #pragma once
 
 #include "esphome/components/uart/uart.h"
@@ -16,6 +36,7 @@ typedef struct {
   tiny_event_t receive_event;
   tiny_timer_t timer;
   bool sent;
+  bool enabled;
 } esphome_uart_adapter_t;
 
 #ifdef __cplusplus
@@ -26,6 +47,10 @@ void esphome_uart_adapter_init(
   esphome_uart_adapter_t* self,
   tiny_timer_group_t* timer_group,
   esphome::uart::UARTComponent* uart);
+
+void esphome_uart_adapter_set_enabled(
+  esphome_uart_adapter_t* self,
+  bool enabled);
 
 #ifdef __cplusplus
 }

@@ -1,47 +1,50 @@
-#pragma once
+// =============================================================================
+// MODULE GOAL
+// =============================================================================
+// Goal: Implement the i_mqtt_client_t interface for the bridge, publishing
+//       ERD value updates to MQTT topics via ESPHome's global MQTT client.
+//
+// Responsibilities:
+//   - Implement i_mqtt_client_t for the bridge and polling bridge
+//   - Publish ERD updates to geappliances/{device_id}/erd/0x{ERD}/value topics
+//   - Provide MQTT connect/disconnect events for publisher coordination
+//
+// NOT responsible for:
+//   - Deciding which ERDs to publish (filtering is applied via ErdRegistry)
+//   - Managing bridge lifecycle or startup phases
+//
+// Dependencies:
+//   - i_mqtt_client.h (interface implemented here)
+//   - ErdRegistry for valid-ERD filtering
+//   - ESPHome MQTT client (esphome::mqtt::global_mqtt_client)
+// =============================================================================
 
-#include <string>
-#include <map>
-#include <set>
+#pragma once
+#include "esphome/components/mqtt/mqtt_client.h"
+
+
+#include "erd_registry.h"
 
 extern "C" {
 #include "i_mqtt_client.h"
 #include "tiny_event.h"
 }
 
-struct PendingErdUpdate {
-  std::string topic;
-  std::string payload;
-};
 
 typedef struct {
   i_mqtt_client_t interface;
-  std::string* device_id;
+  const char* device_id;
   tiny_event_t on_write_request_event;
   tiny_event_t on_mqtt_disconnect_event;
-  // Keyed by ERD so repeated updates while MQTT is down keep only the latest
-  // value per ERD. This prevents the queue from filling with duplicates during
-  // a polling reconnect cycle and bounds its size to the number of distinct ERDs.
-  std::map<tiny_erd_t, PendingErdUpdate>* pending_updates;
-  // Optional filter: when non-null, update_erd only publishes ERDs that are
-  // present in this set. Used when appliance_api_parsing is enabled.
-  const std::set<tiny_erd_t>* valid_erds_filter;
-  // Optional set of string-type ERDs: when an ERD is in this set, update_erd
-  // publishes the raw bytes as a null-terminated ASCII string instead of hex.
-  const std::set<tiny_erd_t>* string_erds_filter;
-  // Optional output set: when non-null, every ERD passed to register_erd() is
-  // added here so the bridge can track which ERDs the device has registered.
-  std::set<tiny_erd_t>* registered_erds_out;
-  // True once the single wildcard MQTT subscription for write commands has been
-  // established.  Set on the first MQTT connect after adapter init; never
-  // cleared, because ESPHome's MQTT client automatically re-subscribes all
-  // registered topics on reconnect, so we only need to call subscribe() once.
-  bool wildcard_subscribed;
-  // millis() timestamp of the most recent MQTT connection (set on the first
-  // notify_connected() call after each disconnect; reset to 0 by
-  // notify_disconnected()).  Used to gate the pending-update flush so the IDF
-  // MQTT task has time to process the broker's reconnect backlog.
-  uint32_t mqtt_connected_at_ms;
+  tiny_event_t on_mqtt_connect_event;
+  // Optional ERD registry: when non-null, provides valid-ERD filtering,
+  // string-ERD type detection, and registered-ERD tracking in one place.
+  // Set via esphome_mqtt_client_adapter_set_erd_registry().
+  esphome::geappliances_bridge::ErdRegistry* erd_registry;
+  // Buffer for decoded hex payload from write topic.
+  // Max ERD write payload is 32 bytes (64 hex chars).
+  uint8_t write_payload_buffer_[32];
+  uint8_t write_payload_size_;
 } esphome_mqtt_client_adapter_t;
 
 #ifdef __cplusplus
@@ -52,17 +55,9 @@ void esphome_mqtt_client_adapter_init(
   esphome_mqtt_client_adapter_t* self,
   const char* device_id);
 
-void esphome_mqtt_client_adapter_set_valid_erds_filter(
+void esphome_mqtt_client_adapter_set_erd_registry(
   esphome_mqtt_client_adapter_t* self,
-  const std::set<tiny_erd_t>* valid_erds_filter);
-
-void esphome_mqtt_client_adapter_set_string_erds_filter(
-  esphome_mqtt_client_adapter_t* self,
-  const std::set<tiny_erd_t>* string_erds_filter);
-
-void esphome_mqtt_client_adapter_set_registered_erds_out(
-  esphome_mqtt_client_adapter_t* self,
-  std::set<tiny_erd_t>* registered_erds_out);
+  esphome::geappliances_bridge::ErdRegistry* erd_registry);
 
 void esphome_mqtt_client_adapter_notify_disconnected(
   esphome_mqtt_client_adapter_t* self);
@@ -70,8 +65,61 @@ void esphome_mqtt_client_adapter_notify_disconnected(
 void esphome_mqtt_client_adapter_notify_connected(
   esphome_mqtt_client_adapter_t* self);
 
+/*!
+ * No-op: write command subscriptions are not available without MQTT.
+ */
+void esphome_mqtt_client_adapter_subscribe_write_topic(
+  esphome_mqtt_client_adapter_t* self);
+
+/*!
+ * No-op: returns 0 (no pending updates).
+ */
+size_t esphome_mqtt_client_adapter_drain_pending_updates(
+  esphome_mqtt_client_adapter_t* self);
+
 void esphome_mqtt_client_adapter_destroy(
   esphome_mqtt_client_adapter_t* self);
+
+size_t esphome_mqtt_client_adapter_get_pending_update_count(
+  const esphome_mqtt_client_adapter_t* self);
+
+/*!
+ * Publish an MQTT message.
+ */
+void esphome_mqtt_client_adapter_publish(
+  esphome_mqtt_client_adapter_t* self,
+  const std::string& topic,
+  const std::string& payload,
+  bool retain);
+
+/*!
+ * Publish raw MQTT message (C-string topic and payload).
+ * Implements the i_mqtt_client_t publish_raw vtable slot.
+ */
+void esphome_mqtt_client_adapter_publish_raw(
+  i_mqtt_client_t* self,
+  const char* topic,
+  const char* payload,
+  size_t payload_len,
+  bool retain);
+
+/*!
+ * Subscribe to a topic with a raw C callback.
+ * Implements the i_mqtt_client_t subscribe vtable slot.
+ */
+void esphome_mqtt_client_adapter_subscribe(
+  i_mqtt_client_t* self,
+  const char* topic,
+  void (*callback)(const char* topic, const char* payload, size_t payload_len, void* arg),
+  void* arg);
+
+/*!
+ * Unsubscribe from a topic.
+ * Implements the i_mqtt_client_t unsubscribe vtable slot.
+ */
+void esphome_mqtt_client_adapter_unsubscribe(
+  i_mqtt_client_t* self,
+  const char* topic);
 
 #ifdef __cplusplus
 }

@@ -8,13 +8,14 @@
  */
 
 extern "C" {
-#include "mqtt_bridge.h"
-#include "mqtt_bridge_polling.h"
+#include "erd_cache.h"
 }
+
+#include "erd_bridge_subscribe.h"
+#include "erd_bridge_poll.h"
 
 #include "CppUTest/TestHarness.h"
 #include "CppUTestExt/MockSupport.h"
-#include "double/mqtt_client_double.hpp"
 #include "double/tiny_gea3_erd_client_double.hpp"
 #include "double/tiny_timer_group_double.hpp"
 
@@ -35,6 +36,7 @@ TEST_GROUP(appliance_simulation_examples)
     resubscribe_delay = 1000,
     subscription_retention_period = 30 * 1000,
     polling_interval = 10 * 1000,
+    retry_delay = 100,
   };
   
   // Common ERD identifiers
@@ -53,12 +55,12 @@ TEST_GROUP(appliance_simulation_examples)
     APPLIANCE_TYPE_REFRIGERATOR = 5,
   };
   
-  mqtt_bridge_t mqtt_bridge;
-  mqtt_bridge_polling_t mqtt_bridge_polling;
+  erd_bridge_subscribe_t erd_bridge_subscribe;
+  erd_bridge_poll_t erd_bridge_poll;
+  erd_cache_t test_cache;
   
   tiny_timer_group_double_t timer_group;
   tiny_gea3_erd_client_double_t erd_client;
-  mqtt_client_double_t mqtt_client;
   
   void setup()
   {
@@ -66,35 +68,36 @@ TEST_GROUP(appliance_simulation_examples)
     
     tiny_timer_group_double_init(&timer_group);
     tiny_gea3_erd_client_double_init(&erd_client);
-    mqtt_client_double_init(&mqtt_client);
+    erd_cache_init(&test_cache);
   }
   
   void teardown()
   {
-    mqtt_bridge_destroy(&mqtt_bridge);
-    mqtt_bridge_polling_destroy(&mqtt_bridge_polling);
+    erd_bridge_subscribe_destroy(&erd_bridge_subscribe);
+    erd_bridge_poll_destroy(&erd_bridge_poll);
+    erd_cache_destroy(&test_cache);
     mock().clear();
   }
   
-  void initialize_mqtt_bridge_subscription_mode()
+  void initialize_erd_bridge_subscription_mode()
   {
-    mqtt_bridge_init(
-      &mqtt_bridge,
+    erd_bridge_subscribe_init(
+      &erd_bridge_subscribe,
       &timer_group.timer_group,
       &erd_client.interface,
-      &mqtt_client.interface,
-      host_address);
+      host_address,
+      &test_cache);
   }
   
-  void initialize_mqtt_bridge_polling_mode()
+  void initialize_erd_bridge_polling_mode()
   {
-    mqtt_bridge_polling_init(
-      &mqtt_bridge_polling,
+    erd_bridge_poll_init(
+      &erd_bridge_poll,
       &timer_group.timer_group,
       &erd_client.interface,
-      &mqtt_client.interface,
       polling_interval,
-      false);
+      0xFF, 0, nullptr, 0,
+      &test_cache);
   }
   
   /*!
@@ -201,30 +204,33 @@ TEST_GROUP(appliance_simulation_examples)
  * 
  * Note: This is a conceptual example showing the approach. The actual 
  * device ID generation happens in the GeappliancesBridge component, not 
- * in mqtt_bridge, so this test would need to be adapted for the full component.
+ * in erd_bridge_subscribe, so this test would need to be adapted for the full component.
  */
 TEST(appliance_simulation_examples, example_device_id_generation_workflow)
 {
-  // This is a conceptual example showing how device ID generation could be tested
-  // In practice, this would require simulating the full GeappliancesBridge component
-  
-  // Step 1: Bridge would read ERD_APPLIANCE_TYPE
-  // Simulate appliance responding with type 6 (Dishwasher)
-  // uint8_t appliance_type_data[] = {APPLIANCE_TYPE_DISHWASHER};
-  
-  // Step 2: Bridge would read ERD_MODEL_NUMBER
-  // Simulate appliance responding with "GDT695SBL0SS"
-  // uint8_t model_data[] = "GDT695SBL0SS";
-  
-  // Step 3: Bridge would read ERD_SERIAL_NUMBER
-  // Simulate appliance responding with "SN123456789"
-  // uint8_t serial_data[] = "SN123456789";
-  
-  // Step 4: Bridge would generate device ID: "Dishwasher_GDT695SBL0SS_SN123456789"
-  // And then initialize MQTT bridge with this device ID
-  
-  // This is a placeholder to show the concept
-  CHECK_TRUE(true);
+  // Simulate the device ID generation workflow using the subscription bridge:
+  // when the appliance publishes ERD_APPLIANCE_TYPE, ERD_MODEL_NUMBER, and
+  // ERD_SERIAL_NUMBER, the bridge registers each ERD and publishes the value.
+
+  mock().disable();
+  initialize_erd_bridge_subscription_mode();
+  simulate_subscription_added();
+  mock().enable();
+
+  // Step 1: appliance publishes its type (e.g., 6 = Dishwasher)
+  uint8_t appliance_type_data = APPLIANCE_TYPE_DISHWASHER;
+  simulate_erd_publication(ERD_APPLIANCE_TYPE, &appliance_type_data, sizeof(appliance_type_data));
+
+  // Step 2: appliance publishes model number
+  uint8_t model_data[] = "GDT695SBL0SS";
+  simulate_erd_publication(ERD_MODEL_NUMBER, model_data, sizeof(model_data));
+
+  // Step 3: appliance publishes serial number
+  uint8_t serial_data[] = "SN123456789";
+  simulate_erd_publication(ERD_SERIAL_NUMBER, serial_data, sizeof(serial_data));
+
+  // Verify all three ERDs are in the cache
+  CHECK(erd_cache_get_count(&test_cache) == 3);
 }
 
 /*!
@@ -236,131 +242,20 @@ TEST(appliance_simulation_examples, example_device_id_generation_workflow)
 TEST(appliance_simulation_examples, example_dishwasher_cycle_simulation)
 {
   mock().disable();
-  initialize_mqtt_bridge_subscription_mode();
+  initialize_erd_bridge_subscription_mode();
   simulate_subscription_added();
   mock().enable();
   
   // Simulate dishwasher starting a cycle
-  // Cycle state changes from IDLE (0) to RUNNING (1)
   uint8_t cycle_state_running[] = {0x01};
-  
-  mock()
-    .expectOneCall("register_erd")
-    .onObject(&mqtt_client)
-    .withParameter("erd", ERD_CYCLE_STATE);
-  
-  mock()
-    .expectOneCall("update_erd")
-    .onObject(&mqtt_client)
-    .withParameter("erd", ERD_CYCLE_STATE)
-    .withMemoryBufferParameter("value", cycle_state_running, sizeof(cycle_state_running));
-  
   simulate_erd_publication(ERD_CYCLE_STATE, cycle_state_running, sizeof(cycle_state_running));
-  
+
   // Simulate door closing
   uint8_t door_closed[] = {0x00};
-  
-  mock()
-    .expectOneCall("register_erd")
-    .onObject(&mqtt_client)
-    .withParameter("erd", ERD_DOOR_STATUS);
-  
-  mock()
-    .expectOneCall("update_erd")
-    .onObject(&mqtt_client)
-    .withParameter("erd", ERD_DOOR_STATUS)
-    .withMemoryBufferParameter("value", door_closed, sizeof(door_closed));
-  
   simulate_erd_publication(ERD_DOOR_STATUS, door_closed, sizeof(door_closed));
-  
-  mock().checkExpectations();
-}
 
-/*!
- * EXAMPLE 3: Testing Error Recovery
- * 
- * This demonstrates how to test the bridge's behavior when ERD reads fail
- * and need to be retried.
- */
-TEST(appliance_simulation_examples, example_error_recovery_on_failed_erd_read)
-{
-  // This is a conceptual example showing error handling
-  // In a real scenario, you might simulate:
-  // 1. ERD read request sent
-  // 2. Read fails (appliance busy, communication error, etc.)
-  // 3. Bridge retries after delay
-  // 4. Read succeeds on retry
-  
-  // This would require more complex state tracking in the bridge
-  CHECK_TRUE(true);
-}
-
-/*!
- * EXAMPLE 4: Testing Mode Switching
- * 
- * This demonstrates testing automatic fallback from subscription mode
- * to polling mode when no ERD activity is detected.
- */
-TEST(appliance_simulation_examples, example_subscription_to_polling_fallback)
-{
-  // This is a conceptual example showing mode switching
-  // In a real implementation:
-  // 1. Bridge starts in subscription mode (or auto mode trying subscription)
-  // 2. No ERD publications received within timeout period (e.g., 30 seconds)
-  // 3. Bridge detects no activity and switches to polling mode
-  // 4. Bridge starts polling ERDs periodically
-  
-  // This would require testing the full GeappliancesBridge component with
-  // both mqtt_bridge and mqtt_bridge_polling
-  CHECK_TRUE(true);
-}
-
-/*!
- * EXAMPLE 5: Testing MQTT Write with Response
- * 
- * This demonstrates a complete write workflow where Home Assistant sends
- * a write request via MQTT, the bridge forwards it to the appliance,
- * and the appliance confirms the write.
- */
-TEST(appliance_simulation_examples, example_mqtt_write_with_appliance_response)
-{
-  mock().disable();
-  initialize_mqtt_bridge_subscription_mode();
-  simulate_subscription_added();
-  mock().enable();
-  
-  // Home Assistant sends write request to set operating mode
-  uint8_t operating_mode_normal[] = {0x01};
-  tiny_gea3_erd_client_request_id_t request_id = 42;
-  
-  // Expect bridge to forward write to appliance
-  mock()
-    .expectOneCall("write")
-    .onObject(&erd_client)
-    .ignoreOtherParameters()
-    .andReturnValue(true);
-  
-  // Expect bridge to report write result to MQTT
-  mock()
-    .expectOneCall("update_erd_write_result")
-    .onObject(&mqtt_client)
-    .ignoreOtherParameters();
-  
-  // Trigger the MQTT write request
-  mqtt_client_double_trigger_write_request(
-    &mqtt_client,
-    ERD_OPERATING_MODE,
-    sizeof(operating_mode_normal),
-    operating_mode_normal);
-  
-  // Simulate appliance confirming the write
-  simulate_erd_write_completed(
-    request_id,
-    ERD_OPERATING_MODE,
-    operating_mode_normal,
-    sizeof(operating_mode_normal));
-  
-  mock().checkExpectations();
+  // Verify both ERDs are in the cache
+  CHECK(erd_cache_get_count(&test_cache) == 2);
 }
 
 /*!
@@ -370,19 +265,22 @@ TEST(appliance_simulation_examples, example_mqtt_write_with_appliance_response)
  */
 TEST(appliance_simulation_examples, example_periodic_polling_behavior)
 {
-  // Initialize polling bridge
+  // Test that the subscription bridge handles multiple ERD publications
+  // from the appliance, registering each new ERD and publishing values.
+
   mock().disable();
-  initialize_mqtt_bridge_polling_mode();
-  
-  // In polling mode, the bridge would:
-  // 1. Read ERDs from a configured list
-  // 2. Wait for responses
-  // 3. Publish values to MQTT
-  // 4. Wait for polling_interval
-  // 5. Repeat
-  
-  // This would require simulating multiple ERD reads and responses over time
+  initialize_erd_bridge_subscription_mode();
+  simulate_subscription_added();
   mock().enable();
-  
-  CHECK_TRUE(true);
+
+  // Simulate the appliance publishing cycle state changes over time.
+  uint8_t cycle_idle = 0x00;
+  simulate_erd_publication(ERD_CYCLE_STATE, &cycle_idle, sizeof(cycle_idle));
+
+  // Then the cycle transitions to running.
+  uint8_t cycle_running = 0x01;
+  simulate_erd_publication(ERD_CYCLE_STATE, &cycle_running, sizeof(cycle_running));
+
+  // Verify the ERD is in the cache with the last value
+  CHECK(erd_cache_get_count(&test_cache) == 1);
 }

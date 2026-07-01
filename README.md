@@ -1,6 +1,6 @@
 # home-assistant-bridge-esphome
 
-ESPHome external component for GE Appliances bridge supporting the GEA3 protocol.
+ESPHome external component for GE Appliances bridge supporting the GEA2 and GEA3 protocols.
 
 Subscribes to data hosted by a GE Appliances product and publishes it to an MQTT server under `geappliances/<device ID>`. ERDs are identified by 16-bit identifiers and the raw binary data is published as a hex string to `geappliances/<device ID>/erd/<ERD ID>/value`. Data can be written to an ERD by writing a hex string of the appropriate size to `geappliances/<device ID>/erd/<ERD ID>/write`.
 
@@ -25,7 +25,7 @@ esp32:
 
 # External component configuration
 external_components:
-  - source: github://joshualongenecker/home-assistant-bridge-esphome
+  - source: github://joshualongenecker/home-assistant-bridge-esphome@develop
     components: [ geappliances_bridge ]
 
 # MQTT configuration for Home Assistant
@@ -47,7 +47,7 @@ uart:
     baud_rate: 230400
 
   - id: gea2_uart
-    tx_pin: GPIO9  # D9 on Xiao ESP32-C3
+    tx_pin: GPIO9   # D9 on Xiao ESP32-C3
     rx_pin: GPIO10  # D10 on Xiao ESP32-C3
     baud_rate: 19200
     rx_full_threshold: 1
@@ -57,12 +57,13 @@ uart:
 geappliances_bridge:
   gea3_uart_id: gea3_uart
   gea2_uart_id: gea2_uart
-  # device_id: "YourDeviceId"             # Optional: Uncomment to use a custom device ID
+  # device_id: YourDeviceId               # Optional: Uncomment to use a custom device ID
   # mode: auto                            # Default: auto   Options: auto, subscribe, poll
   # polling_interval: 10000               # Default: 10000 ms (10 seconds), used when in polling mode
-  # polling_onlypublish_onchange: true    # Default: true, only publish if value changed
   # appliance_api_parsing: true           # Default: true, restricts polling to appliance-supported ERDs
-  # generate_device_config: false         # Default: false, set to true to enable automatic HA MQTT discovery
+  # throttle_rate_seconds: 0              # Default: 0 (disabled), min seconds between publishes per ERD (0-255)
+  # filter_config_topics: true            # Default: true, filters internal/diagnostic entities from HA discovery
+
 ```
 
 ## Configurable Parameters
@@ -71,7 +72,7 @@ geappliances_bridge:
 
 The `mode` parameter is **optional**. 
 
-1. **Auto Mode (Default)** - The adapter starts with subscription mode and automatically falls back to polling mode if no ERD responses are received within 30 seconds. This provides the best of both worlds: real-time updates when possible, with automatic fallback for compatibility.
+1. **Auto Mode (Default)** - The adapter starts with subscription mode and automatically falls back to polling mode if no ERD responses are received within 10 seconds. This provides the best of both worlds: real-time updates when possible, with automatic fallback for compatibility.
 
 2. **Subscribe Mode** - The adapter subscribes to ERD updates from the appliance. The appliance pushes changes as they occur.
 
@@ -105,11 +106,14 @@ See [doc/example.yaml](doc/example.yaml) for the complete configuration example.
 
 The `appliance_api_parsing` parameter is **optional** (default: `true`). When enabled, the component reads appliance API feature bit ERDs (0x0092–0x010D) after discovery to determine which ERDs are actually supported by the connected appliance. In polling mode this restricts polling to only those ERDs, resulting in faster poll cycles and a cleaner MQTT topic namespace. Set to `false` to poll all known ERDs regardless of appliance support.
 
-### Home Assistant Auto-Discovery (In Development)
 
-The `generate_device_config` parameter is **optional** (default: `false`). When set to `true`, the component automatically publishes [Home Assistant MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) payloads after the appliance's ERD list is fully enumerated. This causes sensors, switches, selects, and other entities to appear in Home Assistant automatically — no manual YAML configuration required.
+## Additional Configuration Options
 
-The entity definitions are downloaded at runtime from compact JSONL files hosted in this repository, so no extra flash space is consumed. Only entities for ERDs actually supported by the connected appliance are published.
+- **`throttle_rate_seconds`** (default: `0`) — Minimum interval in seconds between MQTT publishes for any individual ERD. Set to 0 to disable (publish on every update). Range: 0–255. Useful for reducing MQTT traffic when the appliance generates frequent updates.
+- **`generate_device_config`** (default: `false`) — Currently disabled
+- **`filter_config_topics`** (default: `true`) — Filters out internal/diagnostic entities (firmware metadata, commissioning state, usage profiles, cycle definitions, fault data, etc.) from Home Assistant MQTT discovery. Reduces entity count by ~19% (from ~9,310 to ~7,520) and firmware data by ~8.8%. Set to `false` to include all entities.
+- **`discovery_refresh_button`** — Auto-created by default with `discovery: false`. Exposes an ESPHome button entity that triggers a Home Assistant MQTT discovery cleanup when pressed. Useful for clearing stale discovery topics after firmware updates or configuration changes. Set to `false` to disable, or provide a dict to customize (e.g. `name`).
+
 
 ## Development
 
@@ -118,10 +122,6 @@ The entity definitions are downloaded at runtime from compact JSONL files hosted
 When polling, the device uses an auto-generated ERD list (`erd_lists.h`) based on the [GE Appliances Public API Documentation](https://github.com/geappliances/public-appliance-api-documentation). The ERD list is automatically generated during the build process from `appliance_api_erd_definitions.json`.
 
 **To manually regenerate the ERD list:**
-```bash
-python3 scripts/generate_erd_lists.py
-```
-
 The generation script categorizes ERDs by appliance type based on their hex address ranges (common, refrigeration, laundry, dishwasher, water heater, range, air conditioning, water filter, small appliance, and energy ERDs). See [scripts/README.md](scripts/README.md) for more details.
 
 ### Running Tests

@@ -8,7 +8,7 @@ The simulation testing framework allows testing of:
 - **Configuration-based testing** - Different YAML configuration scenarios
 - Complete application workflows (device ID generation, subscription, polling)
 - GEA3 protocol interactions with mock appliance responses
-- MQTT bridge behavior with simulated ERD reads/writes
+- ERD bridge behavior with simulated ERD reads/writes
 - Mode switching (subscription mode fallback to polling mode)
 - Multiple appliance types (dishwashers, refrigerators, washers)
 
@@ -115,10 +115,8 @@ TEST(configuration_based_tests, subscription_mode_dishwasher)
     .expectOneCall("register_erd")
     .withParameter("erd", ERD_CYCLE_STATE);
   
-  mock()
-    .expectOneCall("update_erd")
-    .withParameter("erd", ERD_CYCLE_STATE)
-    .withMemoryBufferParameter("value", cycle_state, sizeof(cycle_state));
+  // Verify the ERD was cached (bridges write to erd_cache directly)
+  POINTERS_TRUE(erd_cache_find(&cache, ERD_CYCLE_STATE) != nullptr);
   
   simulate_erd_publication(ERD_CYCLE_STATE, cycle_state, sizeof(cycle_state));
   
@@ -158,7 +156,7 @@ The test suite covers various YAML configuration scenarios:
    - Default polling (10 seconds) for balanced performance
    - Slow polling (30 seconds) for reduced network traffic
 
-3. **Auto Mode** (future implementation)
+3. **Auto Mode** (default)
    ```yaml
    geappliances_bridge:
      gea3_uart_id: gea3_uart
@@ -168,7 +166,7 @@ The test suite covers various YAML configuration scenarios:
      # polling_interval: 10000  # Optional: set polling interval (ms)
      # polling_onlypublish_onchange: false  # Optional: only publish when value changes
    ```
-   - Start with subscription, fallback to polling if no activity
+   - Start with subscription, fallback to polling if no ERD activity within 30 seconds
 
 4. **Custom Device ID**
    ```yaml

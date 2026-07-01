@@ -24,7 +24,7 @@ improv_serial:
 esp32:
   board: seeed_xiao_esp32c3
   variant: esp32c3
-  framework: 
+  framework:
     type: esp-idf
 
 # External component configuration
@@ -43,7 +43,6 @@ mqtt:
   port: 1883
   discovery: true
   discovery_prefix: homeassistant
-  clean_session: true
 
 # UART configuration for GEA3 communication
 uart:
@@ -67,5 +66,6 @@ geappliances_bridge:
   # device_id: "YourDeviceId"   # Optional: Uncomment to use a custom device ID
   # mode: auto                  # Default: auto   Options: auto, subscribe, poll
   # polling_interval: 10000     # Default: 10000 ms (10 seconds), used when in polling mode
-  # polling_only_publish_on_change: true  # Default: true, only publish if value changed
-  # generate_device_config: false  # Default: true. Set to false to disable automatic HA MQTT discovery
+  # polling_only_publish_on_change: true  # Deprecated: always on, kept for backward compatibility
+  erd_publish_rate_sensor:
+    name: "ERD Publish Rate"
