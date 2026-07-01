@@ -543,7 +543,7 @@ def main():
             return local
         # Fetch from GitHub as last resort (ESPHome Docker, clean cache, etc.)
         # Use joshualongenecker fork which has ha_domain metadata for HA discovery.
-        url = f"https://raw.githubusercontent.com/joshualongenecker/public-appliance-api-documentation/main/{filename}"
+        url = f"https://raw.githubusercontent.com/joshualongenecker/public-appliance-api-documentation/642bdb82df20d4af984cc2ed2702146b88aab96b/{filename}"
         print(f"Local {filename} not found, fetching from GitHub: {url}", file=sys.stderr)
         try:
             tmp = Path("/tmp") / filename
