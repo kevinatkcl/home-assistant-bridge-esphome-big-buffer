@@ -47,9 +47,9 @@ def _get_erd_definitions() -> List[Dict[str, Any]]:
         with open(json_file) as f:
             data = json.load(f)
         return data.get('erds', [])
-    # Fallback: fetch from GitHub (eddietheengineer fork has ha_domain metadata)
+    # Fallback: fetch from GitHub (joshualongenecker fork has ha_domain metadata)
     import urllib.request
-    url = "https://raw.githubusercontent.com/eddietheengineer/public-appliance-api-documentation/main/appliance_api_erd_definitions.json"
+    url = "https://raw.githubusercontent.com/joshualongenecker/public-appliance-api-documentation/main/appliance_api_erd_definitions.json"
     with urllib.request.urlopen(url, timeout=30) as resp:
         data = json.loads(resp.read().decode('utf-8'))
     return data.get('erds', [])
