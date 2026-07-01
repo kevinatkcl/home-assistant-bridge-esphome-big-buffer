@@ -188,7 +188,7 @@ def load_appliance_types() -> dict[int, str]:
 
     # If local paths failed, try fetching from GitHub as fallback
     if data is None:
-        url = "https://raw.githubusercontent.com/joshualongenecker/public-appliance-api-documentation/main/appliance_api_erd_definitions.json"
+        url = "https://raw.githubusercontent.com/joshualongenecker/public-appliance-api-documentation/642bdb82df20d4af984cc2ed2702146b88aab96b/appliance_api_erd_definitions.json"
         _LOGGER.info("Fetching ERD definitions from GitHub: %s", url)
 
         try:
@@ -360,7 +360,7 @@ async def to_code(config: dict[str, Any]) -> None:
     # silent breakage from upstream branch movement)
     cg.add_library("https://github.com/ryanplusplus/tiny#3747b6ff65eec4b38367c3c8fa94e6ed2a1ccf35", None)
     cg.add_library("https://github.com/geappliances/tiny-gea-api#4fa8fee8297e24baa91bfe4a464088a73e7c6a5a", None)
-    cg.add_library("https://github.com/geappliances/public-appliance-api-documentation#6f567e49c84bec838bf84036d0915398f0c2eb63", None)
+    cg.add_library("https://github.com/geappliances/public-appliance-api-documentation#642bdb82df20d4af984cc2ed2702146b88aab96b", None)
     
     var = cg.new_Pvariable(config[CONF_ID])
     # Deprecation warning for polling_onlypublish_onchange
