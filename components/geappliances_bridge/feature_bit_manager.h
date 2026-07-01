@@ -4,7 +4,7 @@
  *
  * Fully self-driving: owns its own timers and event subscriptions.
  * Reads and parses appliance API feature bit ERDs (0x0092-0x010D),
- * building a filtered ERD list for polling mode and gating HA discovery.
+ * building a filtered ERD list for polling mode.
  *
  * The bridge calls init() to configure, then start() to begin reading.
  * The manager subscribes to ERD client activity events and drives
@@ -42,8 +42,6 @@
 #define FEATURE_BIT_MANAGER_H
 
 #include <cstdint>
-#include <set>
-#include <vector>
 #include <string>
 
 extern "C" {
@@ -57,9 +55,6 @@ namespace esphome {
 namespace geappliances_bridge {
 
 enum FeatureBitState {
-  FEATURE_BIT_STATE_READING_0008,
-  FEATURE_BIT_STATE_READING_0001,
-  FEATURE_BIT_STATE_READING_0002,
   FEATURE_BIT_STATE_READING_0092,
   FEATURE_BIT_STATE_READING_0093,
   FEATURE_BIT_STATE_READING_0094,
@@ -72,35 +67,46 @@ enum FeatureBitState {
   FEATURE_BIT_STATE_READING_010C,
   FEATURE_BIT_STATE_READING_010D,
   FEATURE_BIT_STATE_PARSING,
+  FEATURE_BIT_STATE_FAILED,
   FEATURE_BIT_STATE_COMPLETE,
 };
+
+/* Maximum number of ERDs the feature bit manager can track.
+ * This covers all possible ERDs from common + appliance feature descriptors. */
+#define FEATURE_BIT_MAX_ERDS 645
 
 /*!
  * Manages reading and parsing of appliance API feature bit ERDs.
  */
 class FeatureBitManager {
  public:
-  // How many common feature descriptors to process per parse tick.
-  // 17 total descriptors; processing 4 per tick spreads the heap allocations
-  // across ~5 timer callbacks instead of doing all 30+ std::set::insert() calls
-  // at once, which avoids triggering the Task Watchdog Timer on ESP32-C3.
+  /* How many common feature descriptors to process per parse tick.
+   * 17 total descriptors; processing 4 per tick spreads the work
+   * across ~5 timer callbacks instead of doing all at once, which
+   * avoids triggering the Task Watchdog Timer on ESP32-C3. */
   static constexpr uint16_t COMMON_PARSE_PER_CALL = 4;
 
-  // Timer interval for incremental parsing (milliseconds).
+  /* Timer interval for incremental parsing (milliseconds). */
   static constexpr uint32_t PARSE_TICK_MS = 5;
 
-  // Delay before retrying a failed queue operation (milliseconds).
+  /* Delay before retrying a failed queue operation (milliseconds). */
   static constexpr uint32_t QUEUE_RETRY_MS = 50;
 
   void init(i_tiny_gea3_erd_client_t* erd_client,
             uint8_t host_address,
             tiny_timer_group_t* timer_group);
 
+  /// Unsubscribe from events and stop timers. Safe to call multiple times.
+  void cleanup();
+
   /// Start the feature-bit reading sequence.  Idempotent if already past the first state.
   void start();
 
-  const std::set<tiny_erd_t>& get_valid_erds() const;
-  const std::vector<tiny_erd_t>& get_valid_erds_vec() const;
+  /// Returns the number of valid ERDs.
+  uint16_t get_valid_erd_count() const;
+
+  /// Returns the valid ERD at the given index (0-based).
+  tiny_erd_t get_valid_erd(uint16_t idx) const;
 
   FeatureBitState get_state() const { return state_; }
 
@@ -135,20 +141,23 @@ class FeatureBitManager {
   /// Retry queue_erd_read_ after a queue-full delay.
   void queue_retry_();
 
-  FeatureBitState state_{FEATURE_BIT_STATE_READING_0008};
-  bool read_queued_{false};  // true while a read is in-flight (guards idempotent start/queue)
+  /// Add an ERD to the valid list (deduplicated).
+  void add_valid_erd_(tiny_erd_t erd);
+
+  FeatureBitState state_{FEATURE_BIT_STATE_READING_0092};
+  bool read_queued_{false};  /* true while a read is in-flight (guards idempotent start/queue) */
 
   i_tiny_gea3_erd_client_t* erd_client_{nullptr};
   uint8_t host_address_{0};
   tiny_timer_group_t* timer_group_{nullptr};
 
-  // Event subscription for ERD client activity
+  /* Event subscription for ERD client activity */
   tiny_event_subscription_t erd_activity_subscription_;
 
-  // Timer for incremental parsing
+  /* Timer for incremental parsing */
   tiny_timer_t parse_timer_;
 
-  // One-shot retry timer for queue-full scenario
+  /* One-shot retry timer for queue-full scenario */
   tiny_timer_t queue_retry_timer_;
 
   struct FeatureBitErdData {
@@ -177,14 +186,16 @@ class FeatureBitManager {
   };
 
   FeatureBitErdData erd_data_;
-
-  std::set<tiny_erd_t> valid_erds_;
-  std::vector<tiny_erd_t> valid_erds_vec_;
+  /* Fixed-capacity ERD list — replaces std::set and std::vector. */
+public:
+  tiny_erd_t valid_erds_[FEATURE_BIT_MAX_ERDS];
+private:
+  uint16_t valid_erds_count_{0};
   bool valid_list_ready_{false};
 
-  uint8_t parse_erd_idx_{0};  // which appliance ERD we're parsing next (0-9)
-  uint16_t common_parse_idx_{0};  // which common feature descriptor we're parsing next (0-17)
-  bool parse_common_done_{false};  // whether ERD 0x0092 common features are parsed
+  uint8_t parse_erd_idx_{0};  /* which appliance ERD we're parsing next (0-9) */
+  uint16_t common_parse_idx_{0};  /* which common feature descriptor we're parsing next (0-17) */
+  bool parse_common_done_{false};  /* whether ERD 0x0092 common features are parsed */
 };
 
 }  // namespace geappliances_bridge

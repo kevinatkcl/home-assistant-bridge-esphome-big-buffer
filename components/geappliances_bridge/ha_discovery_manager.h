@@ -1,157 +1,238 @@
 /*!
  * @file
- * @brief HaDiscoveryManager – Home Assistant MQTT autodiscovery manager.
+ * @brief Home Assistant MQTT Discovery manager.
  *
- * Extracted from GeappliancesBridge as part of the god class refactoring.
- * Encapsulates the logic for:
- *   - Watching for "ready" signal (quiet window or polling list complete)
- *   - Spawning a FreeRTOS background task to fetch JSONL definitions via HTTPS
- *   - Parsing JSONL lines into MQTT discovery payloads
- *   - Rate-limited publishing of discovery messages to Home Assistant
+ * Main-loop design: start() builds the sorted ERD list and device JSON
+ * inline. run() is called from the main loop; it decompresses chunks,
+ * parses JSONL, and publishes one entity per call, keeping loop times low.
  *
- * On non-ESP-IDF builds the fetch is a no-op and a warning is logged.
+ * States: IDLE -> BUILDING -> DISCOVERING -> COMPLETE / FAILED
+ *
+ * Cleanup is handled by the embedded ha_discovery_cleanup_t module.
+ *
+ * All buffers are pre-allocated — no heap allocation during processing.
+ * Peak memory: payload buffer (~8 KB) + decompress buffer (~14 KB) +
+ * line buffer (~14 KB) + sorted ERD array (~1.3 KB).
  */
 
-// =============================================================================
-// MODULE GOAL
-// =============================================================================
-// Goal: Publish Home Assistant MQTT discovery payloads for the ERDs that the
-//       bridge has registered at runtime.
-//
-// Responsibilities:
-//   - Wait for a "ready" signal (quiet window or polling cycle complete)
-//   - Spawn a FreeRTOS background task to fetch per-category JSONL definitions
-//   - Parse JSONL lines, match against registered ERDs, build payloads
-//   - Rate-limited publishing of discovery messages to Home Assistant
-//
-// NOT responsible for:
-//   - Determining which ERDs are valid (receives registered ERD set externally)
-//   - Managing bridge lifecycle or MQTT connection state
-//   - Any post-discovery entity updates
-//
-// Dependencies:
-//   - EsphomeMqttClientAdapter (async publish)
-//   - esphome::mqtt::MQTTClientComponent
-//   - FreeRTOS task + queue on ESP-IDF builds
-// =============================================================================
+#ifndef ha_discovery_manager_h
+#define ha_discovery_manager_h
 
-#pragma once
+#include <stdint.h>
+#include <stdbool.h>
 
-#include <cstdint>
-#include <set>
-#include <string>
-
-// Include the adapter header for the typed pointer (lightweight — no heavy deps)
-#include "esphome_mqtt_client_adapter.h"
-
-extern "C" {
-#include "tiny_gea3_erd_client.h"
-}
+#include "erd_cache.h"
+#include "i_mqtt_client.h"
+#include "ha_discovery_cleanup.h"
 
 #ifdef USE_ESP_IDF
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
+#  ifdef USE_ESP_IDF_STUBS
+#    include "miniz_tinfl.h"
+#  else
+#    include "miniz.h"
+#  endif
 #endif
 
-namespace esphome {
-namespace mqtt {
-class MQTTClientComponent;
-}
-namespace geappliances_bridge {
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-static constexpr uint32_t HA_DISCOVERY_QUIET_MS = 10000;
-static constexpr uint32_t HA_DISCOVERY_MAX_WAIT_MS = 30000;  // 30s safety cap
-static constexpr uint32_t HA_ENTITY_PUBLISH_INTERVAL_MS = 50;
+/* Discovery manager states */
+typedef enum {
+  ha_discovery_state_idle,
+  ha_discovery_state_building,     // building sorted ERD list
+  ha_discovery_state_discovering,  // main loop decompressing/publishing
+  ha_discovery_state_complete,
+  ha_discovery_state_failed
+} ha_discovery_state_t;
 
-enum HaDiscoveryState {
-  HA_DISCOVERY_IDLE,
-  HA_DISCOVERY_WAITING_FOR_READY,
-  HA_DISCOVERY_PUBLISHING,
-  HA_DISCOVERY_COMPLETE,
-  HA_DISCOVERY_FAILED
+/* Maximum number of registered/seen ERDs for HA discovery binary search. */
+#define HA_DISCOVERY_MAX_ERDS 645
+
+
+/* Decompression buffer size per chunk (max single line is ~7.4KB). */
+#define HA_DISCOVERY_DECOMP_BUF_SIZE 8192
+
+/* Line buffer size for JSONL parsing (matches decomp buffer). */
+#define HA_DISCOVERY_LINE_BUF_SIZE 8192
+
+/* Topic buffer size for HA discovery topics (must fit worst-case topic + null). */
+#define HA_DISCOVERY_TOPIC_BUF_SIZE 192
+/* Field ID slug buffer size. */
+#define HA_DISCOVERY_FIELD_ID_BUF_SIZE 72
+/* Unique ID buffer size. */
+#define HA_DISCOVERY_UNIQUE_ID_BUF_SIZE 160
+/* Payload buffer for building discovery payloads. */
+#define HA_DISCOVERY_PAYLOAD_BUF_SIZE 8192
+
+/* Home Assistant domain strings for discovery topic generation. */
+#define HA_DOMAIN_COUNT 21
+static const char* const HA_DOMAIN_STRINGS[HA_DOMAIN_COUNT] = {
+    "alarm_control_panel", "binary_sensor", "button", "camera", "climate",
+    "cover", "date", "datetime", "event", "fan", "light", "lock", "number",
+    "select", "sensor", "switch", "text", "time", "update", "vacuum", "valve"
 };
+
+static inline int ha_domain_to_index(const char* str, size_t len) {
+    for (int i = 0; i < HA_DOMAIN_COUNT; i++) {
+        if (strlen(HA_DOMAIN_STRINGS[i]) == len &&
+            strncmp(HA_DOMAIN_STRINGS[i], str, len) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
 
 /*!
- * A (topic, payload) pair ready to be published via MQTT.
+ * @brief Home Assistant MQTT Discovery manager.
+ *
+ * All buffers are pre-allocated — no heap allocation during processing.
+ * Peak memory: payload buffer (~16 KB) + decompress buffer (~16 KB) +
+ * line buffer (~16 KB) + sorted ERD array (~1.3 KB).
  */
-struct HaDiscoveryItem {
-  std::string topic;
-  std::string payload;
-};
+typedef struct {
+  erd_cache_t* cache;              // Shared ERD cache (owned by GeappliancesBridge)
+  i_mqtt_client_t* mqtt_client;    // MQTT publish interface
+  const char* device_id;           // Device ID string for topic construction
+  const char* model_number;        // Model number for device info
+  const char* serial_number;       // Serial number for device info
+  uint8_t appliance_type;          // Appliance type for category filtering
 
-class HaDiscoveryManager {
- public:
-  void init(const std::string& base_url,
-            const std::string& device_id,
-            const std::string& model_number,
-            const std::string& serial_number,
-            const std::set<tiny_erd_t>& registered_erds,
-            bool generate_device_config);
+  bool filter_config_topics;       /* Whether config topic filtering was enabled */
+  ha_discovery_state_t state;
 
-  void set_registered_erds(const std::set<tiny_erd_t>& erds);
-
-  void on_erd_seen(tiny_erd_t erd);
-
-  void run(bool is_poll_mode,
-           bool polling_list_complete,
-           bool subscription_activity_detected,
-           mqtt::MQTTClientComponent* mqtt_client);
-
-  /// Set the MQTT adapter for async publishing (typed pointer, nullptr = sync fallback)
-  void set_mqtt_adapter(esphome_mqtt_client_adapter_t* mqtt_adapter);
-
-  bool is_complete() const { return state_ == HA_DISCOVERY_COMPLETE; }
-  bool is_failed()   const { return state_ == HA_DISCOVERY_FAILED; }
-  bool is_publishing() const { return state_ == HA_DISCOVERY_PUBLISHING; }
-  bool is_ready_to_start() const { return state_ == HA_DISCOVERY_WAITING_FOR_READY; }
-
-  HaDiscoveryState get_state() const { return state_; }
-
-  /// Clean up resources (FreeRTOS task, queue, stack). Call from teardown.
-  void cleanup();
-
- private:
-  void publish_ha_discovery_(mqtt::MQTTClientComponent* mqtt_client);
-  void publish_next_entity_(mqtt::MQTTClientComponent* mqtt_client);
+  /* Stats */
+  uint32_t total_discovered;       // Total entities discovered
+  uint32_t total_published;        // Total discovery publishes
+  uint32_t total_filtered;         // Entities filtered out (ERD not registered)
 
 #ifdef USE_ESP_IDF
-  static void ha_fetch_task_fn_(void* param);
-  void fetch_ha_definitions_();
-  bool fetch_category_(const std::string& url,
-                       const std::string& device_id,
-                       const std::string& device_json);
-  bool process_jsonl_line_(const std::string& line,
-                           const std::string& device_id,
-                           const std::string& device_json);
+
+  /* Sorted ERD array for binary search during discovery. */
+  uint16_t sorted_erds[HA_DISCOVERY_MAX_ERDS];
+  uint16_t sorted_erds_count;
+
+  /* Decompression state. */
+  tinfl_decompressor decomp_state;
+  /* Decompression buffer for JSONL chunks (14KB). */
+  uint8_t decomp_buf[HA_DISCOVERY_DECOMP_BUF_SIZE];
+
+  /* Line parsing buffer. */
+  char line_buf[HA_DISCOVERY_LINE_BUF_SIZE];
+
+  /* Payload buffer for building discovery payloads. */
+  char topic_buf[HA_DISCOVERY_TOPIC_BUF_SIZE];
+  char payload_buf[HA_DISCOVERY_PAYLOAD_BUF_SIZE];
+
+
+  /* Device JSON built once at start. */
+  char device_json_buf[512];
+
+  /* Entity field buffers (used by process_jsonl_line to avoid stack overflow).
+   * Templates are NOT stored here — they are embedded directly from the raw
+   * JSONL line into the payload buffer with proper re-escaping. */
+  char entity_name_buf[160];
+  char erd_id_hex_buf[8];
+  char domain_buf[32];
+  char field_id_buf[HA_DISCOVERY_FIELD_ID_BUF_SIZE];
+  char paired_erd_buf[8];
+  char role_buf[16];
+  char unit_buf[32];
+  char device_class_buf[32];
+  char state_class_buf[32];
+  char options_buf[256];
+  char data_type_buf[16];
+  char scale_factor_buf[16];
+  char min_buf[32];
+  char max_buf[32];
+  char step_buf[32];
+  char mode_buf[16];
+  char payload_on_buf[16];
+  char payload_off_buf[16];
+  char state_on_buf[16];
+  char state_off_buf[16];
+  char unique_id_buf[HA_DISCOVERY_UNIQUE_ID_BUF_SIZE];
+  char state_topic_buf[128];
+  char command_topic_buf[128];
+  char actual_state_topic_buf[128];
+  char actual_command_topic_buf[128];
+
+  /* Discovery progress tracking. */
+  uint16_t current_category;       // Index into ha_discovery_categories[]
+  uint16_t current_chunk;          // Index into current category's chunks
+  uint32_t current_offset;         // Byte offset within decompressed chunk
+  uint32_t current_decomp_size;    // Size of current decompressed chunk
+  /* Embedded cleanup module for removing old discovery topics. */
+  ha_discovery_cleanup_t cleanup;
+
+  /* Domain topic prefix: pre-computed "homeassistant/{domain}/{device_id}/"
+   * to avoid repeated snprintf during discovery publish. */
+  char domain_topic_prefix[128];
+  char current_domain_prefix_buf[32]; // Tracks current domain for prefix caching
+
+#endif
+} ha_discovery_manager_t;
+
+/*!
+ * Initialize the discovery manager. Call once before configure().
+ */
+void ha_discovery_manager_init(ha_discovery_manager_t* self);
+
+/*!
+ * Configure the discovery manager with device info and dependencies.
+ * Call after init(), before start().
+ */
+void ha_discovery_manager_configure(
+  ha_discovery_manager_t* self,
+  const char* device_id,
+  const char* model_number,
+  const char* serial_number,
+  uint8_t appliance_type,
+  bool filter_config_topics,
+  erd_cache_t* cache,
+  i_mqtt_client_t* mqtt_client);
+
+/*!
+ * Start the discovery process.
+ * On ESP-IDF, builds the sorted ERD list and device JSON inline, then
+ * transitions to DISCOVERING state. On non-ESP-IDF, marks complete immediately.
+ */
+void ha_discovery_manager_start(ha_discovery_manager_t* self);
+
+/*!
+ * Drive the discovery: decompress chunks and publish entities.
+ * Call from the main loop while the manager is in BUILDING or DISCOVERING state.
+ * Publishes one entity per call, keeping loop times low.
+ * Transitions to COMPLETE when all entities are published.
+ */
+void ha_discovery_manager_run(ha_discovery_manager_t* self);
+
+/*!
+ * Clean up the discovery manager.
+ * Stops tasks and frees resources. Call from teardown.
+ */
+void ha_discovery_manager_cleanup(ha_discovery_manager_t* self);
+
+
+/*!
+ * Returns true if the manager is currently processing (building or discovering).
+ */
+bool ha_discovery_manager_is_processing(ha_discovery_manager_t* self);
+
+/*!
+ * Returns the current state.
+ */
+ha_discovery_state_t ha_discovery_manager_get_state(ha_discovery_manager_t* self);
+
+/* Test-only exports: exposed when HA_DISCOVERY_TEST_EXPORT is defined. */
+#ifdef HA_DISCOVERY_TEST_EXPORT
+void cleanup_topic_callback(const char* topic, const char* payload, size_t payload_len, void* arg);
+void cleanup_start(ha_discovery_cleanup_t* self);
+uint16_t cleanup_flush_queue(ha_discovery_cleanup_t* self);
 #endif
 
-  std::string escape_json_str_(const std::string& s);
-  std::string build_device_json_();
-
-  HaDiscoveryState state_{HA_DISCOVERY_IDLE};
-  std::string base_url_;
-  std::string device_id_;
-  std::string model_number_;
-  std::string serial_number_;
-  std::set<tiny_erd_t> registered_erds_;
-  std::set<tiny_erd_t> registered_erds_snapshot_;
-  std::set<tiny_erd_t> seen_erds_;
-  bool generate_device_config_{false};
-  uint32_t last_activity_{0};
-  uint32_t last_publish_ms_{0};
-  uint32_t start_time_{0};  // millis() when WAITING_FOR_READY state entered
-
-  // Pointer to the MQTT adapter for async publishing (typed, set via set_mqtt_adapter)
-  esphome_mqtt_client_adapter_t* mqtt_adapter_{nullptr};
-
-#ifdef USE_ESP_IDF
-  QueueHandle_t queue_{nullptr};
-  TaskHandle_t  task_handle_{nullptr};
-  StackType_t*  task_stack_{nullptr};
-  StaticTask_t* task_tcb_{nullptr};
+#ifdef __cplusplus
+}
 #endif
-};
 
-}  // namespace geappliances_bridge
-}  // namespace esphome
+#endif

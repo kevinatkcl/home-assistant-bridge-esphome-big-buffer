@@ -12,35 +12,39 @@
  */
 
 #include "i_bridge_services.h"
+#include "erd_bridge_common.h"
 #include "geappliances_bridge_constants.h"
 #include "geappliances_bridge_startup_hsm.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
-#include "esphome/components/mqtt/mqtt_client.h"
 
 extern "C" {
 #include "tiny_utils.h"  // element_count macro
 }
 
+GEA_TAG(TAG) = "geappliances_bridge_startup_hsm";
+
 namespace esphome {
 namespace geappliances_bridge {
 
-static const char* const TAG __attribute__((unused)) = "geappliances_bridge";
 
-// Back-pointer to the bridge services, set during HSM init.
-// This allows HSM state functions to invoke bridge operations through a
-// stable interface without a compile-time dependency on GeappliancesBridge.
-static IBridgeServices* g_bridge_services = nullptr;
 
 IBridgeServices* services_from_hsm(tiny_hsm_t* hsm)
 {
-  (void)hsm;
-  return g_bridge_services;
+  startup_hsm_wrapper_t* wrapper = container_of(startup_hsm_wrapper_t, hsm, hsm);
+  return wrapper->services;
 }
 
-void set_bridge_services(IBridgeServices* services)
+void startup_hsm_wrapper_init(startup_hsm_wrapper_t* self, IBridgeServices* services,
+  tiny_hsm_state_t initial)
 {
-  g_bridge_services = services;
+  self->services = services;
+  tiny_hsm_init(&self->hsm, &startup_hsm_configuration, initial);
+}
+
+void startup_hsm_wrapper_destroy(startup_hsm_wrapper_t* self)
+{
+  self->services = nullptr;
 }
 
 
@@ -244,6 +248,9 @@ tiny_hsm_result_t startup_state_mqtt_client_init(tiny_hsm_t* hsm, tiny_hsm_signa
       if (!svc->is_mqtt_client_initialized()) {
         svc->initialize_mqtt_client();
       }
+      if (!svc->is_erd_cache_publisher_initialized()) {
+        svc->initialize_erd_cache_publisher();
+      }
       svc->start_feature_bit_reading();
       tiny_hsm_transition(hsm, startup_state_feature_bits);
       break;
@@ -273,16 +280,12 @@ tiny_hsm_result_t startup_state_feature_bits(tiny_hsm_t* hsm, tiny_hsm_signal_t 
 
   switch (signal) {
     case tiny_hsm_signal_entry:
-      ESP_LOGI(TAG, "Startup: Feature bits phase");
       break;
 
     case signal_run_loop:
       {
       bool feature_bits_done = svc->is_feature_bits_complete();
-      bool mqtt_connected = (mqtt::global_mqtt_client != nullptr &&
-                             mqtt::global_mqtt_client->is_connected());
-
-      if (feature_bits_done && mqtt_connected) {
+      if (feature_bits_done) {
         tiny_hsm_transition(hsm, startup_state_bridge_init);
       }
       }
@@ -296,11 +299,7 @@ tiny_hsm_result_t startup_state_feature_bits(tiny_hsm_t* hsm, tiny_hsm_signal_t 
 
     case signal_feature_bits_complete:
       {
-        bool mqtt_connected = (mqtt::global_mqtt_client != nullptr &&
-                               mqtt::global_mqtt_client->is_connected());
-        if (mqtt_connected) {
-          tiny_hsm_transition(hsm, startup_state_bridge_init);
-        }
+        tiny_hsm_transition(hsm, startup_state_bridge_init);
       }
       break;
 
@@ -315,7 +314,7 @@ tiny_hsm_result_t startup_state_feature_bits(tiny_hsm_t* hsm, tiny_hsm_signal_t 
 }
 
 // ============================================================================
-// Phase 6: Bridge Init — initialize the MQTT bridge (poll or subscribe)
+// Phase 6: Bridge Init — initialize the ERD bridge (poll or subscribe)
 //
 // Waits for MQTT connection, then initializes the appropriate bridge.
 // Transitions to subscription_watch on completion.
@@ -328,25 +327,15 @@ tiny_hsm_result_t startup_state_bridge_init(tiny_hsm_t* hsm, tiny_hsm_signal_t s
 
   switch (signal) {
     case tiny_hsm_signal_entry:
-      ESP_LOGI(TAG, "Startup: Bridge init phase");
+      ESP_LOGD(TAG, "Startup: Bridge init phase");
       break;
 
     case signal_run_loop:
       if (!svc->is_bridge_initialized() &&
-          svc->is_autodiscovery_complete() &&
-          mqtt::global_mqtt_client != nullptr &&
-          mqtt::global_mqtt_client->is_connected()) {
-        ESP_LOGI(TAG, "Device ID ready and MQTT connected, initializing MQTT bridge");
-        svc->initialize_mqtt_bridge();
-        tiny_hsm_transition(hsm, startup_state_subscription_watch);
-      }
-      break;
-
-    case signal_mqtt_connected:
-      if (!svc->is_bridge_initialized() && svc->is_autodiscovery_complete()) {
-        ESP_LOGI(TAG, "MQTT connected, initializing MQTT bridge");
-        svc->initialize_mqtt_bridge();
-        tiny_hsm_transition(hsm, startup_state_subscription_watch);
+          svc->is_autodiscovery_complete()) {
+        svc->initialize_erd_bridge();
+        // Do NOT transition here — wait for signal_bridge_ready from the
+        // polling bridge when ERD discovery is complete.
       }
       break;
 
@@ -381,55 +370,30 @@ tiny_hsm_result_t startup_state_subscription_watch(tiny_hsm_t* hsm, tiny_hsm_sig
     case tiny_hsm_signal_entry:
       if (svc->get_mode() != BRIDGE_MODE_AUTO) {
         svc->maybe_start_custom_erd_polling();
-        tiny_hsm_transition(hsm, startup_state_ha_discovery);
+        tiny_hsm_transition(hsm, startup_state_running);
       }
       break;
 
     case signal_run_loop:
-      if (svc->get_mode() == BRIDGE_MODE_AUTO && svc->is_subscription_mode_active()) {
-        svc->check_subscription_activity();
-      }
-      svc->maybe_start_custom_erd_polling();
-      svc->log_poll_state_transitions();
+      {
+        subscription_state_t sub_state = svc->get_subscription_state();
+        if (sub_state == subscription_state_failed) {
+          svc->handle_subscription_failed();
+          tiny_hsm_transition(hsm, startup_state_running);
+          break;
+        }
+        svc->log_poll_state_transitions();
+        svc->handle_polling_failed();
+        svc->maybe_start_custom_erd_polling();
 
-      if (svc->get_mode() != BRIDGE_MODE_AUTO || !svc->is_subscription_mode_active()) {
-        tiny_hsm_transition(hsm, startup_state_ha_discovery);
+        // Check if the appliance bridge has reached steady state.
+        if (svc->check_steady_state()) {
+          tiny_hsm_transition(hsm, startup_state_running);
+        }
       }
       break;
 
     case signal_subscription_fallback:
-      tiny_hsm_transition(hsm, startup_state_ha_discovery);
-      break;
-
-    case tiny_hsm_signal_exit:
-      break;
-
-    default:
-      return tiny_hsm_result_signal_deferred;
-  }
-
-  return tiny_hsm_result_signal_consumed;
-}
-
-// ============================================================================
-// Phase 8: HA Discovery — publish Home Assistant entity configs
-//
-// Runs the HaDiscoveryManager each loop iteration.  Transitions to
-// heap_monitor once HA discovery is complete or not needed.
-// ============================================================================
-
-tiny_hsm_result_t startup_state_ha_discovery(tiny_hsm_t* hsm, tiny_hsm_signal_t signal, const void* data)
-{
-  IBridgeServices* svc = services_from_hsm(hsm);
-  (void)data;
-
-  switch (signal) {
-    case tiny_hsm_signal_entry:
-      ESP_LOGI(TAG, "Startup: HA discovery phase");
-      break;
-
-    case signal_run_loop:
-      svc->run_ha_discovery();
       tiny_hsm_transition(hsm, startup_state_running);
       break;
 
@@ -443,8 +407,8 @@ tiny_hsm_result_t startup_state_ha_discovery(tiny_hsm_t* hsm, tiny_hsm_signal_t 
   return tiny_hsm_result_signal_consumed;
 }
 
-// ============================================================================
-// Phase 9: Running — steady-state operation
+
+// Phase 8: Running — steady-state operation
 //
 // All recurring tasks run every loop() iteration.  This is the terminal
 // state of the startup sequence.
@@ -457,18 +421,26 @@ tiny_hsm_result_t startup_state_running(tiny_hsm_t* hsm, tiny_hsm_signal_t signa
 
   switch (signal) {
     case tiny_hsm_signal_entry:
-      ESP_LOGI(TAG, "Bridge is now in steady-state operation");
+      // Check steady state immediately on entry so the log fires even if
+      // subsequent loop() calls are delayed by the long probe phase that
+      // triggered the transition.
+      svc->check_steady_state();
       break;
 
     case signal_run_loop:
       svc->run_all_managers();
-
-      if (svc->get_mode() == BRIDGE_MODE_AUTO && svc->is_subscription_mode_active()) {
-        svc->check_subscription_activity();
+      {
+        subscription_state_t sub_state = svc->get_subscription_state();
+        if (sub_state == subscription_state_failed) {
+          svc->handle_subscription_failed();
+        }
       }
-      svc->maybe_start_custom_erd_polling();
+      svc->handle_polling_failed();
       svc->log_poll_state_transitions();
-      svc->run_ha_discovery();
+      svc->maybe_start_custom_erd_polling();
+
+      // Check and log once when the appliance bridge first reaches steady state.
+      svc->check_steady_state();
       break;
 
     case tiny_hsm_signal_exit:
@@ -495,8 +467,7 @@ static const tiny_hsm_state_descriptor_t startup_hsm_state_descriptors[] = {
   { .state = startup_state_feature_bits,     .parent = startup_state_top },
   { .state = startup_state_bridge_init,      .parent = startup_state_top },
   { .state = startup_state_subscription_watch, .parent = startup_state_top },
-  { .state = startup_state_ha_discovery,     .parent = startup_state_top },
-  { .state = startup_state_running,          .parent = startup_state_top },
+  { .state = startup_state_running,          .parent = startup_state_top }
 };
 
 const tiny_hsm_configuration_t startup_hsm_configuration = {

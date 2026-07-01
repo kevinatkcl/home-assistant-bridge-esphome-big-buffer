@@ -25,6 +25,7 @@
 #include <cstdint>
 
 #include "bridge_mode.h"
+#include "erd_bridge_common.h"
 
 namespace esphome {
 namespace geappliances_bridge {
@@ -67,15 +68,16 @@ class IBridgeServices {
 
   // -- Bridge initialization -------------------------------------------------
 
-  /// Returns true if the MQTT bridge (poll/subscribe) has been initialized.
+  /// Returns true if the ERD bridge (poll/subscribe) has been initialized.
   virtual bool is_bridge_initialized() const = 0;
-  /// Initialize the MQTT bridge in the mode selected by configuration.
-  virtual void initialize_mqtt_bridge() = 0;
+  /// Initialize the ERD bridge in the mode selected by configuration.
+  virtual void initialize_erd_bridge() = 0;
 
   // -- Operating mode --------------------------------------------------------
 
   virtual BridgeMode get_mode() const = 0;
-  virtual bool is_subscription_mode_active() const = 0;
+  virtual subscription_state_t get_subscription_state() const = 0;
+  virtual polling_state_t get_polling_state() const = 0;
 
   // -- Startup delay ---------------------------------------------------------
 
@@ -86,16 +88,29 @@ class IBridgeServices {
 
   // -- Recurring tasks (called from subscription_watch / running states) ------
 
-  /// Check subscription activity and fall back to polling if timed out.
-  virtual void check_subscription_activity() = 0;
   /// Start custom-ERD polling bridge if conditions are met (idempotent).
   virtual void maybe_start_custom_erd_polling() = 0;
+  /// Called when the subscription bridge enters the failed state; triggers
+  /// fallback to polling mode in AUTO mode.
+  virtual void handle_subscription_failed() = 0;
+  /// Called when the polling bridge enters the failed state while running
+  /// alongside a subscription bridge; cleans up the polling bridge.
+  virtual void handle_polling_failed() = 0;
   /// Log any pending polling-bridge state-name transitions.
   virtual void log_poll_state_transitions() = 0;
-  /// Run one tick of the HA discovery manager.
-  virtual void run_ha_discovery() = 0;
+  /// Check if the appliance-side data path has reached steady-state operation.
+  /// Non-const: sets the steady-state flag and logs on first transition.
+  /// Returns true only on the first call that detects steady state.
+  virtual bool check_steady_state() = 0;
   /// Run one tick of all managers (autodiscovery, device-ID, feature bits).
   virtual void run_all_managers() = 0;
+
+  // -- ERD cache MQTT publisher ----------------------------------------------
+
+  /// Initialize the ERD cache MQTT publisher (idempotent).
+  virtual void initialize_erd_cache_publisher() = 0;
+  /// Returns true if the ERD cache publisher has been initialized.
+  virtual bool is_erd_cache_publisher_initialized() const = 0;
 };
 
 }  // namespace geappliances_bridge

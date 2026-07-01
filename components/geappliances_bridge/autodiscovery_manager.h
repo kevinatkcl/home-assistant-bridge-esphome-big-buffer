@@ -49,7 +49,7 @@ extern "C" {
 namespace esphome {
 namespace geappliances_bridge {
 
-static constexpr uint32_t AUTODISCOVERY_BROADCAST_WINDOW_MS = 5000;
+static constexpr uint32_t AUTODISCOVERY_BROADCAST_WINDOW_MS = 1000;
 
 enum AutodiscoveryState {
   AUTODISCOVERY_IDLE,
@@ -72,7 +72,6 @@ class AutodiscoveryManager {
 
   /// Start the autodiscovery process.  Idempotent if already past IDLE.
   void start();
-
   uint8_t  get_host_address()       const { return host_address_; }
   i_tiny_gea3_erd_client_t* get_active_erd_client() const { return active_erd_client_; }
   bool     is_gea2_protocol()       const { return gea2_protocol_active_; }

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The main ESPHome component class that orchestrates the entire GE Appliances bridge. It manages UART interfaces for GEA2/GEA3 protocols, drives the startup state machine, handles MQTT connection lifecycle, and coordinates all sub-managers (autodiscovery, device identity, feature bits, HA discovery).
+The main ESPHome component class that orchestrates the entire GE Appliances bridge. It manages UART interfaces for GEA2/GEA3 protocols, drives the startup state machine, handles MQTT connection lifecycle, and coordinates all sub-managers (autodiscovery, device identity, feature bits).
 
 ## Public API
 
@@ -12,7 +12,7 @@ The main ESPHome component class that orchestrates the entire GE Appliances brid
 | `loop()` | Drive protocol stack and startup HSM |
 | `dump_config()` | Log current configuration and state |
 | `get_setup_priority()` | Returns `setup_priority::DATA` (600) — after MQTT (50), same as UART |
-| `teardown()` | Clean up HA discovery, bridges, and MQTT adapter |
+| `teardown()` | Clean up bridges and MQTT adapter |
 
 ### Configuration Setters (called from `__init__.py` code generation)
 
@@ -23,11 +23,10 @@ The main ESPHome component class that orchestrates the entire GE Appliances brid
 | `set_device_id(id)` | Pre-configure a static device ID |
 | `set_mode(mode)` | Set bridge mode: POLL (0), SUBSCRIBE (1), or AUTO (2) |
 | `set_polling_interval(ms)` | Set polling interval (default 10000 ms) |
-| `set_polling_only_publish_on_change(bool)` | Only publish ERD values when they change |
 | `set_appliance_api_parsing(bool)` | Enable feature bit-based ERD filtering (default true) |
-| `set_generate_device_config(bool)` | Enable device config generation |
+| `set_generate_device_config(bool)` | Deprecated, no-op |
+| `set_throttle_rate_seconds(rate)` | Set minimum interval (seconds) between publishes per ERD (default 0, range 0-255) |
 | `add_custom_erd(erd)` | Add a custom ERD to poll |
-| `set_ha_discovery_base_url(url)` | Override the HA discovery JSONL base URL |
 
 ## Protected Methods
 
@@ -37,15 +36,14 @@ The main ESPHome component class that orchestrates the entire GE Appliances brid
 | `handle_erd_client_activity_(args)` | Route ERD activity to appropriate manager (autodiscovery, device ID, feature bits) |
 | `should_route_to_feature_bits_(erd)` | Decide whether an ERD read goes to FeatureBitManager or DeviceIdentityManager |
 | `initialize_mqtt_client_()` | Create and configure the MQTT client adapter |
-| `initialize_mqtt_bridge_()` | Initialize subscription or polling bridge based on mode |
+| `initialize_erd_bridge_()` | Initialize subscription or polling bridge based on mode |
 | `run_protocol_stack_()` | Drive GEA2/GEA3 hardware (includes GEA2 tight loop) |
 | `start_feature_bit_reading_()` | Start the feature bit read sequence |
 | `check_subscription_activity_()` | Check if subscription mode is receiving data (AUTO mode fallback) |
 | `start_custom_erd_polling_()` | Initialize polling for user-configured custom ERDs |
 | `maybe_start_custom_erd_polling_()` | Guarded entry point for custom ERD polling (prevents re-initialization) |
-| `configure_polling_optional_lists_()` | Set up optional ERD lists for the polling bridge (appliance API filter, custom ERDs) |
 | `log_poll_state_transitions_()` | Debug: log polling HSM state changes |
-| `on_ha_discovery_erd_seen_(erd)` | Callback invoked when HA discovery publishes an ERD |
+| `on_poll_discovery_complete_()` | Callback from polling bridge when probe phase completes |
 
 ## Startup Sequence
 
@@ -54,8 +52,20 @@ The bridge progresses through a linear sequence of phases via the `startup_hsm_`
 ```
 protocol_stack → autodiscovery → device_id → mqtt_client_init
              → feature_bits → bridge_init → subscription_watch
-             → ha_discovery → running
+             → running
 ```
+
+## Bridge Initialization Flow
+
+During `startup_state_bridge_init`, `initialize_erd_bridge_()` runs:
+
+1. **Apply ERD filter**: If appliance API parsing is enabled and complete, sets the valid-ERD filter on the registry.
+2. **Select mode**: Determines polling vs. subscription based on mode setting and GEA2/GEA3 protocol.
+3. **Build probe list**: Calls `build_poll_list_()` (which delegates to `erd_poll_list_builder`) to build the list of ERDs to probe.
+4. **Initialize bridges**:
+   - **Polling mode**: Initializes `erd_bridge_poll_` with the probe list, known host address, and appliance type.
+   - **Subscription mode**: Initializes `erd_bridge_subscribe_` with the known host address.
+   - **Write bridge**: Always initialized with the broadcast address (updated after appliance identification).
 
 ## Dependencies
 
@@ -64,18 +74,23 @@ protocol_stack → autodiscovery → device_id → mqtt_client_init
 - ESPHome `mqtt::MQTTClientComponent` — MQTT client
 - `tiny_gea3_interface`, `tiny_gea3_erd_client` — GEA3 protocol stack
 - `tiny_gea2_interface`, `tiny_gea2_erd_client` — GEA2 protocol stack
-- All sub-managers: `AutodiscoveryManager`, `DeviceIdentityManager`, `FeatureBitManager`, `HaDiscoveryManager`
+- All sub-managers: `AutodiscoveryManager`, `DeviceIdentityManager`, `FeatureBitManager`
 - Adapters: `esphome_uart_adapter`, `esphome_mqtt_client_adapter`, `gea2_erd_client_adapter`
-- Bridges: `mqtt_bridge`, `mqtt_bridge_polling`
-- `mqtt_bridge_common.h` — shared signals, timing constants, and utility templates
+- Bridges: `erd_bridge_subscribe`, `erd_bridge_poll`, `erd_write_bridge`
+- `erd_poll_list_builder` — builds the probe list for the polling bridge
+- `erd_registry` — single owner of valid-ERD filter, string-type set, and registered-ERD tracking
+- `erd_cache_mqtt_publisher` — drains ERD cache updates to MQTT each loop()
+- `erd_bridge_common.h` — shared signals, timing constants, and utility templates
 - `tiny_hsm`, `tiny_timer` — state machine and timer infrastructure
 
 ## Key Design Decisions
 
 - **GEA2 tight loop**: When GEA2 is active, a 200 ms wall-clock busy loop ensures the full TX→RX cycle at 19200 baud completes within a single `loop()` call. A manual millisecond counter drives the GEA2 interface's internal timers without starving the shared timer group.
-- **Bridge modes**: Three modes — POLL (always poll), SUBSCRIBE (always subscribe), AUTO (try subscribe, fall back to polling after 30 s if no activity).
+- **Bridge modes**: Three modes — POLL (always poll), SUBSCRIBE (always subscribe), AUTO (try subscribe, fall back to polling after 10 s if no activity).
 - **IBridgeServices interface**: `GeappliancesBridge` implements `IBridgeServices`, the abstract contract consumed by the startup HSM. This eliminates `friend` declarations and lets the HSM be unit-tested with a mock.
 - **Phase timeouts**: Device ID phase has a 30 s timeout, feature bits phase has a 60 s timeout — both prevent the startup HSM from stalling indefinitely.
+- **Probe list ownership**: The `poll_probe_list_` member stores the built probe list so the pointer passed to `erd_bridge_poll_init()` remains valid across the probe phase.
+- **ERD cache publisher**: The `erd_cache_mqtt_publisher_` drains `update_required` entries from the shared cache and publishes them to MQTT each `loop()`, decoupling the bridges from direct MQTT interaction.
 
 ## Testing
 
