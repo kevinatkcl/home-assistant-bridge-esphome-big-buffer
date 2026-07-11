@@ -11,8 +11,8 @@
  * Cleanup is handled by the embedded ha_discovery_cleanup_t module.
  *
  * All buffers are pre-allocated — no heap allocation during processing.
- * Peak memory: payload buffer (~8 KB) + decompress buffer (~14 KB) +
- * line buffer (~14 KB) + sorted ERD array (~1.3 KB).
+ * Peak memory: payload buffer (~8 KB) + decompress buffer (18 KB) +
+ * line buffer (18 KB) + sorted ERD array (~1.3 KB).
  */
 
 #ifndef ha_discovery_manager_h
@@ -22,15 +22,18 @@
 #include <stdbool.h>
 
 #include "erd_cache.h"
+#include "erd_lists.h"
 #include "i_mqtt_client.h"
 #include "ha_discovery_cleanup.h"
 
-#ifdef USE_ESP_IDF
-#  ifdef USE_ESP_IDF_STUBS
-#    include "miniz_tinfl.h"
-#  else
-#    include "miniz.h"
-#  endif
+#ifndef USE_ESP_IDF
+#error "This component requires ESPHome with framework: type: esp-idf"
+#endif
+
+#ifdef USE_ESP_IDF_STUBS
+  #include "miniz_tinfl.h"
+#else
+  #include "miniz.h"
 #endif
 
 #ifdef __cplusplus
@@ -46,15 +49,17 @@ typedef enum {
   ha_discovery_state_failed
 } ha_discovery_state_t;
 
-/* Maximum number of registered/seen ERDs for HA discovery binary search. */
-#define HA_DISCOVERY_MAX_ERDS 645
+/* Maximum number of registered/seen ERDs for HA discovery binary search.
+   Uses POLLING_LIST_MAX_SIZE from erd_lists.h as the single source of truth. */
+#define HA_DISCOVERY_MAX_ERDS POLLING_LIST_MAX_SIZE
 
 
-/* Decompression buffer size per chunk (max single line is ~7.4KB). */
-#define HA_DISCOVERY_DECOMP_BUF_SIZE 8192
+/* Decompression buffer size per chunk. Must be >= max decompressed chunk
+   size (range category has 17770 bytes). */
+#define HA_DISCOVERY_DECOMP_BUF_SIZE 18432
 
-/* Line buffer size for JSONL parsing (matches decomp buffer). */
-#define HA_DISCOVERY_LINE_BUF_SIZE 8192
+/* Line parsing buffer size (matches decomp buffer). */
+#define HA_DISCOVERY_LINE_BUF_SIZE 18432
 
 /* Topic buffer size for HA discovery topics (must fit worst-case topic + null). */
 #define HA_DISCOVERY_TOPIC_BUF_SIZE 192
@@ -65,30 +70,11 @@ typedef enum {
 /* Payload buffer for building discovery payloads. */
 #define HA_DISCOVERY_PAYLOAD_BUF_SIZE 8192
 
-/* Home Assistant domain strings for discovery topic generation. */
-#define HA_DOMAIN_COUNT 21
-static const char* const HA_DOMAIN_STRINGS[HA_DOMAIN_COUNT] = {
-    "alarm_control_panel", "binary_sensor", "button", "camera", "climate",
-    "cover", "date", "datetime", "event", "fan", "light", "lock", "number",
-    "select", "sensor", "switch", "text", "time", "update", "vacuum", "valve"
-};
-
-static inline int ha_domain_to_index(const char* str, size_t len) {
-    for (int i = 0; i < HA_DOMAIN_COUNT; i++) {
-        if (strlen(HA_DOMAIN_STRINGS[i]) == len &&
-            strncmp(HA_DOMAIN_STRINGS[i], str, len) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 /*!
  * @brief Home Assistant MQTT Discovery manager.
  *
- * All buffers are pre-allocated — no heap allocation during processing.
- * Peak memory: payload buffer (~16 KB) + decompress buffer (~16 KB) +
- * line buffer (~16 KB) + sorted ERD array (~1.3 KB).
+ * Peak memory: payload buffer (~8 KB) + decompress buffer (~18 KB) +
+ * line buffer (~18 KB) + sorted ERD array (~1.3 KB).
  */
 typedef struct {
   erd_cache_t* cache;              // Shared ERD cache (owned by GeappliancesBridge)
@@ -106,15 +92,13 @@ typedef struct {
   uint32_t total_published;        // Total discovery publishes
   uint32_t total_filtered;         // Entities filtered out (ERD not registered)
 
-#ifdef USE_ESP_IDF
 
   /* Sorted ERD array for binary search during discovery. */
   uint16_t sorted_erds[HA_DISCOVERY_MAX_ERDS];
   uint16_t sorted_erds_count;
 
-  /* Decompression state. */
   tinfl_decompressor decomp_state;
-  /* Decompression buffer for JSONL chunks (14KB). */
+  /* Decompression buffer for JSONL chunks (18KB). */
   uint8_t decomp_buf[HA_DISCOVERY_DECOMP_BUF_SIZE];
 
   /* Line parsing buffer. */
@@ -170,7 +154,6 @@ typedef struct {
   char domain_topic_prefix[128];
   char current_domain_prefix_buf[32]; // Tracks current domain for prefix caching
 
-#endif
 } ha_discovery_manager_t;
 
 /*!
@@ -194,8 +177,8 @@ void ha_discovery_manager_configure(
 
 /*!
  * Start the discovery process.
- * On ESP-IDF, builds the sorted ERD list and device JSON inline, then
- * transitions to DISCOVERING state. On non-ESP-IDF, marks complete immediately.
+ * Builds the sorted ERD list and device JSON inline, then
+ * transitions to DISCOVERING state.
  */
 void ha_discovery_manager_start(ha_discovery_manager_t* self);
 

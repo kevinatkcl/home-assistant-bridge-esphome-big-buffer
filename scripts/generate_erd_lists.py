@@ -17,12 +17,10 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Dict, List, Optional, Set
+
 
 
 def parse_erd_id(erd_id_str: str) -> int:
@@ -102,7 +100,7 @@ def format_erd_list(erds: List[int], indent: int = 2) -> str:
 
 
 def generate_header(categories: Dict[str, List[int]], polling_list_max_size: int) -> str:
-    """Generate the complete erd_lists.h header file."""
+    """Generate the erd_lists.h header file with extern const declarations."""
     header = f"""/*!
  * @file
  * @brief Erd lists for various appliances
@@ -122,7 +120,7 @@ def generate_header(categories: Dict[str, List[int]], polling_list_max_size: int
 
 """
     
-    # Generate each category
+    # Generate each category — extern const declarations
     category_info = [
         ('common', 'commonErds', 'commonErdCount', '0x0000 to 0x0FFF: common ERDs (all appliance types)'),
         ('refrigeration', 'refrigerationErds', 'refrigerationErdCount', '0x1000 to 0x1FFF: refrigeration ERDs'),
@@ -137,16 +135,61 @@ def generate_header(categories: Dict[str, List[int]], polling_list_max_size: int
     ]
     
     for category_key, array_name, count_name, description in category_info:
-        erds = categories[category_key]
         header += f"// {description}\n"
-        header += f"const tiny_erd_t {array_name}[] = {{\n"
-        if erds:
-            header += format_erd_list(erds)
-            header += "\n"
-        header += "};\n"
-        header += f"const uint16_t {count_name} = sizeof({array_name}) / sizeof({array_name}[0]);\n\n"
+        header += f"extern const tiny_erd_t {array_name}[];\n"
+        header += f"extern const uint16_t {count_name};\n\n"
 
-    # Add the appliance API feature bit ERDs (hard-coded; not from appliance_api_erd_definitions.json)
+    # Appliance API feature bit ERDs
+    header += "// Appliance API feature bit ERDs (all appliance types)\n"
+    header += "// These ERDs carry feature bitmaps used to determine which appliance API features are active.\n"
+    header += "// Not generated from appliance_api_erd_definitions.json; hard-coded here.\n"
+    header += "extern const tiny_erd_t applianceApiFeatureErds[];\n"
+    header += "extern const uint16_t applianceApiFeatureErdCount;\n\n"
+
+    # Add the lookup table structure
+    header += """typedef struct {
+  const tiny_erd_t* erdList;
+  uint16_t erdCount;
+} applianceTypeToErdListAndCount_t;
+
+extern const applianceTypeToErdListAndCount_t applianceTypeToErdGroupTranslation[];
+extern const uint16_t maximumApplianceType;
+#endif
+"""
+    
+    return header
+
+
+def generate_erd_lists_cpp(categories: Dict[str, List[int]]) -> str:
+    """Generate the erd_lists.cpp companion file with actual array definitions."""
+    cpp = """#include "erd_lists.h"
+
+"""
+
+    category_info = [
+        ('common', 'commonErds', 'commonErdCount', '0x0000 to 0x0FFF: common ERDs (all appliance types)'),
+        ('refrigeration', 'refrigerationErds', 'refrigerationErdCount', '0x1000 to 0x1FFF: refrigeration ERDs'),
+        ('laundry', 'laundryErds', 'laundryErdCount', '0x2000 to 0x2FFF: laundry ERDs'),
+        ('dishWasher', 'dishWasherErds', 'dishWasherErdCount', '0x3000 to 0x3FFF: dishwasher ERDs'),
+        ('waterHeater', 'waterHeaterErds', 'waterHeaterErdCount', '0x4000 to 0x4FFF: waterHeater ERDs'),
+        ('range', 'rangeErds', 'rangeErdCount', '0x5000 to 0x5FFF: range ERDs (stoves, cooktops, ovens, etc)'),
+        ('airConditioning', 'airConditioningErds', 'airConditioningErdCount', '0x7000 to 0x7FFF: air conditioning ERDs (mini split, Zoneline, etc)'),
+        ('waterFilter', 'waterFilterErds', 'waterFilterErdCount', '0x8000 to 0x8FFF: water filter ERDs'),
+        ('smallAppliance', 'smallApplianceErds', 'smallApplianceErdCount', '0x9000 to 0x9FFF: small appliance ERDs (coffee makers, etc)'),
+        ('energy', 'energyErds', 'energyErdCount', '0xD000 to 0xDFFF: energy ERDs (all appliance types)')
+    ]
+
+    for category_key, array_name, count_name, description in category_info:
+        erds = categories[category_key]
+        cpp += f"// {description}\n"
+        cpp += f"const tiny_erd_t {array_name}[] = {{\n"
+        if erds:
+            cpp += format_erd_list(erds)
+            cpp += "\n"
+        cpp += "};\n"
+        cpp += f"const uint16_t {count_name} = sizeof({array_name}) / sizeof({array_name}[0]);\n\n"
+
+    # Appliance API feature bit ERDs
     appliance_api_feature_erds = [
         (0x0092, 'Common feature API'),
         (0x0093, 'Appliance feature API group 0'),
@@ -160,22 +203,17 @@ def generate_header(categories: Dict[str, List[int]], polling_list_max_size: int
         (0x010c, 'Appliance feature API group 8'),
         (0x010d, 'Appliance feature API group 9'),
     ]
-    header += "// Appliance API feature bit ERDs (all appliance types)\n"
-    header += "// These ERDs carry feature bitmaps used to determine which appliance API features are active.\n"
-    header += "// Not generated from appliance_api_erd_definitions.json; hard-coded here.\n"
-    header += "const tiny_erd_t applianceApiFeatureErds[] = {\n"
+    cpp += "// Appliance API feature bit ERDs (all appliance types)\n"
+    cpp += "// These ERDs carry feature bitmaps used to determine which appliance API features are active.\n"
+    cpp += "// Not generated from appliance_api_erd_definitions.json; hard-coded here.\n"
+    cpp += "const tiny_erd_t applianceApiFeatureErds[] = {\n"
     for erd_id, comment in appliance_api_feature_erds:
-        header += f"  0x{erd_id:04x},  // {comment}\n"
-    header += "};\n"
-    header += "const uint16_t applianceApiFeatureErdCount = sizeof(applianceApiFeatureErds) / sizeof(applianceApiFeatureErds[0]);\n\n"
+        cpp += f"  0x{erd_id:04x},  // {comment}\n"
+    cpp += "};\n"
+    cpp += "const uint16_t applianceApiFeatureErdCount = sizeof(applianceApiFeatureErds) / sizeof(applianceApiFeatureErds[0]);\n\n"
 
-    # Add the lookup table structure
-    header += """typedef struct {
-  const tiny_erd_t* erdList;
-  uint16_t erdCount;
-} applianceTypeToErdListAndCount_t;
-
-const applianceTypeToErdListAndCount_t applianceTypeToErdGroupTranslation[] = {
+    # Lookup table
+    cpp += """const applianceTypeToErdListAndCount_t applianceTypeToErdGroupTranslation[] = {
   { waterHeaterErds, waterHeaterErdCount }, // 0x00 = Water heater
   { laundryErds, laundryErdCount }, // 0x01 = Clothes washer
   { laundryErds, laundryErdCount }, // 0x02 = Clothes dryer
@@ -233,10 +271,9 @@ const applianceTypeToErdListAndCount_t applianceTypeToErdGroupTranslation[] = {
   { smallApplianceErds, smallApplianceErdCount }, // 0x36 = Sourdough Starter
 };
 const uint16_t maximumApplianceType = sizeof(applianceTypeToErdGroupTranslation) / sizeof(applianceTypeToErdGroupTranslation[0]);
-#endif
 """
-    
-    return header
+
+    return cpp
 
 
 
@@ -246,6 +283,27 @@ def sanitize_name_for_cpp(name: str) -> str:
     result = re.sub(r'[^a-zA-Z0-9]', '_', name)
     result = re.sub(r'_+', '_', result)
     return result.strip('_').lower()
+
+
+def make_array_names(valid_feature_apis):
+    """Return a dict mapping (api_key, ver, feature_index) -> unique array name."""
+    result = {}
+    for key, api in valid_feature_apis:
+        api_sanitized = sanitize_name_for_cpp(api['name'])
+        for ver, ver_data in api.get('versions', {}).items():
+            candidates = {}
+            for i, feature in enumerate(ver_data.get('features', [])):
+                feat_sanitized = sanitize_name_for_cpp(feature['name'])
+                base = f"appliance_api_{api_sanitized}_v{ver}_{feat_sanitized}_erds"
+                candidates.setdefault(base, []).append((i, int(feature['mask'], 16)))
+            for base, entries in candidates.items():
+                if len(entries) == 1:
+                    idx, _ = entries[0]
+                    result[(key, ver, idx)] = base
+                else:
+                    for idx, mask in entries:
+                        result[(key, ver, idx)] = f"{base[:-len('_erds')]}_m{mask:08x}_erds"
+    return result
 
 
 def collect_erds_for_feature(feature: Dict) -> List[int]:
@@ -265,7 +323,7 @@ def collect_all_erds_for_common_feature(feature: Dict) -> List[int]:
 
 
 def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str:
-    """Generate the complete appliance_api_feature_lists.h header file."""
+    """Generate the appliance_api_feature_lists.h header file with extern const declarations."""
 
     lines: List[str] = []
     lines.append("/*!")
@@ -300,46 +358,28 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
     lines.append("")
 
     common = appliance_api_data.get('common', {})
-    # Use the single version that exists (all versions merged; currently only v1)
     all_common_features: List[Dict] = []
     for ver_data in common.get('versions', {}).values():
         all_common_features.extend(ver_data.get('features', []))
 
-    # Generate ERD arrays for each common feature
+    # Generate extern declarations for each common feature
     for feature in all_common_features:
         sanitized = sanitize_name_for_cpp(feature['name'])
         erds = collect_all_erds_for_common_feature(feature)
         array_name = f"common_feature_{sanitized}_erds"
         if erds:
-            lines.append(f"static const tiny_erd_t {array_name}[] = {{")
-            for erd_id in erds:
-                lines.append(f"  0x{erd_id:04x},")
-            lines.append("};")
+            lines.append(f"extern const tiny_erd_t {array_name}[];")
         else:
-            lines.append(f"static const tiny_erd_t* {array_name} __attribute__((unused)) = nullptr;")
-        lines.append("")
+            lines.append(f"extern const tiny_erd_t* {array_name};")
+    lines.append("")
 
-    # Generate master common feature descriptor array
-    lines.append("static const common_feature_descriptor_t common_feature_descriptors[] = {")
-    for feature in all_common_features:
-        sanitized = sanitize_name_for_cpp(feature['name'])
-        array_name = f"common_feature_{sanitized}_erds"
-        mask_val = int(feature['mask'], 16)
-        erds = collect_all_erds_for_common_feature(feature)
-        count = len(erds)
-        null_ptr = "nullptr" if count == 0 else array_name
-        lines.append(f"  {{0x{mask_val:08x}, \"{feature['name']}\", {null_ptr}, {count}}},")
-    lines.append("};")
-    lines.append("static const uint16_t common_feature_descriptor_count =")
-    lines.append("  sizeof(common_feature_descriptors) / sizeof(common_feature_descriptors[0]);")
+    # Master common feature descriptor array declaration
+    lines.append("extern const common_feature_descriptor_t common_feature_descriptors[];")
+    lines.append("extern const uint16_t common_feature_descriptor_count;")
     lines.append("")
 
     # -------------------------------------------------------------------------
     # Appliance Feature APIs (ERDs 0x0093-0x0097 and 0x0109-0x010D)
-    # Each ERD carries: [2-byte featureType][2-byte version][4-byte feature bitmap]
-    # featureType identifies the appliance API (e.g. 0x0014 = Zoneline).
-    # version selects the API version.
-    # Each bit in the feature bitmap corresponds to a feature's mask value.
     # -------------------------------------------------------------------------
     lines.append("// ============================================================================")
     lines.append("// Appliance Feature APIs (ERDs 0x0093-0x0097 and 0x0109-0x010D)")
@@ -359,38 +399,102 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
 
     feature_apis = appliance_api_data.get('featureApis', {})
 
-    # Include only feature APIs whose featureType fits in the 10 ERD slots:
-    #   0x0093-0x0097 (high byte 0-4) and 0x0109-0x010D (high byte 5-9).
     valid_feature_apis = [
         (key, api)
         for key, api in feature_apis.items()
         if (api['featureType'] >> 8) <= 9
     ]
 
-    # Pre-compute unique array names for every (api, ver, feature) triple.
-    # When two features in the same api+version share the same sanitized name,
-    # append the hex mask value to make each identifier unique.
-    def make_array_names(valid_feature_apis):
-        """Return a dict mapping (api_key, ver, feature_index) -> unique array name."""
-        result = {}
-        for key, api in valid_feature_apis:
-            api_sanitized = sanitize_name_for_cpp(api['name'])
-            for ver, ver_data in api.get('versions', {}).items():
-                # First pass: collect candidate names
-                candidates = {}  # name -> list of (index, mask)
-                for i, feature in enumerate(ver_data.get('features', [])):
-                    feat_sanitized = sanitize_name_for_cpp(feature['name'])
-                    base = f"appliance_api_{api_sanitized}_v{ver}_{feat_sanitized}_erds"
-                    candidates.setdefault(base, []).append((i, int(feature['mask'], 16)))
-                # Second pass: assign names, deduplicating with mask suffix
-                for base, entries in candidates.items():
-                    if len(entries) == 1:
-                        idx, _ = entries[0]
-                        result[(key, ver, idx)] = base
-                    else:
-                        for idx, mask in entries:
-                            result[(key, ver, idx)] = f"{base[:-len('_erds')]}_m{mask:08x}_erds"
-        return result
+
+    array_names = make_array_names(valid_feature_apis)
+
+    # Generate extern declarations for each feature array
+    for key, api in valid_feature_apis:
+        for ver, ver_data in api.get('versions', {}).items():
+            for i, feature in enumerate(ver_data.get('features', [])):
+                array_name = array_names[(key, ver, i)]
+                erds = collect_erds_for_feature(feature)
+                if erds:
+                    lines.append(f"extern const tiny_erd_t {array_name}[];")
+                else:
+                    lines.append(f"extern const tiny_erd_t* {array_name};")
+    lines.append("")
+
+    # Master descriptor array declaration
+    lines.append("extern const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[];")
+    lines.append("extern const uint16_t appliance_feature_api_descriptor_count;")
+    lines.append("")
+    lines.append("#endif")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def generate_appliance_api_feature_lists_cpp(appliance_api_data: Dict) -> str:
+    """Generate the appliance_api_feature_lists.cpp companion file with actual definitions."""
+
+    lines: List[str] = []
+    lines.append("#include \"appliance_api_feature_lists.h\"")
+    lines.append("")
+
+    # -------------------------------------------------------------------------
+    # Common features (ERD 0x0092)
+    # -------------------------------------------------------------------------
+    lines.append("// ============================================================================")
+    lines.append("// Common features (ERD 0x0092)")
+    lines.append("// ============================================================================")
+    lines.append("")
+
+    common = appliance_api_data.get('common', {})
+    all_common_features: List[Dict] = []
+    for ver_data in common.get('versions', {}).values():
+        all_common_features.extend(ver_data.get('features', []))
+
+    # Generate ERD arrays for each common feature
+    for feature in all_common_features:
+        sanitized = sanitize_name_for_cpp(feature['name'])
+        erds = collect_all_erds_for_common_feature(feature)
+        array_name = f"common_feature_{sanitized}_erds"
+        if erds:
+            lines.append(f"const tiny_erd_t {array_name}[] = {{")
+            for erd_id in erds:
+                lines.append(f"  0x{erd_id:04x},")
+            lines.append("};")
+        else:
+            lines.append(f"const tiny_erd_t* {array_name} __attribute__((unused)) = nullptr;")
+        lines.append("")
+
+    # Generate master common feature descriptor array
+    lines.append("const common_feature_descriptor_t common_feature_descriptors[] = {")
+    for feature in all_common_features:
+        sanitized = sanitize_name_for_cpp(feature['name'])
+        array_name = f"common_feature_{sanitized}_erds"
+        mask_val = int(feature['mask'], 16)
+        erds = collect_all_erds_for_common_feature(feature)
+        count = len(erds)
+        null_ptr = "nullptr" if count == 0 else array_name
+        lines.append(f"  {{0x{mask_val:08x}, \"{feature['name']}\", {null_ptr}, {count}}},")
+    lines.append("};")
+    lines.append("const uint16_t common_feature_descriptor_count =")
+    lines.append("  sizeof(common_feature_descriptors) / sizeof(common_feature_descriptors[0]);")
+    lines.append("")
+
+    # -------------------------------------------------------------------------
+    # Appliance Feature APIs (ERDs 0x0093-0x0097 and 0x0109-0x010D)
+    # -------------------------------------------------------------------------
+    lines.append("// ============================================================================")
+    lines.append("// Appliance Feature APIs (ERDs 0x0093-0x0097 and 0x0109-0x010D)")
+    lines.append("// ============================================================================")
+    lines.append("")
+
+    feature_apis = appliance_api_data.get('featureApis', {})
+
+    valid_feature_apis = [
+        (key, api)
+        for key, api in feature_apis.items()
+        if (api['featureType'] >> 8) <= 9
+    ]
+
 
     array_names = make_array_names(valid_feature_apis)
 
@@ -401,17 +505,17 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
                 array_name = array_names[(key, ver, i)]
                 erds = collect_erds_for_feature(feature)
                 if erds:
-                    lines.append(f"static const tiny_erd_t {array_name}[] = {{")
+                    lines.append(f"const tiny_erd_t {array_name}[] = {{")
                     for erd_id in erds:
                         lines.append(f"  0x{erd_id:04x},")
                     lines.append("};")
+                    lines.append("")
                 else:
-                    lines.append(f"static const tiny_erd_t* {array_name} __attribute__((unused)) = nullptr;")
-                lines.append("")
+                    lines.append(f"const tiny_erd_t* {array_name} __attribute__((unused)) = nullptr;")
+                    lines.append("")
 
-    # Generate master descriptor array: one row per feature per version.
-    lines.append("static const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {")
-    total_descriptors = 0
+    # Generate master descriptor array
+    lines.append("const appliance_feature_api_descriptor_t appliance_feature_api_descriptors[] = {")
     for key, api in valid_feature_apis:
         ft = api['featureType']
         for ver, ver_data in api.get('versions', {}).items():
@@ -425,12 +529,9 @@ def generate_appliance_api_feature_lists_header(appliance_api_data: Dict) -> str
                 lines.append(
                     f"  {{0x{ft:04x}, {ver}, 0x{mask_val:08x}, \"{label}\", {null_ptr}, {count}}},"
                 )
-                total_descriptors += 1
     lines.append("};")
-    lines.append("static const uint16_t appliance_feature_api_descriptor_count =")
+    lines.append("const uint16_t appliance_feature_api_descriptor_count =")
     lines.append("  sizeof(appliance_feature_api_descriptors) / sizeof(appliance_feature_api_descriptors[0]);")
-    lines.append("")
-    lines.append("#endif")
     lines.append("")
 
     return "\n".join(lines)
@@ -512,18 +613,6 @@ def main():
         "--output-dir",
         help="Override output directory for generated headers (default: component-dir)",
     )
-    parser.add_argument(
-        "--filter-config-topics",
-        action="store_true",
-        default=True,
-        help="Filter out internal metadata, diagnostics, and commissioning entities from HA discovery (default: true).",
-    )
-    parser.add_argument(
-        "--no-filter-config-topics",
-        action="store_false",
-        dest="filter_config_topics",
-        help="Disable filtering of internal/diagnostic entities from HA discovery.",
-    )
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
@@ -531,29 +620,14 @@ def main():
     component_dir = os.path.normpath(args.component_dir)
     output_dir = os.path.normpath(args.output_dir) if args.output_dir else component_dir
 
-    # Resolve JSON file paths: CLI arg > auto-search > local repo > GitHub fallback
+    # Resolve JSON file paths: CLI arg > auto-search > local submodule
     def resolve_json(filename, cli_arg):
         if cli_arg and os.path.exists(cli_arg):
             return Path(cli_arg)
         found = find_json_file(filename, component_dir)
         if found:
             return Path(found)
-        local = repo_root / "lib" / "public-appliance-api-documentation" / filename
-        if local.exists():
-            return local
-        # Fetch from GitHub as last resort (ESPHome Docker, clean cache, etc.)
-        # Use joshualongenecker fork which has ha_domain metadata for HA discovery.
-        url = f"https://raw.githubusercontent.com/joshualongenecker/public-appliance-api-documentation/642bdb82df20d4af984cc2ed2702146b88aab96b/{filename}"
-        print(f"Local {filename} not found, fetching from GitHub: {url}", file=sys.stderr)
-        try:
-            tmp = Path("/tmp") / filename
-            with urllib.request.urlopen(url, timeout=30) as resp:
-                tmp.write_bytes(resp.read())
-            print(f"Successfully fetched {filename} from GitHub", file=sys.stderr)
-            return tmp
-        except Exception as e:
-            print(f"Failed to fetch {filename} from GitHub: {e}", file=sys.stderr)
-            return local  # will fail the .exists() check below with a clear error
+        return repo_root / "lib" / "public-appliance-api-documentation" / filename
 
     # -------------------------------------------------------------------------
     # Generate erd_lists.h from appliance_api_erd_definitions.json
@@ -563,7 +637,7 @@ def main():
 
     if not json_file.exists():
         print(f"Error: Could not find {json_file}", file=sys.stderr)
-        print("Make sure git submodules are initialized or network is available for GitHub fallback.", file=sys.stderr)
+        print("Make sure git submodules are initialized (git submodule update --init).", file=sys.stderr)
         sys.exit(1)
 
     # Read and parse JSON
@@ -600,11 +674,17 @@ def main():
 
     # Generate header (includes POLLING_LIST_MAX_SIZE)
     header_content = generate_header(categories, polling_list_max_size)
+    cpp_content = generate_erd_lists_cpp(categories)
 
     # Write output
     print(f"\nWriting generated header to {output_file}")
     with open(output_file, 'w') as f:
         f.write(header_content)
+
+    cpp_output_file = Path(output_dir) / "erd_lists.cpp"
+    print(f"Writing generated cpp to {cpp_output_file}")
+    with open(cpp_output_file, 'w') as f:
+        f.write(cpp_content)
 
     # -------------------------------------------------------------------------
     # Generate appliance_api_feature_lists.h from appliance_api.json
@@ -630,64 +710,17 @@ def main():
         for vd in common_features.get('versions', {}).values()
     )
     print(f"Found {common_ver_count} common features (ERD 0x0092)")
-
     api_header_content = generate_appliance_api_feature_lists_header(appliance_api_data)
+    api_cpp_content = generate_appliance_api_feature_lists_cpp(appliance_api_data)
 
     print(f"\nWriting generated header to {api_output_file}")
     with open(api_output_file, 'w') as f:
         f.write(api_header_content)
-    # Generate HA discovery JSONL files and compress into ha_discovery_data.h
-    # all in-process to avoid path resolution issues between subprocesses
-    # in ESPHome cache environments.
-    ha_discovery_script = script_dir / 'generate_ha_discovery.py'
-    if ha_discovery_script.exists():
-        print(f"\nGenerating HA discovery JSONL files...")
-        sys.path.insert(0, str(script_dir))
-        import generate_ha_discovery as gen
-        import compress_ha_discovery as comp
 
-
-        # Load ERD definitions: try local file first, always fall back to GitHub
-        erd_data = None
-        if json_file.exists():
-            try:
-                with open(json_file, 'r') as f:
-                    erd_data = json.load(f)
-            except Exception as e:
-                print(f"Failed to load ERD definitions from {json_file}: {e}", file=sys.stderr)
-                erd_data = None
-        if erd_data is None:
-            erd_data = gen.fetch_erd_definitions_from_github()
-        if erd_data is not None:
-            erds = erd_data.get('erds', [])
-            print(f"Found {len(erds)} ERD definitions", file=sys.stderr)
-
-            # Generate JSONL content (in memory, no disk I/O needed)
-            jsonl_by_cat = gen.generate_ha_discovery_jsonl_by_category(
-                erds, args.filter_config_topics)
-
-            # Write JSONL files for the Makefile build path
-            output_dir = repo_root / 'ha_discovery'
-            output_dir.mkdir(parents=True, exist_ok=True)
-            total_entries = 0
-            for cat, content in jsonl_by_cat.items():
-                outfile = output_dir / f'{cat}.jsonl'
-                with open(outfile, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                n = content.count('\n')
-                total_entries += n
-                print(f"  {cat}: {n} entities -> {cat}.jsonl ({len(content):,} bytes)",
-                      file=sys.stderr)
-            print(f"\nTotal entities generated: {total_entries}", file=sys.stderr)
-
-            # Compress and write ha_discovery_data.h directly
-            comp.generate_header_to_file(output_dir, repo_root)
-        else:
-            print("Warning: Could not load ERD definitions, skipping HA discovery.",
-                  file=sys.stderr)
-    else:
-        print(f"\nWarning: {ha_discovery_script} not found, skipping HA discovery generation",
-              file=sys.stderr)
+    api_cpp_output_file = Path(output_dir) / "appliance_api_feature_lists.cpp"
+    print(f"Writing generated cpp to {api_cpp_output_file}")
+    with open(api_cpp_output_file, 'w') as f:
+        f.write(api_cpp_content)
 
     print("Done!")
 

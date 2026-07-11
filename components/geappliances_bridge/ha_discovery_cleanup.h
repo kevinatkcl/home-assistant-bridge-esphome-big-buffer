@@ -11,7 +11,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifdef USE_ESP_IDF
+
+#ifndef USE_ESP_IDF
+#error "This component requires ESPHome with framework: type: esp-idf"
+#endif
 
 #include "i_mqtt_client.h"
 
@@ -25,7 +28,6 @@ typedef enum {
   ha_cleanup_state_idle,
   ha_cleanup_state_cleaning,
   ha_cleanup_state_done,
-  ha_cleanup_state_failed,
 } ha_cleanup_state_t;
 
 /* Constants */
@@ -100,7 +102,5 @@ void cleanup_start(ha_discovery_cleanup_t* self);
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* USE_ESP_IDF */
 
 #endif /* ha_discovery_cleanup_h */

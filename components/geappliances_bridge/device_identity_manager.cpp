@@ -12,8 +12,7 @@
 #include <cstring>
 #include <inttypes.h>
 
-// Forward declaration (generated from appliance API data)
-std::string appliance_type_to_string(uint8_t appliance_type);
+#include "appliance_type_map.h"
 
 namespace esphome {
 namespace geappliances_bridge {
@@ -46,6 +45,20 @@ void DeviceIdentityManager::init(const char* configured_id,
   // Immediately queue the first ERD read
   this->try_queue_read_(ERD_APPLIANCE_TYPE);
 }
+void DeviceIdentityManager::cleanup()
+{
+  this->state_ = DEVICE_ID_STATE_READING_APPLIANCE_TYPE;
+  this->has_configured_device_id_ = false;
+  this->configured_device_id_[0] = '\0';
+  this->generated_device_id_[0] = '\0';
+  this->appliance_type_ = 0;
+  this->model_number_[0] = '\0';
+  this->serial_number_[0] = '\0';
+  this->pending_request_id_ = 0;
+  this->erd_client_ = nullptr;
+  this->host_address_ = 0;
+}
+
 
 void DeviceIdentityManager::on_erd_read_completed(tiny_erd_t erd, const uint8_t* data, uint8_t size)
 {
@@ -74,6 +87,9 @@ void DeviceIdentityManager::on_erd_read_completed(tiny_erd_t erd, const uint8_t*
              "%s_%s_%s", type_str.c_str(), sanitized_model.c_str(), sanitized_serial.c_str());
     ESP_LOGI(TAG, "Generated device ID: %s", this->generated_device_id_);
     this->state_ = DEVICE_ID_STATE_COMPLETE;
+
+  } else {
+    ESP_LOGW(TAG, "Unexpected ERD 0x%04X in on_erd_read_completed", erd);
   }
 }
 
@@ -82,7 +98,9 @@ void DeviceIdentityManager::on_erd_read_failed(tiny_erd_t erd)
   // Stay in the current state and immediately re-queue the ERD read.
   // Retries indefinitely -- never give up.
   ESP_LOGW(TAG, "Failed to read ERD 0x%04X for device ID generation, retrying", erd);
-  this->try_queue_read_(erd);
+  if (!this->try_queue_read_(erd)) {
+    ESP_LOGD(TAG, "Could not re-queue ERD 0x%04X read (client unavailable)", erd);
+  }
 }
 
 const char* DeviceIdentityManager::get_device_id() const
@@ -111,7 +129,7 @@ void DeviceIdentityManager::bytes_to_string_(const uint8_t* data, size_t size,
     return;
   }
   // GE API model/serial are plain ASCII, null-terminated or padded with 0x00.
-  // Some appliances use 0x7F ('_') as trailing padding; strip it.
+  // Some appliances pad trailing bytes with '_' (underscore); strip it.
   size_t i = 0;
   for (; i < size && i < out_size - 1; i++) {
     uint8_t raw = data[i];
