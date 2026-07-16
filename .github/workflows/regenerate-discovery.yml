@@ -32,10 +32,10 @@ jobs:
       with:
         python-version: '3.x'
 
-    - name: Install dependencies
+    - name: Install test dependencies
       run: |
         python3 -m pip install --upgrade pip
-        python3 -m pip install pytest
+        python3 -m pip install pytest jinja2
 
     - name: Validate submodule commit input
       run: |
@@ -58,7 +58,10 @@ jobs:
 
     - name: Validate generated output
       run: |
-        python -m pytest scripts/test_*.py -v
+        PYTHONPATH="$GITHUB_WORKSPACE" python3 -m pytest -v \
+          scripts/test_compress_ha_discovery.py \
+          scripts/test_ha_discovery.py \
+          scripts/test_pipeline.py
 
     - name: Commit changes to feature branch
       run: |
