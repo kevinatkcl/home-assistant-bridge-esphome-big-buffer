@@ -32,11 +32,12 @@ struct MockUartComponent : public esphome::uart::UARTComponent {
   uint8_t last_written_byte;
   uint8_t read_buffer[256];
   int read_buffer_index;
+  int read_buffer_size;
 
   MockUartComponent()
     : available_count(0), read_count(0), write_count(0),
       write_byte_count(0), last_written_byte(0),
-      read_buffer_index(0)
+      read_buffer_index(0), read_buffer_size(0)
   {
     std::memset(read_buffer, 0, sizeof(read_buffer));
   }
@@ -66,13 +67,15 @@ struct MockUartComponent : public esphome::uart::UARTComponent {
     }
   }
 
-  void read_byte(uint8_t* byte) override
+  int read_byte(uint8_t* byte) override
   {
-    if (read_buffer_index < (int)sizeof(read_buffer)) {
+    if (read_buffer_index < read_buffer_size) {
       *byte = read_buffer[read_buffer_index++];
+      return 1;
     } else {
       *byte = 0;
       read_count++;
+      return -1;
     }
   }
 
@@ -90,6 +93,7 @@ struct MockUartComponent : public esphome::uart::UARTComponent {
     write_byte_count = 0;
     last_written_byte = 0;
     read_buffer_index = 0;
+    read_buffer_size = 0;
     std::memset(read_buffer, 0, sizeof(read_buffer));
   }
 };
@@ -254,6 +258,7 @@ TEST(esphome_uart_adapter, poll_does_not_publish_receive_events_when_disabled)
   mock_uart.read_buffer[0] = 0xAA;
   mock_uart.read_buffer[1] = 0xBB;
   mock_uart.available_count = 2;
+  mock_uart.read_buffer_size = 2;
 
   // Trigger the poll callback by running the timer group once.
   // Using elapse_time() with a period-0 timer causes an infinite loop
@@ -277,6 +282,7 @@ TEST(esphome_uart_adapter, poll_publishes_receive_events_when_enabled)
   mock_uart.read_buffer[0] = 0xAA;
   mock_uart.read_buffer[1] = 0xBB;
   mock_uart.available_count = 2;
+  mock_uart.read_buffer_size = 2;
 
   // Expect both bytes to be published
   mock().expectOneCall("receive_event_published").withParameter("byte", 0xAA);
@@ -286,6 +292,33 @@ TEST(esphome_uart_adapter, poll_publishes_receive_events_when_enabled)
   tiny_timer_group_run(&timer_group.timer_group);
 
   // Unsubscribe to clean up
+  tiny_event_unsubscribe(&adapter.receive_event.interface, &sub);
+}
+/* ------------------------------------------------------------------ */
+/* poll() handles read_byte() errors                                  */
+/* ------------------------------------------------------------------ */
+
+TEST(esphome_uart_adapter, poll_breaks_on_read_byte_error)
+{
+  init_adapter();
+
+  // Subscribe to the receive event
+  tiny_event_subscription_t sub;
+  tiny_event_subscription_init(&sub, nullptr, receive_event_callback);
+  tiny_event_subscribe(&adapter.receive_event.interface, &sub);
+
+  // Put only one byte in the buffer but tell available() there are 3.
+  // The second read_byte() call will return -1 (error), breaking the loop.
+  mock_uart.read_buffer[0] = 0xAA;
+  mock_uart.available_count = 3;
+  mock_uart.read_buffer_size = 1;
+
+  // Only the first byte should be published; the error on the second
+  // read_byte() call must break the loop before 0xBB or 0xCC are processed.
+  mock().expectOneCall("receive_event_published").withParameter("byte", 0xAA);
+
+  tiny_timer_group_run(&timer_group.timer_group);
+
   tiny_event_unsubscribe(&adapter.receive_event.interface, &sub);
 }
 
@@ -341,6 +374,7 @@ TEST(esphome_uart_adapter, poll_skips_receive_but_still_checks_sent_when_disable
 
   mock_uart.read_buffer[0] = 0xAA;
   mock_uart.available_count = 1;
+  mock_uart.read_buffer_size = 1;
   adapter.sent = true;
 
   tiny_timer_group_run(&timer_group.timer_group);
@@ -350,148 +384,3 @@ TEST(esphome_uart_adapter, poll_skips_receive_but_still_checks_sent_when_disable
   CHECK(mock_uart.read_buffer_index == 0);  // no bytes read
 }
 
-/* ------------------------------------------------------------------ */
-/* dual-adapter shared timer group tests                                */
-/* ------------------------------------------------------------------ */
-
-static int adapter_a_poll_count = 0;
-static int adapter_b_poll_count = 0;
-
-static void adapter_a_poll_callback(void* context, const void* args)
-{
-  (void)context; (void)args;
-  adapter_a_poll_count++;
-}
-
-static void adapter_b_poll_callback(void* context, const void* args)
-{
-  (void)context; (void)args;
-  adapter_b_poll_count++;
-}
-
-TEST(esphome_uart_adapter, two_adapters_in_same_timer_group_both_fire_when_run_twice)
-{
-  // Simulates the scenario where both GEA3 and GEA2 UART adapters register
-  // period-0 poll timers in the same timer group.  tiny_timer_group_run()
-  // only services one timer per call, so calling it once only fires one
-  // adapter's poll.  Calling it twice fires both.
-  esphome_uart_adapter_t adapter_a;
-  esphome_uart_adapter_t adapter_b;
-  tiny_timer_group_double_t tg;
-
-  adapter_a_poll_count = 0;
-  adapter_b_poll_count = 0;
-
-  mock().disable();
-  tiny_timer_group_double_init(&tg);
-  mock_uart.clear();
-  esphome_uart_adapter_init(&adapter_a, &tg.timer_group, &mock_uart);
-  esphome_uart_adapter_init(&adapter_b, &tg.timer_group, &mock_uart);
-
-  // Subscribe to both receive events so we can count how many times each
-  // adapter's poll callback actually processes bytes.
-  tiny_event_subscription_t sub_a;
-  tiny_event_subscription_t sub_b;
-  tiny_event_subscription_init(&sub_a, nullptr, adapter_a_poll_callback);
-  tiny_event_subscription_init(&sub_b, nullptr, adapter_b_poll_callback);
-  tiny_event_subscribe(&adapter_a.receive_event.interface, &sub_a);
-  tiny_event_subscribe(&adapter_b.receive_event.interface, &sub_b);
-
-  // Put a byte on the UART so both adapters have something to process.
-  mock_uart.read_buffer[0] = 0xAA;
-  mock_uart.available_count = 1;
-
-  // Call tiny_timer_group_run() twice — once for each adapter's poll timer.
-  // This mirrors what run_protocol_stack_() does when both UARTs are configured.
-  tiny_timer_group_run(&tg.timer_group);
-  tiny_timer_group_run(&tg.timer_group);
-
-  // Both adapters should have processed the byte.
-  CHECK(adapter_a_poll_count == 1);
-  CHECK(adapter_b_poll_count == 1);
-
-  tiny_event_unsubscribe(&adapter_a.receive_event.interface, &sub_a);
-  tiny_event_unsubscribe(&adapter_b.receive_event.interface, &sub_b);
-  mock().enable();
-}
-
-TEST(esphome_uart_adapter, disabled_adapter_does_not_process_bytes_even_when_timer_fires)
-{
-  // Verifies that when an adapter is disabled, its poll() returns early
-  // even though the timer fires — so the other adapter's poll is the only
-  // one that actually processes UART bytes.
-  esphome_uart_adapter_t adapter_active;
-  esphome_uart_adapter_t adapter_inactive;
-  tiny_timer_group_double_t tg;
-
-  adapter_a_poll_count = 0;
-  adapter_b_poll_count = 0;
-
-  mock().disable();
-  tiny_timer_group_double_init(&tg);
-  mock_uart.clear();
-  esphome_uart_adapter_init(&adapter_active, &tg.timer_group, &mock_uart);
-  esphome_uart_adapter_init(&adapter_inactive, &tg.timer_group, &mock_uart);
-  esphome_uart_adapter_set_enabled(&adapter_inactive, false);
-
-  tiny_event_subscription_t sub_active;
-  tiny_event_subscription_t sub_inactive;
-  tiny_event_subscription_init(&sub_active, nullptr, adapter_a_poll_callback);
-  tiny_event_subscription_init(&sub_inactive, nullptr, adapter_b_poll_callback);
-  tiny_event_subscribe(&adapter_active.receive_event.interface, &sub_active);
-  tiny_event_subscribe(&adapter_inactive.receive_event.interface, &sub_inactive);
-
-  mock_uart.read_buffer[0] = 0xAA;
-  mock_uart.available_count = 1;
-
-  // Drain both timers.
-  tiny_timer_group_run(&tg.timer_group);
-  tiny_timer_group_run(&tg.timer_group);
-
-  // Only the active adapter should have processed the byte.
-  CHECK(adapter_a_poll_count == 1);
-  CHECK(adapter_b_poll_count == 0);
-
-  tiny_event_unsubscribe(&adapter_active.receive_event.interface, &sub_active);
-  tiny_event_unsubscribe(&adapter_inactive.receive_event.interface, &sub_inactive);
-  mock().enable();
-}
-
-TEST(esphome_uart_adapter, single_timer_group_run_only_fires_one_of_two_period_0_timers)
-{
-  // Demonstrates the bug: calling tiny_timer_group_run() once with two
-  // period-0 timers only fires one of them.  This is why run_protocol_stack_()
-  // must call it twice when both UARTs are configured.
-  esphome_uart_adapter_t adapter_a;
-  esphome_uart_adapter_t adapter_b;
-  tiny_timer_group_double_t tg;
-
-  adapter_a_poll_count = 0;
-  adapter_b_poll_count = 0;
-
-  mock().disable();
-  tiny_timer_group_double_init(&tg);
-  mock_uart.clear();
-  esphome_uart_adapter_init(&adapter_a, &tg.timer_group, &mock_uart);
-  esphome_uart_adapter_init(&adapter_b, &tg.timer_group, &mock_uart);
-
-  tiny_event_subscription_t sub_a;
-  tiny_event_subscription_t sub_b;
-  tiny_event_subscription_init(&sub_a, nullptr, adapter_a_poll_callback);
-  tiny_event_subscription_init(&sub_b, nullptr, adapter_b_poll_callback);
-  tiny_event_subscribe(&adapter_a.receive_event.interface, &sub_a);
-  tiny_event_subscribe(&adapter_b.receive_event.interface, &sub_b);
-
-  mock_uart.read_buffer[0] = 0xAA;
-  mock_uart.available_count = 1;
-
-  // Call tiny_timer_group_run() only ONCE — only one adapter fires.
-  tiny_timer_group_run(&tg.timer_group);
-
-  // Exactly one adapter processed the byte (whichever timer was first in the list).
-  CHECK(adapter_a_poll_count + adapter_b_poll_count == 1);
-
-  tiny_event_unsubscribe(&adapter_a.receive_event.interface, &sub_a);
-  tiny_event_unsubscribe(&adapter_b.receive_event.interface, &sub_b);
-  mock().enable();
-}

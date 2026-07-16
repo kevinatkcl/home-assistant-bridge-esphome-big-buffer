@@ -16,9 +16,11 @@
 #include <cstring>
 
 #include "esphome/core/log.h"
-#include "esphome/core/hal.h"
 
-#ifdef USE_ESP_IDF
+#ifndef USE_ESP_IDF
+#error "This component requires ESPHome with framework: type: esp-idf"
+#endif
+
 #include "esp_attr.h"
 #include "esp_task_wdt.h"
 #include "esp_log.h"
@@ -26,10 +28,11 @@
 #ifndef USE_ESP_IDF_STUBS
 #define MINIZ_NO_ARCHIVE_APIS
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
+#define MINIZ_NO_DEFLATE_APIS
+#define MINIZ_NO_ZLIB_APIS
 #define MINIZ_NO_STDIO
 #include "miniz.h"
 #endif
-#endif /* USE_ESP_IDF */
 
 GEA_TAG(TAG) = "ha_discovery";
 
@@ -48,17 +51,19 @@ static const char* json_get_str(const char* json, const char* key,
     const char* p = json;
 
     while ((p = strstr(p, "\"")) != NULL) {
-        /* Verify this " is the start of a key (preceded by { or ,),
+        /* Verify this " is the start of a key (preceded by {, ,, or [),
          * not a value that happens to match the key name. */
-        if (p > json && *(p - 1) != '{' && *(p - 1) != ',') { p++; continue; }
+        if (p > json && *(p - 1) != '{' && *(p - 1) != ',' && *(p - 1) != '[') { p++; continue; }
         if (strncmp(p + 1, key, key_len) == 0 && p[key_len + 1] == '\"') {
             p = p + key_len + 3;
-            while (*p == ' ' || *p == '\t') p++;
+            while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+            if (*p == ':') p++;
+            while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
             if (*p == '"') {
                 *out_value = p + 1;
                 const char* end = p + 1;
                 while (*end && *end != '"') {
-                    if (*end == '\\') end++;  /* skip escaped char */
+                    if (*end == '\\' && *(end + 1)) end++;  /* skip escaped char, guard against unterminated escape */
                     end++;
                 }
                 *out_len = (size_t)(end - *out_value);
@@ -126,7 +131,7 @@ static void json_unescape(const char* src, size_t src_len, char* out, int out_si
  * Embedding it directly in another JSON string requires no transformation —
  * the escape sequences remain valid.
  * Returns the number of bytes written (excluding null terminator). */
-static int json_reescape(const char* src, size_t src_len, char* out, int out_size)
+static int json_embed_value(const char* src, size_t src_len, char* out, int out_size)
 {
     if (src_len >= (size_t)out_size) src_len = (size_t)(out_size - 1);
     memcpy(out, src, src_len);
@@ -186,10 +191,27 @@ static void build_sorted_erd_list(ha_discovery_manager_t* self)
 
 static void build_device_json(ha_discovery_manager_t* self)
 {
+    if (self->device_id == NULL) {
+        self->device_json_buf[0] = '\0';
+        return;
+    }
     int pos = snprintf(self->device_json_buf, sizeof(self->device_json_buf),
-        "{\"identifiers\":[\"%s\"],\"name\":\"", self->device_id);
+        "{\"identifiers\":[\"");
 
-    /* Escape device_id */
+    /* Escape device_id for identifiers */
+    for (const char* p = self->device_id; *p && pos < (int)sizeof(self->device_json_buf) - 8; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c == '"') pos += snprintf(self->device_json_buf + pos, sizeof(self->device_json_buf) - (size_t)pos, "\\\"");
+        else if (c == '\\') pos += snprintf(self->device_json_buf + pos, sizeof(self->device_json_buf) - (size_t)pos, "\\\\");
+        else if (c < 0x20 || c == 0x7F || (c >= 0x80 && c <= 0x9F)) pos += snprintf(self->device_json_buf + pos, sizeof(self->device_json_buf) - (size_t)pos, "\\u%04x", c);
+        else { self->device_json_buf[pos++] = (char)c; }
+    }
+    if (pos < (int)sizeof(self->device_json_buf) - 64) {
+        pos += snprintf(self->device_json_buf + pos, sizeof(self->device_json_buf) - (size_t)pos,
+            "\"],\"name\":\"");
+    }
+
+    /* Escape device_id for name */
     for (const char* p = self->device_id; *p && pos < (int)sizeof(self->device_json_buf) - 8; p++) {
         unsigned char c = (unsigned char)*p;
         if (c == '"') pos += snprintf(self->device_json_buf + pos, sizeof(self->device_json_buf) - (size_t)pos, "\\\"");
@@ -235,7 +257,6 @@ static void build_device_json(ha_discovery_manager_t* self)
 /* Decompression helper                                               */
 /* ------------------------------------------------------------------ */
 
-#ifdef USE_ESP_IDF
 static int chunk_decompress(ha_discovery_manager_t* self, const uint8_t* compressed, size_t compressed_len,
                            uint8_t* output, size_t* output_len)
 {
@@ -262,15 +283,128 @@ static int chunk_decompress(ha_discovery_manager_t* self, const uint8_t* compres
     return 0;
 #endif
 }
-#endif /* USE_ESP_IDF */
+
+/* ------------------------------------------------------------------ */
+/* Runtime config topic filtering                                     */
+/* ------------------------------------------------------------------ */
+
+/* Keywords that mark an entity as internal/diagnostic.
+ * If filter_config_topics is enabled and the entity name contains
+ * any of these (case-insensitive), the entity is skipped. */
+static const char* FILTER_KEYWORDS[] = {
+    /* Internal/diagnostic */
+    "linux diagnostics",
+    "gea interface diagnostic",
+    "non-volatile usage warning",
+    "reset reason",
+    "seconds since last reset",
+    "program counter",
+    "failed assertion",
+    "fault code",
+    "configuration hash",
+    "schedule hash",
+    "sha-256",
+    "boot loader version",
+    "supported image types",
+    "ready to enter boot",
+    "engineering revision setup",
+    "csm fault data",
+    /* Cloud/voice/iot */
+    "alexa registration",
+    "matter commissioning",
+    "onboarding",
+    "voice module",
+    "push notification",
+    /* Allowability/availability metadata */
+    "range data",
+    "expiration limit",
+    "modification available",
+    "action available",
+    "action availability",
+    "supported feature",
+    "supported state",
+    "supported equipment",
+    "supported sound theme",
+    "supported notification",
+    "supported setting",
+    "supported device",
+    "requested parameter",
+    "request setting",
+    "request mask",
+    "request configuration",
+    /* Time/network */
+    "clock time",
+    "ntp",
+    "time zone",
+    "daylight saving",
+    "calendar",
+    "wifi status",
+    "network status",
+    "signal strength",
+    "ble master",
+    "bluetooth master",
+    /* Energy/camera */
+    "electrical pricing",
+    "demand response",
+    "time of use pricing",
+    "pricing structure",
+    "still frame",
+    "image upload",
+    "camera configuration",
+    "camera stream",
+    "inference id",
+    "cook cam upload",
+    /* Sound */
+    "available sound",
+    "number of sound level",
+    /* Enhanced features */
+    "enhanced feature",
+    "core-enhanced-cloud",
+    "request enabled enhanced",
+    "current enabled enhanced",
+    /* Usage/cycle */
+    "usage profile",
+    "current report",
+    "feature configuration",
+    "cycle definition",
+    "latched key status",
+    "dip switch",
+    "most recent cycle status",
+    /* Service/diagnostic */
+    "service mode",
+    NULL
+};
+
+/* should_filter_config_topic: converts entity name to lowercase for keyword
+ * matching. Uses a 256-byte stack buffer (lower[]). Entity names from the
+ * pipeline are bounded by entity_name_buf[160] in ha_discovery_manager_t,
+ * so the 256-byte buffer always has headroom. Long-term: replace with a
+ * case-insensitive strstr variant to eliminate the stack allocation. */
+static bool should_filter_config_topic(const char* name) {
+    /* Convert name to lowercase for comparison. */
+    char lower[256];
+    size_t i, name_len = strlen(name);
+    if (name_len >= sizeof(lower)) name_len = sizeof(lower) - 1;
+    for (i = 0; i < name_len; i++) {
+        lower[i] = (char)(name[i] >= 'A' && name[i] <= 'Z' ? name[i] + 32 : name[i]);
+    }
+    lower[name_len] = '\0';
+
+    for (size_t k = 0; FILTER_KEYWORDS[k] != NULL; k++) {
+        if (strstr(lower, FILTER_KEYWORDS[k]) != NULL) {
+            return true;
+        }
+    }
+    return false;
+}
 
 /* ------------------------------------------------------------------ */
 /* Process a single JSONL line: build topic/payload in shared buffers */
 /* ------------------------------------------------------------------ */
 
-#ifdef USE_ESP_IDF
 static bool process_jsonl_line(ha_discovery_manager_t* self, const char* line)
 {
+    if (self->device_id == NULL) return false;
     const char* val = NULL;
     size_t len = 0;
 
@@ -283,6 +417,12 @@ static bool process_jsonl_line(ha_discovery_manager_t* self, const char* line)
 
     if (!json_get_str(line, "n", &val, &len)) return false;
     json_unescape(val, len, self->entity_name_buf, sizeof(self->entity_name_buf));
+
+    /* Runtime config topic filtering. */
+    if (self->filter_config_topics && should_filter_config_topic(self->entity_name_buf)) {
+        self->total_filtered++;
+        return false;
+    }
 
     if (!json_get_str(line, "d", &val, &len)) return false;
     json_unescape(val, len, self->domain_buf, sizeof(self->domain_buf));
@@ -340,7 +480,9 @@ static bool process_jsonl_line(ha_discovery_manager_t* self, const char* line)
         }
     }
 
-    /* Build unique_id */
+    /* Build unique_id.
+     * unique_id_buf is 160 bytes. Worst case: device_id[64] + "_erd_"(5) +
+     * erd_id_hex(4) + "_"(1) + field_id_buf[72] = 146 bytes. Fits. */
     if (self->field_id_buf[0]) {
         snprintf(self->unique_id_buf, sizeof(self->unique_id_buf), "%s_erd_%s_%s", self->device_id, erd_id_hex, self->field_id_buf);
     } else {
@@ -366,24 +508,43 @@ static bool process_jsonl_line(ha_discovery_manager_t* self, const char* line)
     }
 
     /* Build topic using pre-computed domain prefix if available.
-     * Manual concatenation to avoid format-truncation warnings — snprintf
-     * can't prove the combined length fits in topic_buf[192]. */
+     * domain_topic_prefix is 128 bytes. Worst case: "homeassistant/"(14) +
+     * domain_buf[32] + "/"(1) + device_id[64] + "/"(1) = 112 bytes.
+     * topic_buf is 192 bytes. Suffix is at most ~86 bytes (erd_id[4] + "_" + field_id[72] + "/config[7]").
+     * Total worst case: 112 + 86 = 198, slightly over 192. Truncation is detected below. */
     if (self->domain_topic_prefix[0] == '\0' || strcmp(self->domain_buf, self->current_domain_prefix_buf) != 0) {
         /* Domain changed or first use — rebuild prefix. */
         snprintf(self->domain_topic_prefix, sizeof(self->domain_topic_prefix),
             "homeassistant/%s/%s/", self->domain_buf, self->device_id);
+        /* Detect prefix truncation: if it doesn't end with '/', it was cut short. */
+        size_t plen = strlen(self->domain_topic_prefix);
+        if (plen == 0 || self->domain_topic_prefix[plen - 1] != '/') {
+            self->total_filtered++;
+            return false;
+        }
         strncpy(self->current_domain_prefix_buf, self->domain_buf, sizeof(self->current_domain_prefix_buf) - 1);
         self->current_domain_prefix_buf[sizeof(self->current_domain_prefix_buf) - 1] = '\0';
     }
     {
         size_t prefix_len = strlen(self->domain_topic_prefix);
+        if (prefix_len >= sizeof(self->topic_buf)) {
+            self->total_filtered++;
+            return false;
+        }
+        /* Copy prefix first so strlen() below reads initialized memory. */
+        memcpy(self->topic_buf, self->domain_topic_prefix, prefix_len);
         size_t remaining = sizeof(self->topic_buf) - prefix_len - 1; /* -1 for null */
         if (self->field_id_buf[0]) {
             snprintf(self->topic_buf + prefix_len, remaining, "%s_%s/config", erd_id_hex, self->field_id_buf);
         } else {
             snprintf(self->topic_buf + prefix_len, remaining, "%s/config", erd_id_hex);
         }
-        memcpy(self->topic_buf, self->domain_topic_prefix, prefix_len);
+        /* Detect suffix truncation: if topic doesn't end with '/config', it was cut short. */
+        size_t topic_len = strlen(self->topic_buf);
+        if (topic_len < 7 || strcmp(self->topic_buf + topic_len - 7, "/config") != 0) {
+            self->total_filtered++;
+            return false;
+        }
     }
 
     /* Build payload directly in shared buffer.
@@ -432,7 +593,7 @@ static bool process_jsonl_line(ha_discovery_manager_t* self, const char* line)
             n = snprintf(payload + pos, space, "\"value_template\":\"");
             if (n < 0 || n >= space) goto too_large;
             pos += n; space -= n;
-            int reescaped = json_reescape(val, len, payload + pos, space);
+            int reescaped = json_embed_value(val, len, payload + pos, space);
             if (reescaped >= space) goto too_large;
             pos += reescaped; space -= reescaped;
             n = snprintf(payload + pos, space, "\",");
@@ -445,7 +606,7 @@ static bool process_jsonl_line(ha_discovery_manager_t* self, const char* line)
             n = snprintf(payload + pos, space, "\"command_topic\":\"%s\",\"command_template\":\"", self->actual_command_topic_buf);
             if (n < 0 || n >= space) goto too_large;
             pos += n; space -= n;
-            int reescaped = json_reescape(val, len, payload + pos, space);
+            int reescaped = json_embed_value(val, len, payload + pos, space);
             if (reescaped >= space) goto too_large;
             pos += reescaped; space -= reescaped;
             n = snprintf(payload + pos, space, "\",");
@@ -563,7 +724,6 @@ too_large:
     self->total_filtered++;
     return false;
 }
-#endif
 
 /* ------------------------------------------------------------------ */
 /* Category filtering by appliance type                               */
@@ -638,14 +798,14 @@ static bool should_process_category(const char* category, uint8_t appliance_type
     }
 
     /* Air conditioning: 10=ThermostatRAC, 14=SplitDFSDuctFreeSplitAC,
-     * 20=ZonelinePTAC, 22=PortableAC, 30=UnderCounterIceMaker,
+     * 20=ZonelinePTAC, 22=PortableAC,
      * 31=ThroughWallAC, 35=ZonelineVertical, 36=CentralDFSDuctFreeSplitController,
      * 44=AirHandlerVRF, 52=CentralAC, 56=Thermostat */
     if (appliance_type == 10 || appliance_type == 14 ||
         appliance_type == 20 || appliance_type == 22 ||
-        appliance_type == 30 || appliance_type == 31 ||
-        appliance_type == 35 || appliance_type == 36 ||
-        appliance_type == 44 || appliance_type == 52 ||
+        appliance_type == 31 || appliance_type == 35 ||
+        appliance_type == 36 || appliance_type == 44 ||
+        appliance_type == 52 ||
         appliance_type == 56) {
         if (strcmp(category, "airconditioning") == 0) return true;
         if (strcmp(category, "energy") == 0) return true;
@@ -664,13 +824,14 @@ static bool should_process_category(const char* category, uint8_t appliance_type
     }
 
     /* Small appliance: 18=DeliveryBox, 26=CoffeeBrewer, 27=OpalNuggetIceMaker,
-     * 28=InHomeGrower, 29=Dehumidifer, 33=EspressoCoffeeMaker,
-     * 37=BLEMeshGateway, 38=StandMixer, 50=VacuumSealDrawer,
+     * 28=InHomeGrower, 29=Dehumidifer, 30=UnderCounterIceMaker, 33=EspressoCoffeeMaker,
+     * 37=BLEMeshGateway, 38=StandMixer, 42=SmartPlug, 50=VacuumSealDrawer,
      * 53=SoftStarter, 55=SourdoughStarter */
     if (appliance_type == 18 || appliance_type == 26 ||
         appliance_type == 27 || appliance_type == 28 ||
-        appliance_type == 29 || appliance_type == 33 ||
-        appliance_type == 37 || appliance_type == 38 ||
+        appliance_type == 29 || appliance_type == 30 ||
+        appliance_type == 33 || appliance_type == 37 ||
+        appliance_type == 38 ||
         appliance_type == 42 || appliance_type == 50 ||
         appliance_type == 53 || appliance_type == 55) {
         if (strcmp(category, "smallappliance") == 0) return true;
@@ -686,12 +847,10 @@ static bool should_process_category(const char* category, uint8_t appliance_type
 /* Cleanup helper                                                     */
 /* ------------------------------------------------------------------ */
 
-#ifdef USE_ESP_IDF
 static void cleanup_resources(ha_discovery_manager_t* self)
 {
     ha_discovery_cleanup_destroy(&self->cleanup);
 }
-#endif
 
 /* ------------------------------------------------------------------ */
 /* run(): publish one entity per call                                 */
@@ -699,7 +858,6 @@ static void cleanup_resources(ha_discovery_manager_t* self)
 
 void ha_discovery_manager_run(ha_discovery_manager_t* self)
 {
-#ifdef USE_ESP_IDF
     if (self->state != ha_discovery_state_building &&
         self->state != ha_discovery_state_discovering) {
         return;
@@ -844,9 +1002,6 @@ void ha_discovery_manager_run(ha_discovery_manager_t* self)
             (unsigned)free_heap, (unsigned)largest_free,
             (free_heap > 0) ? (1.0 - (double)largest_free / free_heap) * 100.0 : 0.0);
     }
-#else
-    (void)self;
-#endif
 }
 
 /* ------------------------------------------------------------------ */
@@ -858,9 +1013,7 @@ void ha_discovery_manager_init(ha_discovery_manager_t* self)
     memset(self, 0, sizeof(*self));
     self->state = ha_discovery_state_idle;
 
-#ifdef USE_ESP_IDF
     ha_discovery_cleanup_init(&self->cleanup);
-#endif
 }
 
 void ha_discovery_manager_configure(
@@ -886,22 +1039,16 @@ void ha_discovery_manager_start(ha_discovery_manager_t* self)
 {
     if (self->state != ha_discovery_state_idle) return;
 
-#ifdef USE_ESP_IDF
     /* Build sorted ERD list and device JSON inline. */
     build_sorted_erd_list(self);
     build_device_json(self);
 
     self->state = ha_discovery_state_building;
-#else
-    self->state = ha_discovery_state_complete;
-#endif
 }
 
 void ha_discovery_manager_cleanup(ha_discovery_manager_t* self)
 {
-#ifdef USE_ESP_IDF
     cleanup_resources(self);
-#endif
 
     memset(self, 0, sizeof(*self));
 }

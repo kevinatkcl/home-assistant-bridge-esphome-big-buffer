@@ -23,6 +23,14 @@
 //   - tiny_gea3_interface, tiny_gea2_interface, tiny_gea3_erd_client
 //   - All manager and adapter classes in this component
 // =============================================================================
+// =============================================================================
+// C/C++ CONVENTION
+// =============================================================================
+// C structs + vtables: data-path components (erd_cache, bridges, interfaces,
+//   publishers, discovery). Portable, testable, no C++ overhead.
+// C++ classes: ESPHome integration layer (GeappliancesBridge, managers,
+//   adapters). Used only where ESPHome APIs or C++ features are needed.
+// =============================================================================
 
 #pragma once
 
@@ -33,6 +41,12 @@
 #include "esphome/core/application.h"
 #include <string>
 #include <cstring>
+#include "esphome/core/log.h"
+#include "esphome/core/hal.h"
+
+#ifdef USE_ESP32
+#include "esp_task_wdt.h"
+#endif
 
 extern "C" {
 #include "erd_cache.h"
@@ -62,10 +76,10 @@ extern "C" {
 #include "feature_bit_manager.h"
 #include "autodiscovery_manager.h"
 #include "geappliances_bridge_startup_hsm.h"
+#include "ota_cleanup_manager.h"
+#include "diagnostic_sensor_publisher.h"
 #include "erd_poll_list_builder.h"
-
-// Forward declaration of the generated function
-std::string appliance_type_to_string(uint8_t appliance_type);
+#include "appliance_type_map.h"
 
 namespace esphome {
 namespace geappliances_bridge {
@@ -76,7 +90,6 @@ namespace geappliances_bridge {
 
 class GeappliancesBridge : public Component, public IBridgeServices {
   friend ErdPollListResult build_poll_list_(GeappliancesBridge* bridge);
-  friend class DiscoveryRefreshButton;
   friend tiny_time_source_ticks_t gea2_tick_ticks(i_tiny_time_source_t*);
 
  public:
@@ -87,6 +100,7 @@ class GeappliancesBridge : public Component, public IBridgeServices {
   void dump_config() override;
   float get_setup_priority() const override;
   bool teardown() override;
+  ~GeappliancesBridge() override;
 
   void set_gea3_uart(uart::UARTComponent *uart) { this->uart_ = uart; }
   void set_gea2_uart(uart::UARTComponent *uart) { this->gea2_uart_ = uart; }
@@ -97,12 +111,15 @@ class GeappliancesBridge : public Component, public IBridgeServices {
   void set_appliance_api_parsing(bool appliance_api_parsing) { this->appliance_api_parsing_ = appliance_api_parsing; }
   void set_generate_device_config(bool generate_device_config) { this->generate_device_config_ = generate_device_config; }
   void set_filter_config_topics(bool filter_config_topics) { this->filter_config_topics_ = filter_config_topics; }
-  void set_erd_publish_rate_sensor(sensor::Sensor* sensor) { this->erd_publish_rate_sensor_ = sensor; }
-  void set_erd_cache_entries_sensor(sensor::Sensor* sensor) { this->erd_cache_entries_sensor_ = sensor; }
-  void set_erd_cache_updates_sensor(sensor::Sensor* sensor) { this->erd_cache_updates_sensor_ = sensor; }
-  void set_mqtt_publish_rate_sensor(sensor::Sensor* sensor) { this->mqtt_publish_rate_sensor_ = sensor; }
+  void set_erd_publish_rate_sensor(sensor::Sensor* sensor) { this->erd_publish_rate_sensor_ = sensor; this->diagnostic_sensor_publisher_.set_erd_publish_rate_sensor(sensor); }
+  void set_erd_cache_entries_sensor(sensor::Sensor* sensor) { this->erd_cache_entries_sensor_ = sensor; this->diagnostic_sensor_publisher_.set_erd_cache_entries_sensor(sensor); }
+  void set_erd_cache_updates_sensor(sensor::Sensor* sensor) { this->erd_cache_updates_sensor_ = sensor; this->diagnostic_sensor_publisher_.set_erd_cache_updates_sensor(sensor); }
+  void set_mqtt_publish_rate_sensor(sensor::Sensor* sensor) { this->mqtt_publish_rate_sensor_ = sensor; this->diagnostic_sensor_publisher_.set_mqtt_publish_rate_sensor(sensor); }
+  void set_mqtt_disconnect_count_sensor(sensor::Sensor* sensor) { this->mqtt_disconnect_count_sensor_ = sensor; this->diagnostic_sensor_publisher_.set_mqtt_disconnect_count_sensor(sensor); }
+  void set_mqtt_disconnect_duration_sensor(sensor::Sensor* sensor) { this->mqtt_disconnect_duration_sensor_ = sensor; this->diagnostic_sensor_publisher_.set_mqtt_disconnect_duration_sensor(sensor); }
   void set_throttle_rate_seconds(uint8_t rate) { this->throttle_rate_seconds_ = rate; }
   void add_custom_erd(tiny_erd_t erd);
+  void trigger_discovery_refresh();
 
  protected:
   // ── IBridgeServices implementation (called exclusively by the startup HSM) ──
@@ -136,30 +153,59 @@ class GeappliancesBridge : public Component, public IBridgeServices {
   void log_poll_state_transitions() override;
   void initialize_erd_cache_publisher() override;
   bool is_erd_cache_publisher_initialized() const override;
-  void run_all_managers() override;
   // ── Internal bridge methods (event callbacks and per-phase helpers) ─────────
   void handle_erd_client_activity_(const tiny_gea3_erd_client_on_activity_args_t* args);
   void initialize_mqtt_client_();
   void initialize_erd_bridge_();
   void start_custom_erd_polling_();
   void maybe_start_custom_erd_polling_();
+  // Protocol stack iteration helpers (extracted from run_protocol_stack_)
+  void run_gea2_iteration_();
+  void run_gea3_iteration_();
+  void run_timer_only_iteration_();
+  // Run a tight-loop for the given iteration function, bounded by a duration
+  // and a hard cap.  In test builds the loop is replaced with a single call.
+  template<typename IterFn>
+  void run_tight_loop_(IterFn iter_fn, uint32_t duration_ms,
+                        uint32_t hard_cap_ms, const char* protocol_name) {
+#ifndef UNIT_TEST_BUILD
+    uint32_t loop_start_ms = millis();
+    while (millis() - loop_start_ms < duration_ms) {
+      if (millis() - loop_start_ms >= hard_cap_ms) {
+        ESP_LOGW("geappliances_bridge", "%s tight loop exceeded hard cap (%u ms), breaking",
+                 protocol_name, static_cast<unsigned>(hard_cap_ms));
+        break;
+      }
+#ifdef USE_ESP32
+      esp_task_wdt_reset();
+#endif
+      iter_fn();
+    }
+#else
+    (void)duration_ms;
+    (void)hard_cap_ms;
+    (void)protocol_name;
+    iter_fn();
+#endif
+  }
   void run_protocol_stack_();         // Drive GEA2/GEA3 hardware stack
   void log_poll_state_transitions_(); // Debug: log polling HSM state changes
+  void update_publisher_state_();       // Publisher pause/resume + steady-state detection
   void start_feature_bit_reading_();
   void init_erd_cache_publisher_();
+  void init_polling_bridge_(bool log_as_info);
   void on_poll_discovery_complete_();
-  void trigger_discovery_refresh();
   bool should_route_to_feature_bits_(tiny_erd_t erd);
 
   // Startup HSM — replaces the manual switch-based phase progression.
-  //   protocol_stack → autodiscovery → device_id → mqtt_client_init
+  //   startup_delay → autodiscovery → device_id → mqtt_client_init
   //                 → feature_bits → bridge_init → subscription_watch
   //                 → running
   startup_hsm_wrapper_t startup_hsm_wrapper_;
 
   uart::UARTComponent *uart_{nullptr};
   uart::UARTComponent *gea2_uart_{nullptr};
-  char configured_device_id_[64]{0};
+  char configured_device_id_[92]{0};
   uint8_t client_address_{0xE4};
 
   bool mqtt_client_adapter_initialized_{false};
@@ -167,9 +213,9 @@ class GeappliancesBridge : public Component, public IBridgeServices {
   BridgeMode mode_{BRIDGE_MODE_AUTO};
   uint32_t polling_interval_ms_{10000};
   bool appliance_api_parsing_{true};
-  bool generate_device_config_{false};
+  bool generate_device_config_{true};
   bool filter_config_topics_{true};
-  uint8_t throttle_rate_seconds_{0};
+  uint8_t throttle_rate_seconds_{1};
   uint32_t last_cooldown_tick_{0};  /* last time erd_cache_tick_cooldowns ran (ms) */
   // User-configured custom ERDs to poll in addition to the standard list.
   // Populated by add_custom_erd() calls generated from the YAML custom_erds option.
@@ -192,7 +238,12 @@ class GeappliancesBridge : public Component, public IBridgeServices {
   // GEA2 tight-loop duration: covers the full TX→RX cycle at 19200 baud
   // (see doc/geappliances_bridge.md section 13 for detailed explanation)
   static constexpr uint32_t GEA2_LOOP_DURATION_MS = 100;
+  // Cap on msec catchup iterations to prevent runaway loops
+  static constexpr uint32_t MSEC_CATCHUP_CAP = 1000;
+  // GEA3 tight-loop duration
   static constexpr uint32_t GEA3_LOOP_DURATION_MS = 10;
+  static constexpr uint32_t GEA2_LOOP_HARD_CAP_MS = GEA2_LOOP_DURATION_MS * 2;
+  static constexpr uint32_t GEA3_LOOP_HARD_CAP_MS = GEA3_LOOP_DURATION_MS * 2;
   bool gea2_protocol_active_{false}; // fallback for manual device_id when autodiscovery is skipped
 
   // True once the appliance-side data path (subscription and/or polling
@@ -215,17 +266,18 @@ class GeappliancesBridge : public Component, public IBridgeServices {
 
   polling_state_t last_logged_poll_state_{polling_state_none};
   subscription_state_t last_logged_subscribe_state_{subscription_state_none};
+  mutable bool feature_bit_failure_logged_{false};
 
   // ERD publish rate sensor: counts ERD updates per ~60s window and
   // publishes to Home Assistant.
   sensor::Sensor* erd_publish_rate_sensor_{nullptr};
-  uint32_t last_erd_publish_rate_publish_{0};
-  static constexpr uint32_t ERD_PUBLISH_RATE_INTERVAL_MS = 60000;
 
   sensor::Sensor* erd_cache_entries_sensor_{nullptr};
   sensor::Sensor* erd_cache_updates_sensor_{nullptr};
   sensor::Sensor* mqtt_publish_rate_sensor_{nullptr};
-  uint32_t last_erd_cache_stats_publish_{0};
+  sensor::Sensor* mqtt_disconnect_count_sensor_{nullptr};
+  sensor::Sensor* mqtt_disconnect_duration_sensor_{nullptr};
+
   // ERD registry: single owner of valid-ERD filter, string-type set,
   // and runtime registered-ERD tracking.
   ErdRegistry erd_registry_;
@@ -242,13 +294,21 @@ class GeappliancesBridge : public Component, public IBridgeServices {
   // HA discovery manager: publishes one-shot HA MQTT discovery payloads
   // after steady state is reached.
   ha_discovery_manager_t ha_discovery_manager_;
-  bool discovery_refresh_in_progress_{false};
-  bool ha_discovery_started_{false};
   bool erd_cache_publisher_paused_{false};
   bool discovery_just_resumed_{false};
 
+  // OTA-triggered discovery cleanup: set in setup() if reboot source is
+  // "esphome.ota". Driven in loop() after steady state, before discovery.
+  // After cleanup, reboots (same as DiscoveryRefresh) for fresh republish.
+
   // Autodiscovery manager (extracted from god class)
   AutodiscoveryManager autodiscovery_manager_;
+  // OTA cleanup manager: owns the OTA-triggered discovery cleanup state
+  // machine and the DiscoveryRefresh path (cleanup → republish → reboot).
+  OtaCleanupManager ota_cleanup_manager_;
+  // Diagnostic sensor publisher: owns periodic publishing of ERD/MQTT
+  // diagnostic sensors (publish rate, cache stats, disconnect stats).
+  DiagnosticSensorPublisher diagnostic_sensor_publisher_;
 
 
   tiny_timer_group_t timer_group_;
@@ -258,7 +318,10 @@ class GeappliancesBridge : public Component, public IBridgeServices {
   esphome_mqtt_client_adapter_t mqtt_client_adapter_;
 
   tiny_gea3_interface_t gea3_interface_;
+  // GEA3 receive buffer — one complete on-wire packet.
+  // Max payload is tiny_gea_packet_max_payload_length (248) + 7 bytes overhead = 255.
   uint8_t receive_buffer_[255];
+  // GEA3 send queue — holds up to ~4 pending outbound packets (255 bytes each).
   uint8_t send_queue_buffer_[1000];
 
   tiny_gea3_erd_client_t erd_client_;
@@ -273,12 +336,17 @@ class GeappliancesBridge : public Component, public IBridgeServices {
 
   // GEA2 components (only used when gea2_uart_ is set)
   esphome_uart_adapter_t gea2_uart_adapter_;
-
   tiny_gea2_interface_t gea2_interface_;
+
+  // GEA2 receive buffer — one complete on-wire packet.
+  // Max payload is tiny_gea_packet_max_payload_length (248) + 7 bytes overhead = 255.
   uint8_t gea2_receive_buffer_[255];
+  // GEA2 send queue — larger than GEA3 to absorb more packets at 19200 baud
+  // where the slower bus means the tight loop processes fewer packets per call.
   uint8_t gea2_send_queue_buffer_[4096];
 
   tiny_gea2_erd_client_t gea2_erd_client_;
+  // GEA2 client queue — same sizing as GEA3 client queue; see comment above.
   uint8_t gea2_client_queue_buffer_[4096];
 
   // Event fired once per millisecond to drive GEA2 interface's internal timers.

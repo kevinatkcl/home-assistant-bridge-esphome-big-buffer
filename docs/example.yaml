@@ -1,0 +1,90 @@
+substitutions:
+  name: gea-esphome
+  friendly_name: gea-esphome
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: false
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# Enable logging
+logger:
+
+# Allow OTA updates
+ota:
+  - platform: esphome
+
+# Allow provisioning Wi-Fi via serial
+improv_serial:
+
+esp32:
+  board: seeed_xiao_esp32c3
+  framework:
+    type: esp-idf
+
+# External component configuration
+external_components:
+  - source: github://joshualongenecker/home-assistant-bridge-esphome@develop
+    components: [ geappliances_bridge ]
+
+# MQTT configuration for Home Assistant
+mqtt:
+  broker: !secret mqtt_broker
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  port: 1883
+  discovery: true
+  discovery_prefix: homeassistant
+
+# UART configuration
+uart:
+  # GEA3 UART (newer appliances)
+  - id: gea3_uart
+    tx_pin: GPIO21  # D6 on Xiao ESP32-C3
+    rx_pin: GPIO20  # D7 on Xiao ESP32-C3
+    baud_rate: 230400
+
+  - id: gea2_uart
+    tx_pin: GPIO9  # D9 on Xiao ESP32-C3
+    rx_pin: GPIO10  # D10 on Xiao ESP32-C3
+    baud_rate: 19200
+    rx_full_threshold: 1
+    rx_timeout: 1
+
+# GE Appliances Bridge component
+geappliances_bridge:
+  gea3_uart_id: gea3_uart
+  gea2_uart_id: gea2_uart
+  # device_id: "YourDeviceId"             # Optional: Uncomment to use a custom device ID
+  # mode: auto                            # Default: auto   Options: auto, subscribe, poll
+  # polling_interval: 10000               # Default: 10000 ms (10 seconds), used when in polling mode
+  # appliance_api_parsing: true           # Default: true, restricts polling to appliance-supported ERDs
+  # filter_config_topics: true           # Default: true, filters internal/diagnostic entities from HA discovery
+  # throttle_rate_seconds: 1              # Default: 1, minimum seconds between publishes per ERD (0-255, 0=disabled)
+  # generate_device_config: true          # Default: true, generates MQTT Autodiscovery payloads (experimental)
+
+  # Diagnostic sensors and button are auto-created by default (discovery: false).
+  # To customize:
+  # erd_publish_rate_sensor:
+  #   name: "ERD Publish Rate"
+  # erd_cache_entries_sensor:
+  #   name: "ERD Cache Entries"
+  # erd_cache_updates_sensor:
+  #   name: "ERD Cache Update Rate"
+  # mqtt_publish_rate_sensor:
+  #   name: "MQTT Publish Rate"
+  # mqtt_disconnect_count_sensor:
+  #   name: "MQTT Disconnect Count"
+  # mqtt_disconnect_duration_sensor:
+  #   name: "MQTT Last Disconnect Duration"
+  # To disable any entity, set it to false:
+  # erd_publish_rate_sensor: false
+  # discovery_refresh_button: false
