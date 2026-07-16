@@ -32,6 +32,11 @@ jobs:
       with:
         python-version: '3.x'
 
+    - name: Install dependencies
+      run: |
+        python3 -m pip install --upgrade pip
+        python3 -m pip install pytest
+
     - name: Validate submodule commit input
       run: |
         if ! [[ "${{ github.event.inputs.submodule_commit }}" =~ ^[0-9a-f]{40}$ ]]; then
