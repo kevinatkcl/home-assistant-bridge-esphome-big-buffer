@@ -195,15 +195,17 @@ void GeappliancesBridge::setup() {
   }
 
   // Initialize autodiscovery manager (timer-driven, self-driving)
-  // Must be called AFTER ERD clients are initialized, so the manager can
-  // subscribe to their activity events on valid interfaces.
+  // Must be called AFTER ERD clients and UART adapters are initialized.
   this->autodiscovery_manager_.init(
       &this->timer_group_,
       this->uart_ != nullptr ? &this->erd_client_.interface : nullptr,
       this->gea2_uart_ != nullptr ? &this->gea2_erd_client_.interface : nullptr,
       this->gea2_uart_ != nullptr ? &this->gea2_erd_client_adapter_.interface : nullptr,
+      this->uart_ != nullptr ? &this->uart_adapter_ : nullptr,
+      this->gea2_uart_ != nullptr ? &this->gea2_uart_adapter_ : nullptr,
       this->uart_ != nullptr,
       this->gea2_uart_ != nullptr,
+      this->client_address_,
       [this]() {
         // Signal the HSM to transition to the device_id phase.
         // The HSM handles DeviceIdentityManager::init() directly.
