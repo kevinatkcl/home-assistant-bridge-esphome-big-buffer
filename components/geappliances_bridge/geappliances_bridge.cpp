@@ -59,13 +59,32 @@ void GeappliancesBridge::add_custom_erd(tiny_erd_t erd)
              (unsigned)erd, (unsigned)CUSTOM_ERDS_MAX);
     return;
   }
-  this->custom_erds_[this->custom_erds_count_++] = erd;
+  this->custom_erds_[this->custom_erds_count_++] = {erd, PROBE_ENTRY_DEFAULT_ADDRESS};
 }
 
 void GeappliancesBridge::add_custom_erds(const uint16_t* erds, uint16_t count)
 {
   if (erds == nullptr) return;
-  for (uint16_t i = 0; i < count; i++) this->add_custom_erd(erds[i]);
+  for (uint16_t i = 0; i < count; i++) {
+    this->add_custom_erd(erds[i]);
+  }
+}
+
+void GeappliancesBridge::add_custom_erds_with_addresses(const uint16_t* erds, const uint8_t* addresses, uint16_t count)
+{
+  if (erds == nullptr) return;
+  for (uint16_t i = 0; i < count; i++) {
+    if (this->custom_erds_count_ >= CUSTOM_ERDS_MAX) {
+      ESP_LOGW(TAG, "Custom ERD 0x%04x dropped: capacity limit (%u) reached",
+               (unsigned)erds[i], (unsigned)CUSTOM_ERDS_MAX);
+      return;
+    }
+    uint8_t addr = PROBE_ENTRY_DEFAULT_ADDRESS;
+    if (addresses != nullptr) {
+      addr = addresses[i];
+    }
+    this->custom_erds_[this->custom_erds_count_++] = {erds[i], addr};
+  }
 }
 
 static const tiny_gea3_erd_client_configuration_t client_configuration = {
@@ -578,6 +597,14 @@ void GeappliancesBridge::dump_config() {
   }
   if (this->custom_erds_count_ > 0) {
     ESP_LOGCONFIG(TAG, "  Custom ERDs: %u configured", this->custom_erds_count_);
+    for (uint16_t i = 0; i < this->custom_erds_count_; i++) {
+      const custom_erd_entry_t &entry = this->custom_erds_[i];
+      if (entry.board_address == PROBE_ENTRY_DEFAULT_ADDRESS) {
+        ESP_LOGCONFIG(TAG, "    ERD 0x%04X: primary board", entry.erd);
+      } else {
+        ESP_LOGCONFIG(TAG, "    ERD 0x%04X: address 0x%02X", entry.erd, entry.board_address);
+      }
+    }
   }
 
   // Display current startup state for debugging

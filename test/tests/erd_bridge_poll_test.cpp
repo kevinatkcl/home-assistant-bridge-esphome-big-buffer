@@ -8,6 +8,7 @@
  */
 
 #include "erd_bridge_poll.h"
+#include "erd_bridge_common.h"
 
 #include "erd_lists.h"
 
@@ -37,7 +38,7 @@ TEST_GROUP_BASE(erd_bridge_poll, simulation_test_base)
     mock().enable();
   }
 
-  void when_the_bridge_is_initialized_with_probe_list(const tiny_erd_t* list, uint16_t count)
+  void when_the_bridge_is_initialized_with_probe_list(const probe_entry_t* list, uint16_t count)
   {
     erd_bridge_poll_init(
       &self,
@@ -51,7 +52,7 @@ TEST_GROUP_BASE(erd_bridge_poll, simulation_test_base)
   void given_that_the_bridge_has_entered_polling_state()
   {
     mock().disable();
-    const tiny_erd_t probe_list[] = { polled_erd };
+    const probe_entry_t probe_list[] = {{polled_erd, PROBE_ENTRY_DEFAULT_ADDRESS}};
     when_the_bridge_is_initialized_with_probe_list(probe_list, 1);
 
     // Probe phase: the single ERD responds successfully.
@@ -88,7 +89,7 @@ TEST_GROUP_BASE(erd_bridge_poll, simulation_test_base)
 TEST(erd_bridge_poll, should_preserve_cache_data_on_reprobe_after_appliance_lost)
 {
   mock().disable();
-  const tiny_erd_t probe_list[] = { polled_erd };
+  const probe_entry_t probe_list[] = {{polled_erd, PROBE_ENTRY_DEFAULT_ADDRESS}};
   when_the_bridge_is_initialized_with_probe_list(probe_list, 1);
 
   // Probe phase: ERD responds, bridge enters polling.
@@ -118,6 +119,35 @@ TEST(erd_bridge_poll, should_preserve_cache_data_on_reprobe_after_appliance_lost
   CHECK(entry != nullptr);
   CHECK_EQUAL(polled_erd, entry->erd);
   CHECK_EQUAL(sizeof(new_value), entry->data_size);
+}
+
+TEST(erd_bridge_poll, keeps_same_erd_from_different_board_addresses_separate)
+{
+  mock().disable();
+  const probe_entry_t probe_list[] = {
+    {polled_erd, 0xC0},
+    {polled_erd, 0xA2},
+  };
+  when_the_bridge_is_initialized_with_probe_list(probe_list, 2);
+
+  uint8_t primary_value = 0x11;
+  uint8_t inverter_value = 0x22;
+  trigger_read_completed(0xC0, polled_erd, &primary_value, sizeof(primary_value));
+  trigger_read_completed(0xA2, polled_erd, &inverter_value, sizeof(inverter_value));
+  mock().enable();
+
+  CHECK_EQUAL(2u, erd_cache_get_count(&test_cache));
+  erd_cache_entry_t* primary = nullptr;
+  erd_cache_entry_t* inverter = nullptr;
+  uint16_t iterator = 0;
+  while (erd_cache_entry_t* entry = erd_cache_get_next_entry(&test_cache, &iterator)) {
+    if (entry->erd == polled_erd && entry->board_address == PROBE_ENTRY_DEFAULT_ADDRESS) primary = entry;
+    if (entry->erd == polled_erd && entry->board_address == 0xA2) inverter = entry;
+  }
+  CHECK(primary != nullptr);
+  CHECK(inverter != nullptr);
+  CHECK_EQUAL(0x11, *erd_cache_entry_data(&test_cache, primary));
+  CHECK_EQUAL(0x22, *erd_cache_entry_data(&test_cache, inverter));
 }
 
 TEST(erd_bridge_poll, should_publish_mqtt_on_first_poll)
@@ -232,7 +262,7 @@ TEST_GROUP_BASE(erd_bridge_poll_probe_list, simulation_test_base)
 
   erd_bridge_poll_t self;
 
-  const tiny_erd_t probe_list[2] = {probe_erd_1, probe_erd_2};
+  const probe_entry_t probe_list[2] = {{probe_erd_1, PROBE_ENTRY_DEFAULT_ADDRESS}, {probe_erd_2, PROBE_ENTRY_DEFAULT_ADDRESS}};
 
   void setup()
   {
@@ -436,7 +466,7 @@ TEST_GROUP_BASE(erd_bridge_poll_probe_failures, simulation_test_base)
 
   erd_bridge_poll_t self;
 
-  const tiny_erd_t probe_list[3] = {probe_erd_1, probe_erd_2, probe_erd_3};
+  const probe_entry_t probe_list[3] = {{probe_erd_1, PROBE_ENTRY_DEFAULT_ADDRESS}, {probe_erd_2, PROBE_ENTRY_DEFAULT_ADDRESS}, {probe_erd_3, PROBE_ENTRY_DEFAULT_ADDRESS}};
 
   void setup()
   {
